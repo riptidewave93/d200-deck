@@ -1,0 +1,13 @@
+# Third-party notices
+
+d200-deck is licensed under the GNU GPL v3 or later ([LICENSE](LICENSE)). It includes or links:
+
+| Component | Where | Licence |
+|---|---|---|
+| [Material Symbols](https://github.com/google/material-design-icons) (Rounded, filled) icon paths, Copyright Google LLC | `internal/gfx/symbols.go` | Apache-2.0 ([LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)) |
+| GitHub mark from [Primer Octicons](https://github.com/primer/octicons), Copyright GitHub Inc. | `internal/gfx/icons.go` | MIT ([LICENSES/MIT-primer-octicons.txt](LICENSES/MIT-primer-octicons.txt)) |
+| [golang.org/x/image](https://pkg.go.dev/golang.org/x/image), including the Go fonts | Go module | BSD-3-Clause (in the module) |
+| [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) (used by x/image) | Go module | BSD-3-Clause (in the module) |
+| Go standard library | | BSD-3-Clause |
+
+The GitHub logo is a trademark of GitHub, Inc., used here only to link to this project's repository.
