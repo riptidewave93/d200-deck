@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -38,7 +39,23 @@ func trayReady() {
 	}
 	systray.AddSeparator()
 	configure := systray.AddMenuItem("Configure", "Open the configuration website")
+	// One D200 gets a plain Update item; several get a submenu, one per device.
 	update := systray.AddMenuItem("Update", "Open the device's update page")
+	updateMenu := systray.AddMenuItem("Update", "Open a device's update page")
+	updateMenu.Hide()
+	picked := make(chan int)
+	var updateItems []*systray.MenuItem
+	for i := range maxTrayDevices {
+		it := updateMenu.AddSubMenuItem("", "")
+		it.Hide()
+		updateItems = append(updateItems, it)
+		go func() {
+			for range it.ClickedCh {
+				picked <- i
+			}
+		}()
+	}
+	var serials []string
 	systray.AddSeparator()
 	restart := systray.AddMenuItem("Restart", "Restart deckhost")
 	exit := systray.AddMenuItem("Exit", "Stop deckhost and close this icon")
@@ -55,12 +72,27 @@ func trayReady() {
 				l.Hide()
 			}
 		}
-		connected := len(s.Connected()) > 0
-		systray.SetIcon(icons[connected])
-		if connected {
+		serials = updateSerials(s)
+		systray.SetIcon(icons[len(serials) > 0])
+		if len(serials) > 0 {
 			update.Enable()
 		} else {
 			update.Disable()
+		}
+		if len(serials) > 1 {
+			update.Hide()
+			updateMenu.Show()
+		} else {
+			update.Show()
+			updateMenu.Hide()
+		}
+		for i, it := range updateItems {
+			if i < len(serials) {
+				it.SetTitle(shortSerial(serials[i]))
+				it.Show()
+			} else {
+				it.Hide()
+			}
 		}
 	}
 	refresh()
@@ -74,7 +106,11 @@ func trayReady() {
 			case <-configure.ClickedCh:
 				ask("configure", func() error { return openURL(deck.ConfigureURL) })
 			case <-update.ClickedCh:
-				ask("update", func() error { return openURL(deck.UpdateURL) })
+				ask("update", notRunning)
+			case i := <-picked:
+				if i < len(serials) {
+					ask("update "+serials[i], notRunning)
+				}
 			case <-restart.ClickedCh:
 				ask("restart", func() error {
 					return exec.Command("systemctl", "--user", "restart", "deckhost.service").Run()
@@ -89,6 +125,20 @@ func trayReady() {
 		}
 	}()
 }
+
+// updateSerials are the serials of the connected devices the menu offers updates for.
+func updateSerials(s Status) []string {
+	var serials []string
+	for _, d := range s.Connected() {
+		if len(serials) < maxTrayDevices {
+			serials = append(serials, d.Hello.Serial)
+		}
+	}
+	return serials
+}
+
+// notRunning is the fallback for actions only the daemon can do.
+func notRunning() error { return errors.New("deckhost isn't running") }
 
 // maxTrayDevices is how many devices the menu lists.
 const maxTrayDevices = 8

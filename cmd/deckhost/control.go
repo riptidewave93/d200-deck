@@ -71,14 +71,23 @@ func (d *daemon) serveControl(c net.Conn, l net.Listener) {
 			fmt.Fprintln(c, "ok")
 		}
 	}
-	switch strings.TrimSpace(line) {
+	cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
+	if arg != "" && cmd != "update" {
+		reply(errors.New("unknown command"))
+		return
+	}
+	switch cmd {
 	case "status":
 		b, _ := json.Marshal(d.getStatus())
 		fmt.Fprintf(c, "%s\n", b)
 	case "configure":
 		reply(openURL(deck.ConfigureURL))
 	case "update":
-		reply(openURL(deck.UpdateURL))
+		u, err := d.getStatus().UpdateURL(arg)
+		if err == nil {
+			err = openURL(u)
+		}
+		reply(err)
 	case "restart":
 		reply(nil)
 		c.Close()

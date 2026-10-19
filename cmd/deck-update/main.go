@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/riptidewave93/d200-deck/internal/osrelease"
+	"github.com/riptidewave93/d200-deck/internal/serial"
+	"github.com/riptidewave93/d200-deck/netid"
 )
 
 //go:embed update.html
@@ -29,7 +31,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           handler(),
+		Handler:           handler(mdnsName()),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    8 << 10,
@@ -37,13 +39,27 @@ func main() {
 	log.Fatal(srv.ListenAndServe())
 }
 
-func handler() http.Handler {
+// mdnsName is the device's d200-<serial>.local name, or "" without a serial.
+func mdnsName() string {
+	s, err := serial.Read()
+	if err == nil {
+		var id netid.ID
+		if id, err = netid.For(s); err == nil {
+			return id.MDNS
+		}
+	}
+	log.Printf("no mDNS name: %v", err)
+	return ""
+}
+
+// handler serves the pages to requests for the device's IP address or name.
+func handler(name string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/update", http.StatusFound)
 	})
 	mux.HandleFunc("GET /update", showUpdate)
-	return sameHost(mux)
+	return sameHost(mux, name)
 }
 
 func showUpdate(w http.ResponseWriter, r *http.Request) {
@@ -67,18 +83,19 @@ func show(s string) string {
 	return html.EscapeString(s)
 }
 
-// sameHost only answers requests addressed to the device by its IP address.
-// A web page can't use DNS rebinding to reach the device through a hostname
-// it controls.
-func sameHost(next http.Handler) http.Handler {
+// sameHost only answers requests addressed to the device by its IP address or
+// its mDNS name. A web page can't use DNS rebinding to reach the device
+// through a hostname it controls.
+func sameHost(next http.Handler, name string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		local, _ := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
 		host, _, err := net.SplitHostPort(r.Host)
 		if err != nil {
 			host = r.Host
 		}
-		if local == nil || host != hostOf(local.String()) {
-			http.Error(w, "use the device's IP address", http.StatusMisdirectedRequest)
+		named := name != "" && strings.EqualFold(strings.TrimSuffix(host, "."), name)
+		if !named && (local == nil || host != hostOf(local.String())) {
+			http.Error(w, "use the device's name or IP address", http.StatusMisdirectedRequest)
 			return
 		}
 		next.ServeHTTP(w, r)

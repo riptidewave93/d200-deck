@@ -134,7 +134,8 @@ Kept in their own file and messages, so pushing pages can't change USB settings 
 
 ## Open items
 
-- Two devices on one PC would both be 172.31.254.1: derive the /30 from the serial if multiple
-  devices matter.
+- Per-device USB networking: each deck derives its own /30 in 198.18.0.0/15 and the name
+  `d200-<serial>.local` from its serial (`netid`, vectors in `netid/testdata`). The image
+  implements it in its boot scripts with stock mDNS; until then every deck is 172.31.254.1.
 - Unicode text and per-app actions need `deckhost` (OS input injection; awkward on Wayland).
 - Config lives in the root filesystem, so an OS update may reset it.

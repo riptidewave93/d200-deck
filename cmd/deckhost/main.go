@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/riptidewave93/d200-deck/internal/hidraw"
 	"github.com/riptidewave93/d200-deck/proto"
@@ -21,7 +22,8 @@ const usageText = `usage: deckhost <command>
 
   status       show the daemon's status
   configure    open the configuration website
-  update       open the device's update page
+  update [S]   open a D200's update page (S: the end of its serial,
+               needed when several are connected)
   restart      restart the daemon
   exit         stop the daemon
 
@@ -45,7 +47,10 @@ func main() {
 	case "tray":
 		runTray()
 	case "status", "configure", "update", "restart", "exit":
-		reply, err := control(cmd)
+		if len(os.Args) > 3 || (len(os.Args) == 3 && cmd != "update") {
+			usage()
+		}
+		reply, err := control(strings.Join(os.Args[1:], " "))
 		if err != nil {
 			log.Fatal(err)
 		}

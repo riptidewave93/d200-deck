@@ -2,16 +2,19 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/riptidewave93/d200-deck/internal/hidraw"
+	"github.com/riptidewave93/d200-deck/netid"
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
@@ -41,6 +44,30 @@ func (s Status) Connected() []Device {
 		}
 	}
 	return c
+}
+
+// UpdateURL is the update page of the connected device whose serial ends in
+// serial, or of the only one connected if serial is empty.
+func (s Status) UpdateURL(serial string) (string, error) {
+	var found []Device
+	for _, d := range s.Connected() {
+		if strings.HasSuffix(strings.ToLower(d.Hello.Serial), strings.ToLower(serial)) {
+			found = append(found, d)
+		}
+	}
+	switch {
+	case len(found) == 0 && serial == "":
+		return "", errors.New("no D200 connected")
+	case len(found) == 0:
+		return "", fmt.Errorf("no D200 %s connected", serial)
+	case len(found) > 1:
+		return "", errors.New("several D200s connected: name one by its serial")
+	}
+	id, err := netid.For(found[0].Hello.Serial)
+	if err != nil {
+		return "", fmt.Errorf("D200 %q: %w", found[0].Hello.Serial, err)
+	}
+	return id.UpdateURL(), nil
 }
 
 // daemon runs one session per plugged-in D200.

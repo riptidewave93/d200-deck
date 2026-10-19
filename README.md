@@ -6,12 +6,12 @@ Stream-deck software for the [Ulanzi D200](https://www.ulanzi.com/) running main
 | Program | Runs on | Does |
 |---|---|---|
 | `deckd` | the D200 | draws pages of buttons on the screen, runs key actions (USB HID keyboard, media keys, macros), serves the config channel |
-| `deck-update` | the D200 | serves the update page at `http://172.31.254.1/update`; shows the installed version, can't install updates yet |
+| `deck-update` | the D200 | serves the update page at `http://<deck IPv4>/update` (or `d200-<serial>.local`); shows the installed version, can't install updates yet |
 | `deckhost` | the PC | daemon that runs the PC actions (open a URL, launch a program, HTTP requests) plus a tray icon; Linux for now ([docs/deckhost.md](docs/deckhost.md)) |
 
 Status: early. Buttons, pages, HID actions and macros work on the device, and `deckhost` runs
-the PC-side actions (open a URL, launch an app, webhooks) on Linux. The configuration website,
-custom icons and OTA updates are not done yet.
+the PC-side actions (open a URL, launch an app, webhooks) on Linux. The configuration website
+and OTA updates are not done yet.
 See [docs/design.md](docs/design.md).
 
 ## Configuration

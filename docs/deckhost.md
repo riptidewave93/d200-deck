@@ -30,12 +30,13 @@ On GNOME the tray icon needs the [AppIndicator extension](https://extensions.gno
 | Item | Does |
 |---|---|
 | Configure | Opens the configuration website |
-| Update | Opens the device's update page, `http://172.31.254.1/update` (only while connected) |
+| Update | Opens the device's update page, the deck's IPv4 address, e.g. `http://198.19.23.5/update`, since sandboxed browsers often can't resolve `.local` (only while connected; a submenu per device when several are) |
 | Restart | Restarts the daemon (or starts it if it isn't running) |
 | Exit | Stops the daemon and closes the tray; both start again at next login |
 
 The tray passes these to the daemon over `$XDG_RUNTIME_DIR/deckhost.sock`. The same commands work
-from a shell: `deckhost status | configure | update | restart | exit`.
+from a shell: `deckhost status | configure | update [serial] | restart | exit`. With several D200s
+connected, `update` needs the end of the device's serial.
 
 ## How it works
 

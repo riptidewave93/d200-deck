@@ -4,14 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/hidg"
 	"github.com/riptidewave93/d200-deck/internal/osrelease"
+	"github.com/riptidewave93/d200-deck/internal/serial"
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
@@ -97,7 +96,7 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 	switch req.Cmd {
 	case proto.CmdHello:
 		info, _ := osrelease.Read(osrelease.Path)
-		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: version, OS: info, Serial: serial(), Keys: deck.KeyCount})
+		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: version, OS: info, Serial: readSerial(), Keys: deck.KeyCount})
 		return proto.StatusOK, b
 	case proto.CmdIdentify:
 		if len(req.Payload) != 1 || int(req.Payload[0]) >= deck.KeyCount {
@@ -120,7 +119,7 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 	return proto.StatusUnknownCmd, nil
 }
 
-func serial() string {
-	b, _ := os.ReadFile("/proc/device-tree/serial-number")
-	return strings.TrimRight(string(b), "\x00\n")
+func readSerial() string {
+	s, _ := serial.Read()
+	return s
 }

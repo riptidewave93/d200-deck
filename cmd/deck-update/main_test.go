@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/riptidewave93/d200-deck/internal/serial"
 )
 
 func get(t *testing.T, req *http.Request) (*http.Response, string) {
@@ -30,7 +32,7 @@ func server(t *testing.T, content string) *httptest.Server {
 	old := osRelease
 	osRelease = p
 	t.Cleanup(func() { osRelease = old })
-	srv := httptest.NewServer(handler())
+	srv := httptest.NewServer(handler("d200-00112233445566aa.local"))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -87,5 +89,34 @@ func TestOtherHostRefused(t *testing.T) {
 	req.Host = "127.0.0.1" // the IP without a port is fine
 	if resp, _ := get(t, req); resp.StatusCode != http.StatusOK {
 		t.Errorf("IP without port: %d", resp.StatusCode)
+	}
+	for _, host := range []string{"d200-00112233445566aa.local", "D200-00112233445566AA.local.:80"} {
+		req, _ = http.NewRequest("GET", srv.URL+"/update", nil)
+		req.Host = host
+		if resp, _ := get(t, req); resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: %d", host, resp.StatusCode)
+		}
+	}
+	req, _ = http.NewRequest("GET", srv.URL+"/update", nil)
+	req.Host = "d200-ffeeddccbbaa9988.local" // another deck's name
+	if resp, _ := get(t, req); resp.StatusCode != http.StatusMisdirectedRequest {
+		t.Errorf("other deck's name: %d", resp.StatusCode)
+	}
+}
+
+func TestMDNSName(t *testing.T) {
+	old := serial.Path
+	t.Cleanup(func() { serial.Path = old })
+	serial.Path = filepath.Join(t.TempDir(), "serial-number")
+	if n := mdnsName(); n != "" {
+		t.Errorf("no serial: %q", n)
+	}
+	os.WriteFile(serial.Path, []byte("00112233445566AA\x00"), 0o644)
+	if n := mdnsName(); n != "d200-00112233445566aa.local" {
+		t.Errorf("name %q", n)
+	}
+	os.WriteFile(serial.Path, []byte("not hex\x00"), 0o644)
+	if n := mdnsName(); n != "" {
+		t.Errorf("bad serial: %q", n)
 	}
 }

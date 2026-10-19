@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"image/png"
 	"io"
 	"net"
@@ -98,6 +99,7 @@ func TestControl(t *testing.T) {
 	urls := fakeBrowser(t)
 	d := newDaemon()
 	d.devices["/dev/hidraw9"] = &Device{Path: "/dev/hidraw9", Error: "not yet"}
+	d.devices["/dev/hidraw1"] = &Device{Path: "/dev/hidraw1", Hello: &proto.Hello{Serial: "00112233445566aa"}}
 	l, err := listenControl(d)
 	if err != nil {
 		t.Fatal(err)
@@ -106,19 +108,25 @@ func TestControl(t *testing.T) {
 
 	reply, err := control("status")
 	var s Status
-	if err != nil || json.Unmarshal([]byte(reply), &s) != nil || len(s.Devices) != 1 || s.Devices[0].Error != "not yet" {
+	if err != nil || json.Unmarshal([]byte(reply), &s) != nil || len(s.Devices) != 2 || s.Devices[1].Error != "not yet" {
 		t.Errorf("status %q, %v", reply, err)
 	}
-	for _, cmd := range []string{"configure", "update"} {
+	for _, cmd := range []string{"configure", "update", "update 5566aa"} {
 		if reply, err := control(cmd); err != nil || reply != "ok" {
 			t.Errorf("%s: %q, %v", cmd, reply, err)
 		}
 	}
-	if u := urls(); len(u) != 2 || u[0] != deck.ConfigureURL || u[1] != deck.UpdateURL {
+	const page = "http://198.19.23.5/update"
+	if u := urls(); len(u) != 3 || u[0] != deck.ConfigureURL || u[1] != page || u[2] != page {
 		t.Errorf("opened %v", u)
 	}
-	if _, err := control("dance"); err == nil || err.Error() != "unknown command" {
-		t.Errorf("unknown command: %v", err)
+	if _, err := control("update ffff"); err == nil || err.Error() != "no D200 ffff connected" {
+		t.Errorf("update of a missing deck: %v", err)
+	}
+	for _, cmd := range []string{"dance", "status now"} {
+		if _, err := control(cmd); err == nil || err.Error() != "unknown command" {
+			t.Errorf("%s: %v", cmd, err)
+		}
 	}
 	if _, err := listenControl(d); err == nil {
 		t.Error("a second daemon started")
@@ -334,6 +342,52 @@ func TestDescribe(t *testing.T) {
 	}
 	if shortSerial("abc") != "D200 …abc" {
 		t.Error("short serial changed")
+	}
+}
+
+func TestUpdateURL(t *testing.T) {
+	dev := func(serial string) Device { return Device{Hello: &proto.Hello{Serial: serial}} }
+	one := Status{Devices: []Device{dev("00112233445566aa"), {Error: "e"}}}
+	two := Status{Devices: []Device{dev("00112233445566aa"), dev("FFEEDDCCBBAA9988")}}
+	cases := []struct {
+		s           Status
+		serial, url string
+		err         string
+	}{
+		{Status{}, "", "", "no D200 connected"},
+		{one, "", "http://198.19.23.5/update", ""},
+		{one, "66AA", "http://198.19.23.5/update", ""},
+		{one, "9988", "", "no D200 9988 connected"},
+		{two, "", "", "several D200s connected: name one by its serial"},
+		{two, "aa9988", "http://198.18.72.229/update", ""},
+		{Status{Devices: []Device{dev("zz")}}, "", "", `D200 "zz": serial must be 1-64 hex digits`},
+	}
+	for _, tc := range cases {
+		url, err := tc.s.UpdateURL(tc.serial)
+		msg := ""
+		if err != nil {
+			msg = err.Error()
+		}
+		if url != tc.url || msg != tc.err {
+			t.Errorf("UpdateURL(%q) = %q, %v; want %q, %q", tc.serial, url, err, tc.url, tc.err)
+		}
+	}
+}
+
+func TestUpdateSerials(t *testing.T) {
+	var s Status
+	for i := range maxTrayDevices + 2 {
+		s.Devices = append(s.Devices, Device{Hello: &proto.Hello{Serial: fmt.Sprintf("%016x", i)}}, Device{Error: "e"})
+	}
+	got := updateSerials(s)
+	if len(got) != maxTrayDevices || got[0] != "0000000000000000" || got[1] != "0000000000000001" {
+		t.Errorf("updateSerials = %q", got)
+	}
+	if updateSerials(Status{}) != nil {
+		t.Error("serials with nothing connected")
+	}
+	if notRunning() == nil {
+		t.Error("notRunning returned nil")
 	}
 }
 
