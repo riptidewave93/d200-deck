@@ -39,19 +39,18 @@ func TestDoStatus(t *testing.T) {
 	}
 }
 
-func TestSeqSkipsEventSeq(t *testing.T) {
-	dev := prototest.New()
-	seen := map[byte]bool{}
-	go dev.Serve(func(req proto.Request) (byte, []byte) { seen[req.Seq] = true; return proto.StatusOK, nil })
-	c := proto.NewConn(dev)
-	defer c.Close()
-	for range 300 {
-		if _, err := c.Do(proto.CmdHello, nil); err != nil {
-			t.Fatal(err)
-		}
+func TestRandomFirstSeq(t *testing.T) {
+	// clients see each other's replies: they mustn't all count from the same seq
+	first := func() uint16 {
+		dev := prototest.New()
+		go dev.Serve(echo)
+		c := proto.NewConn(dev)
+		defer c.Close()
+		c.Do(proto.CmdHello, nil)
+		return dev.LastSeq()
 	}
-	if seen[proto.EventSeq] {
-		t.Error("a request used the event seq")
+	if a, b, c := first(), first(), first(); a == b && b == c {
+		t.Errorf("three clients all started at seq %d", a)
 	}
 }
 
@@ -164,8 +163,24 @@ func TestOversizedMessageDropped(t *testing.T) {
 		dev.Send(req.Seq, proto.StatusOK, make([]byte, proto.MaxMessage+proto.MaxReply))
 		dev.Send(req.Seq, proto.StatusOK, []byte("ok"))
 	}()
-	if got, err := c.Do(proto.CmdHello, nil); err != nil || len(got) > proto.MaxReply {
+	if got, err := c.Do(proto.CmdHello, nil); err != nil || string(got) != "ok" {
 		t.Errorf("got %d bytes, %v", len(got), err)
+	}
+}
+
+func TestCutShortMessage(t *testing.T) {
+	dev := prototest.New()
+	c := proto.NewConn(dev)
+	defer c.Close()
+	go func() {
+		req := <-dev.Requests()
+		long := proto.EncodeReply(req.Seq, proto.StatusOK, bytes.Repeat([]byte("x"), 3*proto.MaxReply))
+		dev.Raw(long[1]) // the middle of a message whose start we missed: ignored
+		dev.Raw(long[0]) // the start of a message the device gave up on
+		dev.Send(req.Seq, proto.StatusOK, []byte("ok"))
+	}()
+	if got, err := c.Do(proto.CmdHello, nil); err != nil || string(got) != "ok" {
+		t.Errorf("got %q, %v", got, err)
 	}
 }
 

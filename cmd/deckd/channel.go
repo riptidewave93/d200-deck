@@ -25,7 +25,7 @@ type channel struct {
 	raw *hidg.Raw // nil while closed
 }
 
-func (c *channel) send(seq, status byte, payload []byte) error {
+func (c *channel) send(seq uint16, status byte, payload []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.raw == nil {
@@ -106,7 +106,18 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 		d.ui <- func() { d.flash(i) }
 		return proto.StatusOK, nil
 	case proto.CmdActionHost:
-		d.pc.heartbeat()
+		var h proto.ActionHost
+		if json.Unmarshal(req.Payload, &h) != nil || h.ID == "" {
+			return proto.StatusBadRequest, nil
+		}
+		d.pc.heartbeat(h.ID)
+		return proto.StatusOK, nil
+	case proto.CmdState:
+		var s proto.State
+		if json.Unmarshal(req.Payload, &s) != nil {
+			return proto.StatusBadRequest, nil
+		}
+		d.pc.setState(s)
 		return proto.StatusOK, nil
 	case proto.CmdResult:
 		var r proto.Result

@@ -32,6 +32,7 @@ const usageText = `usage: deckhost <command>
 
   hello        ask the first D200 directly who it is
   identify N   flash key N on the first D200
+  discord-test check the Discord setup: toggles mute on and off
   version      show deckhost's version
 `
 
@@ -59,6 +60,10 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println(reply)
+	case "discord-test":
+		if err := discordTest(); err != nil {
+			log.Fatal(err)
+		}
 	case "version":
 		fmt.Println(version)
 	case "hello":

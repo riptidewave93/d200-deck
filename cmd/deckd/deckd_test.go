@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -158,32 +159,15 @@ func TestPCActionEvent(t *testing.T) {
 	d := newTestDeckd()
 	d.ch.set(raw)
 	defer d.ch.set(nil)
-	d.pc.heartbeat()
+	d.pc.heartbeat("host1")
 	d.press(13, true)
-
-	var msg []byte
-	buf := make([]byte, 4096)
-	r.SetReadDeadline(time.Now().Add(2 * time.Second))
-	for done := false; !done; {
-		n, err := r.Read(buf)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for b := buf[:n]; len(b) >= proto.RawInSize; b = b[proto.RawInSize:] {
-			part, err := proto.DecodeReply(b[:proto.RawInSize])
-			if err != nil || part.Seq != proto.EventSeq || part.Status != proto.EventAction {
-				t.Fatalf("report %+v, %v", part, err)
-			}
-			msg = append(msg, part.Payload...)
-			done = !part.More
-		}
-	}
-	var ev proto.ActionEvent
-	if err := json.Unmarshal(msg, &ev); err != nil {
-		t.Fatal(err)
-	}
-	if ev.Key != 13 || ev.Action.URL != deck.RepoURL {
+	ev := readEvent(t, r)
+	if ev.Key != 13 || ev.Host != "host1" || ev.Release || ev.Action.URL != deck.RepoURL {
 		t.Errorf("event %+v", ev)
+	}
+	d.press(13, false)
+	if rel := readEvent(t, r); rel.ID != ev.ID || !rel.Release || rel.Host != "host1" || rel.Key != 13 {
+		t.Errorf("release event %+v", rel)
 	}
 	// a failed result flashes the key
 	d.handle(proto.Request{Cmd: proto.CmdResult, Payload: []byte(`{"id":` + itoa(ev.ID) + `,"error":"no browser"}`)})
@@ -193,11 +177,35 @@ func TestPCActionEvent(t *testing.T) {
 	}
 }
 
+// readEvent reads one action event from the config channel's pipe.
+func readEvent(t *testing.T, r *os.File) proto.ActionEvent {
+	t.Helper()
+	var msg []byte
+	buf := make([]byte, proto.RawInSize)
+	r.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for done := false; !done; {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			t.Fatal(err)
+		}
+		part, err := proto.DecodeReply(buf)
+		if err != nil || part.Seq != proto.EventSeq || part.Status != proto.EventAction || part.First != (msg == nil) {
+			t.Fatalf("report %+v, %v", part, err)
+		}
+		msg = append(msg, part.Payload...)
+		done = !part.More
+	}
+	var ev proto.ActionEvent
+	if err := json.Unmarshal(msg, &ev); err != nil {
+		t.Fatal(err)
+	}
+	return ev
+}
+
 func itoa(n uint32) string { b, _ := json.Marshal(n); return string(b) }
 
 func TestPCActionSendFails(t *testing.T) {
 	d := newTestDeckd()
-	d.pc.heartbeat()
+	d.pc.heartbeat("h")
 	d.press(13, true) // channel closed: the send fails
 	runUI(t, d)
 	if got := keyColour(d, 13); got != keyColours[keyError] {
@@ -208,11 +216,11 @@ func TestPCActionSendFails(t *testing.T) {
 func TestPCActions(t *testing.T) {
 	var failed []int
 	p := pcActions{fail: func(k int) { failed = append(failed, k) }}
-	if p.hostAlive() {
+	if _, ok := p.hostAlive(); ok {
 		t.Error("host alive before any heartbeat")
 	}
-	p.heartbeat()
-	if !p.hostAlive() {
+	p.heartbeat("h")
+	if h, ok := p.hostAlive(); !ok || h != "h" {
 		t.Error("host not alive after a heartbeat")
 	}
 	ok := p.start(1)
@@ -258,8 +266,20 @@ func TestHandle(t *testing.T) {
 	if got := keyColour(d, 4); got != keyColours[keyIdentify] {
 		t.Errorf("identify colour %#x", got)
 	}
-	if s, _ := d.handle(proto.Request{Cmd: proto.CmdActionHost}); s != proto.StatusOK || !d.pc.hostAlive() {
+	if s, _ := d.handle(proto.Request{Cmd: proto.CmdActionHost}); s != proto.StatusBadRequest {
+		t.Error("heartbeat without a host ID taken")
+	}
+	if s, _ := d.handle(proto.Request{Cmd: proto.CmdActionHost, Payload: []byte(`{"id":"h"}`)}); s != proto.StatusOK {
 		t.Error("action-host heartbeat not taken")
+	}
+	if h, ok := d.pc.hostAlive(); !ok || h != "h" {
+		t.Error("action host not set")
+	}
+	if s, _ := d.handle(proto.Request{Cmd: proto.CmdState, Payload: []byte("{")}); s != proto.StatusBadRequest {
+		t.Errorf("bad state: %d", s)
+	}
+	if s, _ := d.handle(proto.Request{Cmd: proto.CmdState, Payload: []byte(`{"host":"h","state":{"discord.mute":true}}`)}); s != proto.StatusOK || !d.pc.getState("discord.mute") {
+		t.Errorf("state not set: %d", s)
 	}
 	if s, _ := d.handle(proto.Request{Cmd: proto.CmdResult, Payload: []byte("{")}); s != proto.StatusBadRequest {
 		t.Errorf("bad result: %d", s)
@@ -413,5 +433,41 @@ func TestGuardConfig(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(startsFile); string(b) != "1" {
 		t.Errorf("count %q after moving the config", b)
+	}
+}
+
+func TestPCState(t *testing.T) {
+	changed := make(chan struct{}, 8)
+	p := pcActions{changed: func() { changed <- struct{}{} }}
+	p.setState(proto.State{Host: "a", State: map[string]bool{"x": true}})
+	if p.getState("x") {
+		t.Error("state taken without an action host")
+	}
+	p.heartbeat("a")
+	p.setState(proto.State{Host: "b", State: map[string]bool{"x": true}})
+	if p.getState("x") {
+		t.Error("state taken from another host")
+	}
+	p.setState(proto.State{Host: "a", State: map[string]bool{"x": true, "y": true}})
+	p.setState(proto.State{Host: "a", State: map[string]bool{"y": false}})
+	if !p.getState("x") || p.getState("y") {
+		t.Error("state not merged")
+	}
+	<-changed
+
+	// a new host starts afresh
+	p.heartbeat("b")
+	<-changed
+	if p.getState("x") {
+		t.Error("old host's state kept")
+	}
+
+	// and a host that went quiet has no state
+	p.setState(proto.State{Host: "b", State: map[string]bool{"x": true}})
+	p.mu.Lock()
+	p.beat = time.Now().Add(-proto.ActionHostTimeout)
+	p.mu.Unlock()
+	if p.getState("x") {
+		t.Error("state of a dead host")
 	}
 }

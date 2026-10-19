@@ -23,11 +23,12 @@ const ConfigVersion = 1
 
 // Limits that keep a config's memory use and run time bounded on the device.
 const (
-	MaxLabel      = 32    // runes in a button label
-	MaxLabelLines = 3     // lines in a label
-	MaxText       = 1024  // runes typed by one type-text action
-	MaxSteps      = 256   // steps in one macro
-	MaxDelayMS    = 60000 // one macro delay
+	MaxLabel      = 32      // runes in a button label
+	MaxLabelLines = 3       // lines in a label
+	MaxText       = 1024    // runes typed by one type-text action
+	MaxSteps      = 256     // steps in one macro
+	MaxDelayMS    = 60000   // one macro delay
+	MaxPCAction   = 8 << 10 // one PC action as JSON: it's sent to the PC on each press
 
 	MaxConfigBytes = 2 << 20   // the whole config file, images included
 	MaxImageBytes  = 256 << 10 // one image file, before base64
@@ -292,6 +293,11 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) validateAction(a Action, inMacro bool) error {
+	if a.Type.OnPC() {
+		if b, _ := json.Marshal(a); len(b) > MaxPCAction {
+			return fmt.Errorf("%s action is over %d bytes", a.Type, MaxPCAction)
+		}
+	}
 	switch a.Type {
 	case ActionNone, ActionBack, ActionHome:
 	case ActionConsumer:

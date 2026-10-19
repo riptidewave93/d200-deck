@@ -15,6 +15,8 @@ type Device struct {
 	requests chan proto.Request
 	closed   chan struct{}
 	once     sync.Once
+	mu       sync.Mutex
+	lastSeq  uint16
 }
 
 // ErrClosed is returned once the transport is closed.
@@ -32,6 +34,9 @@ func (d *Device) WriteReport(b []byte) error {
 		return err
 	}
 	req.Payload = append([]byte(nil), req.Payload...)
+	d.mu.Lock()
+	d.lastSeq = req.Seq
+	d.mu.Unlock()
 	select {
 	case d.requests <- req:
 		return nil
@@ -56,11 +61,18 @@ func (d *Device) Close() error {
 	return nil
 }
 
+// LastSeq is the seq of the last request.
+func (d *Device) LastSeq() uint16 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastSeq
+}
+
 // Requests delivers the client's requests.
 func (d *Device) Requests() <-chan proto.Request { return d.requests }
 
 // Send sends a message as input reports.
-func (d *Device) Send(seq, status byte, payload []byte) {
+func (d *Device) Send(seq uint16, status byte, payload []byte) {
 	for _, r := range proto.EncodeReply(seq, status, payload) {
 		d.in <- r
 	}

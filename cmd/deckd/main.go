@@ -34,6 +34,7 @@ import (
 type held struct {
 	page   string
 	action deck.Action
+	pcID   uint32 // the PC action sent, if any
 }
 
 type deckd struct {
@@ -105,6 +106,9 @@ func (d *deckd) press(i int, down bool) {
 		}
 		d.held[i] = nil
 		d.run.release(i, h.action)
+		if h.action.Type.OnPC() {
+			d.releasePC(i, h.action, h.pcID)
+		}
 		if h.page == d.page() {
 			d.drawKey(i, keyIdle)
 		}
@@ -137,7 +141,7 @@ func (d *deckd) press(i int, down bool) {
 	case a.Type == deck.ActionHome:
 		d.setPages([]string{d.cfg.Home})
 	case a.Type.OnPC():
-		d.sendPC(i, a)
+		d.held[i].pcID = d.sendPC(i, a)
 	default:
 		d.run.press(i, a)
 	}
@@ -247,6 +251,7 @@ func main() {
 	d.pages = []string{d.cfg.Home}
 	d.assets.reset(d.cfg)
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
+	d.pc.changed = func() { d.ui <- d.drawPage }
 	if d.test {
 		drawGrid(d.canvas)
 	}

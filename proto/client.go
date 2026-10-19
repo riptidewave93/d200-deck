@@ -1,6 +1,8 @@
 package proto
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -28,8 +30,9 @@ type Event struct {
 }
 
 type reply struct {
-	seq, status byte
-	payload     []byte
+	seq     uint16
+	status  byte
+	payload []byte
 }
 
 // Conn is a connection to the config channel: requests one at a time with
@@ -37,7 +40,7 @@ type reply struct {
 type Conn struct {
 	t       Transport
 	mu      sync.Mutex // one request in flight
-	seq     byte
+	seq     uint16
 	replies chan reply
 	events  chan Event
 	// synced is set by the first reply: events queued in the device before
@@ -49,7 +52,9 @@ type Conn struct {
 
 // NewConn starts reading from t.
 func NewConn(t Transport) *Conn {
-	c := &Conn{t: t, replies: make(chan reply, 4), events: make(chan Event, 16), done: make(chan struct{})}
+	var b [2]byte
+	rand.Read(b[:]) // other clients see our replies: don't start where they do
+	c := &Conn{t: t, seq: binary.LittleEndian.Uint16(b[:]), replies: make(chan reply, 4), events: make(chan Event, 16), done: make(chan struct{})}
 	go c.read()
 	return c
 }
@@ -67,9 +72,15 @@ func (c *Conn) Err() error { return c.err }
 // Close closes the transport.
 func (c *Conn) Close() error { return c.t.Close() }
 
+// partial is a message being reassembled.
+type partial struct {
+	b        []byte
+	tooLarge bool // over MaxMessage: dropped when it ends
+}
+
 func (c *Conn) read() {
 	defer close(c.done)
-	parts := map[byte][]byte{}
+	parts := map[uint16]*partial{}
 	buf := make([]byte, RawInSize)
 	for {
 		n, err := c.t.ReadReport(buf)
@@ -81,15 +92,27 @@ func (c *Conn) read() {
 		if err != nil {
 			continue
 		}
-		msg := append(parts[p.Seq], p.Payload...)
-		if p.More {
-			if len(msg) > MaxMessage {
-				msg = nil
+		if p.First {
+			parts[p.Seq] = &partial{} // drops what's left of a message cut short
+		}
+		m := parts[p.Seq]
+		if m == nil {
+			continue // we missed the start
+		}
+		if !m.tooLarge {
+			m.b = append(m.b, p.Payload...)
+			if len(m.b) > MaxMessage {
+				m.b, m.tooLarge = nil, true
 			}
-			parts[p.Seq] = msg
+		}
+		if p.More {
 			continue
 		}
 		delete(parts, p.Seq)
+		if m.tooLarge {
+			continue
+		}
+		msg := m.b
 		if p.Seq == EventSeq {
 			if c.synced.Load() {
 				select {

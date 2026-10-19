@@ -3,19 +3,24 @@
 //
 // Requests are output reports of RawOutSize bytes:
 //
-//	[0] seq  [1] cmd  [2:4] payload length (LE)  [4:] payload
+//	[0:2] seq (LE)  [2] cmd  [3:5] payload length (LE)  [5:] payload
 //
-// Each request is answered by one or more input reports of RawInSize bytes:
+// Each request is answered by a message: one or more input reports of
+// RawInSize bytes,
 //
-//	[0] seq  [1] status  [2] flags (FlagMore: another report follows)
-//	[3] payload length  [4:] payload
+//	[0:2] seq (LE)  [2] status  [3] flags  [4] payload length  [5:] payload
 //
-// One request is in flight at a time: the device keeps only the latest
-// unread output report.
+// where the first report has FlagFirst and every report but the last has
+// FlagMore. Messages are reassembled per seq, so events and replies may
+// interleave.
 //
-// The device also sends events on its own: input reports with seq EventSeq
-// and an event code in place of the status. Requests never use EventSeq.
-// Reports are reassembled per seq, so events and replies may interleave.
+// Every client of the device sees every input report. A client starts at a
+// random seq and ignores replies to seqs it didn't send. Each client has one
+// request in flight at a time: the device keeps only the latest unread
+// output report.
+//
+// The device also sends events on its own: messages with seq EventSeq and
+// an event code in place of the status. Requests never use EventSeq.
 package proto
 
 import (
@@ -32,8 +37,8 @@ const (
 	RawInSize  = 64
 	RawOutSize = 1024
 
-	MaxRequest = RawOutSize - 4
-	MaxReply   = RawInSize - 4
+	MaxRequest = RawOutSize - 5
+	MaxReply   = RawInSize - 5
 
 	// MaxMessage bounds a reassembled reply or event.
 	MaxMessage = 64 << 10
@@ -56,17 +61,22 @@ var RawDescriptor = []byte{
 }
 
 // Version is the protocol version reported by CmdHello.
-const Version = 2
+const Version = 3
 
 // Commands.
 const (
 	CmdHello    = 0x01 // reply: Hello as JSON
 	CmdIdentify = 0x03 // payload: key number; flashes the key
 	CmdResult   = 0x04 // payload: Result as JSON
-	// CmdActionHost says the sender runs PC actions. The action host sends
-	// it every ActionHostPeriod; the device sends EventAction only while it
-	// has heard one within ActionHostTimeout.
+	// CmdActionHost (payload: ActionHost as JSON) says the sender runs PC
+	// actions. The action host sends it every ActionHostPeriod; the device
+	// sends EventAction only while it has heard one within
+	// ActionHostTimeout, addressed to the host it heard from last.
 	CmdActionHost = 0x05
+	// CmdState (payload: State as JSON) sets state the keys show, such as
+	// whether Discord is muted. The device takes it from the current action
+	// host only and forgets it when the host goes away.
+	CmdState = 0x06
 )
 
 // Action host heartbeat timing.
@@ -90,8 +100,11 @@ const (
 	StatusBadRequest = 0x02
 )
 
-// FlagMore marks a reply report that is followed by another.
-const FlagMore = 0x01
+// Report flags.
+const (
+	FlagMore  = 0x01 // another report of the message follows
+	FlagFirst = 0x02 // the first report of a message
+)
 
 // Hello describes the device.
 type Hello struct {
@@ -102,12 +115,28 @@ type Hello struct {
 	Keys     int            `json:"keys"`
 }
 
-// ActionEvent asks the action host to run a PC action. The host answers
-// with CmdResult and the same ID.
+// ActionHost identifies an action host. ID is random, chosen when the host
+// starts.
+type ActionHost struct {
+	ID string `json:"id"`
+}
+
+// ActionEvent asks action host Host to run a PC action. The host answers
+// with CmdResult and the same ID. When the key is let go, an event with the
+// same ID and Release set follows; it gets no result.
 type ActionEvent struct {
-	ID     uint32      `json:"id"`
-	Key    int         `json:"key"`
-	Action deck.Action `json:"action"`
+	ID      uint32      `json:"id"`
+	Host    string      `json:"host"`
+	Key     int         `json:"key"`
+	Release bool        `json:"release,omitempty"`
+	Action  deck.Action `json:"action"`
+}
+
+// State is set by action host Host: names such as "discord.mute" and their
+// values. Names not given keep their value.
+type State struct {
+	Host  string          `json:"host"`
+	State map[string]bool `json:"state"`
 }
 
 // Result says how a PC action went; Error is empty on success.
@@ -118,65 +147,77 @@ type Result struct {
 
 // Request is a decoded request.
 type Request struct {
-	Seq     byte
+	Seq     uint16
 	Cmd     byte
 	Payload []byte
 }
 
 // EncodeRequest builds an output report.
-func EncodeRequest(seq, cmd byte, payload []byte) ([]byte, error) {
+func EncodeRequest(seq uint16, cmd byte, payload []byte) ([]byte, error) {
 	if len(payload) > MaxRequest {
 		return nil, errors.New("request too long")
 	}
 	b := make([]byte, RawOutSize)
-	b[0], b[1] = seq, cmd
-	binary.LittleEndian.PutUint16(b[2:], uint16(len(payload)))
-	copy(b[4:], payload)
+	binary.LittleEndian.PutUint16(b, seq)
+	b[2] = cmd
+	binary.LittleEndian.PutUint16(b[3:], uint16(len(payload)))
+	copy(b[5:], payload)
 	return b, nil
 }
 
 // DecodeRequest parses an output report.
 func DecodeRequest(b []byte) (Request, error) {
-	if len(b) < 4 {
+	if len(b) < 5 {
 		return Request{}, errors.New("short request")
 	}
-	n := int(binary.LittleEndian.Uint16(b[2:]))
-	if n > len(b)-4 {
+	n := int(binary.LittleEndian.Uint16(b[3:]))
+	if n > len(b)-5 {
 		return Request{}, errors.New("bad request length")
 	}
-	return Request{Seq: b[0], Cmd: b[1], Payload: b[4 : 4+n]}, nil
+	return Request{Seq: binary.LittleEndian.Uint16(b), Cmd: b[2], Payload: b[5 : 5+n]}, nil
 }
 
-// EncodeReply splits a reply into input reports.
-func EncodeReply(seq, status byte, payload []byte) [][]byte {
+// EncodeReply splits a message into input reports.
+func EncodeReply(seq uint16, status byte, payload []byte) [][]byte {
 	var out [][]byte
+	flags := byte(FlagFirst)
 	for {
 		n := min(len(payload), MaxReply)
 		b := make([]byte, RawInSize)
-		b[0], b[1], b[3] = seq, status, byte(n)
-		copy(b[4:], payload[:n])
+		binary.LittleEndian.PutUint16(b, seq)
+		b[2], b[4] = status, byte(n)
+		copy(b[5:], payload[:n])
 		payload = payload[n:]
 		if len(payload) > 0 {
-			b[2] = FlagMore
+			flags |= FlagMore
 		}
+		b[3] = flags
 		out = append(out, b)
 		if len(payload) == 0 {
 			return out
 		}
+		flags = 0
 	}
 }
 
 // ReplyPart is one decoded input report.
 type ReplyPart struct {
-	Seq, Status byte
-	More        bool
+	Seq         uint16
+	Status      byte
+	First, More bool
 	Payload     []byte
 }
 
 // DecodeReply parses an input report.
 func DecodeReply(b []byte) (ReplyPart, error) {
-	if len(b) < 4 || int(b[3]) > len(b)-4 {
+	if len(b) < 5 || int(b[4]) > len(b)-5 {
 		return ReplyPart{}, errors.New("bad reply")
 	}
-	return ReplyPart{Seq: b[0], Status: b[1], More: b[2]&FlagMore != 0, Payload: b[4 : 4+int(b[3])]}, nil
+	return ReplyPart{
+		Seq:     binary.LittleEndian.Uint16(b),
+		Status:  b[2],
+		First:   b[3]&FlagFirst != 0,
+		More:    b[3]&FlagMore != 0,
+		Payload: b[5 : 5+int(b[4])],
+	}, nil
 }

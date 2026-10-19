@@ -205,16 +205,24 @@ func TestControlGarbage(t *testing.T) {
 }
 
 // fakeD200 serves hello and action-host like deckd and sends results to the
-// returned channel.
-func fakeD200(protocol int) (*prototest.Device, chan proto.Result) {
+// returned channel. beat, if set, answers each heartbeat after the first.
+func fakeD200(protocol int, beat ...func(proto.ActionHost) byte) (*prototest.Device, chan proto.Result) {
 	dev := prototest.New()
 	results := make(chan proto.Result, 4)
+	beats := 0
 	go dev.Serve(func(req proto.Request) (byte, []byte) {
 		switch req.Cmd {
 		case proto.CmdHello:
 			b, _ := json.Marshal(proto.Hello{Protocol: protocol, Serial: "00112233445566aa", Keys: 14})
 			return proto.StatusOK, b
 		case proto.CmdActionHost:
+			var h proto.ActionHost
+			if json.Unmarshal(req.Payload, &h) != nil || h.ID == "" {
+				return proto.StatusBadRequest, nil
+			}
+			if beats++; beats > 1 && len(beat) > 0 {
+				return beat[0](h), nil
+			}
 			return proto.StatusOK, nil
 		case proto.CmdResult:
 			var r proto.Result
@@ -251,7 +259,7 @@ func TestDaemonRunsActions(t *testing.T) {
 	waitFor(t, "connection", func() bool { return len(d.getStatus().Connected()) == 1 })
 
 	send := func(id uint32, a deck.Action) proto.Result {
-		b, _ := json.Marshal(proto.ActionEvent{ID: id, Key: 13, Action: a})
+		b, _ := json.Marshal(proto.ActionEvent{ID: id, Host: d.id, Key: 13, Action: a})
 		dev.Send(proto.EventSeq, proto.EventAction, b)
 		select {
 		case r := <-results:
@@ -269,6 +277,18 @@ func TestDaemonRunsActions(t *testing.T) {
 	}
 	dev.Send(proto.EventSeq, 0x7f, nil)                      // unknown event: ignored
 	dev.Send(proto.EventSeq, proto.EventAction, []byte("{")) // broken event: ignored
+	for _, ev := range []proto.ActionEvent{
+		{ID: 3, Host: "another deckhost", Action: deck.Action{Type: deck.ActionHTTP, URL: srv.URL}},
+		{ID: 1, Host: d.id, Release: true, Action: deck.Action{Type: deck.ActionHTTP, URL: srv.URL}},
+	} {
+		b, _ := json.Marshal(ev)
+		dev.Send(proto.EventSeq, proto.EventAction, b)
+	}
+	select {
+	case r := <-results:
+		t.Errorf("ran another host's action or a release: %+v", r)
+	case <-time.After(100 * time.Millisecond):
+	}
 
 	d.scan() // already running: no second session
 	dev.Close()
@@ -445,4 +465,36 @@ func TestDaemonStatusWithoutDaemon(t *testing.T) {
 	if !fallback {
 		t.Error("no fallback without a daemon")
 	}
+}
+
+func TestHeartbeatMisses(t *testing.T) {
+	old := heartbeatPeriod
+	heartbeatPeriod = 5 * time.Millisecond
+	t.Cleanup(func() { heartbeatPeriod = old })
+	run := func(answers ...byte) *daemon {
+		n := 0
+		dev, _ := fakeD200(proto.Version, func(proto.ActionHost) byte {
+			n++
+			return answers[(n-1)%len(answers)]
+		})
+		d := newDaemon()
+		d.find = func() []string { return []string{"/dev/hidraw1"} }
+		d.open = func(string) (proto.Transport, error) { return dev, nil }
+		d.scan()
+		t.Cleanup(func() { dev.Close() })
+		return d
+	}
+
+	// every other heartbeat lost: the session stays up
+	d := run(proto.StatusOK, proto.StatusUnknownCmd)
+	time.Sleep(100 * time.Millisecond)
+	if len(d.getStatus().Connected()) != 1 {
+		t.Error("dropped after single misses")
+	}
+	// two in a row: it reconnects
+	d = run(proto.StatusUnknownCmd)
+	waitFor(t, "drop", func() bool {
+		s := d.getStatus()
+		return len(s.Devices) == 1 && s.Devices[0].Error != ""
+	})
 }

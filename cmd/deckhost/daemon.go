@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,13 +75,17 @@ func (s Status) UpdateURL(serial string) (string, error) {
 type daemon struct {
 	mu      sync.Mutex
 	devices map[string]*Device // by hidraw path
+	id      string             // this daemon's action host ID
 	lock    *os.File           // the single-instance lock, held while running
 	find    func() []string
 	open    func(path string) (proto.Transport, error)
 }
 
 func newDaemon() *daemon {
+	var id [8]byte
+	rand.Read(id[:])
 	return &daemon{
+		id:      hex.EncodeToString(id[:]),
 		devices: map[string]*Device{},
 		find:    func() []string { return hidraw.FindAll(proto.RawDescriptor) },
 		open:    func(path string) (proto.Transport, error) { return hidraw.Open(path) },
@@ -193,20 +199,25 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	if hello.Protocol != proto.Version {
 		return fmt.Errorf("device speaks protocol %d, deckhost %d; update the older one", hello.Protocol, proto.Version)
 	}
-	if _, err := c.Do(proto.CmdActionHost, nil); err != nil {
+	beat, _ := json.Marshal(proto.ActionHost{ID: d.id})
+	if _, err := c.Do(proto.CmdActionHost, beat); err != nil {
 		return err
 	}
 	d.connected(path, hello)
 
-	heartbeat := time.NewTicker(proto.ActionHostPeriod)
+	heartbeat := time.NewTicker(heartbeatPeriod)
 	defer heartbeat.Stop()
+	missed := 0
 	results := make(chan proto.Result, 16)
 	for {
 		select {
 		case <-c.Done():
 			return fmt.Errorf("disconnected: %w", c.Err())
 		case <-heartbeat.C:
-			if _, err := c.Do(proto.CmdActionHost, nil); err != nil {
+			// another client's request can displace ours: allow one miss
+			if _, err := c.Do(proto.CmdActionHost, beat); err == nil {
+				missed = 0
+			} else if missed++; missed > 1 {
 				return err
 			}
 		case ev := <-c.Events():
@@ -217,6 +228,9 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 			if err := json.Unmarshal(ev.Payload, &a); err != nil {
 				log.Printf("bad action event: %v", err)
 				continue
+			}
+			if a.Host != d.id || a.Release {
+				continue // another deckhost's, or a release (none of ours need it yet)
 			}
 			go func() {
 				r := proto.Result{ID: a.ID}
@@ -237,6 +251,9 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 		}
 	}
 }
+
+// heartbeatPeriod is how often deckhost tells the device it's there.
+var heartbeatPeriod = proto.ActionHostPeriod
 
 // maxResultError bounds an error sent back to the device, which must fit in
 // one request.

@@ -12,7 +12,7 @@ Stream-deck software for the [Ulanzi D200](https://www.ulanzi.com/) running main
 Status: early. Buttons, pages, HID actions and macros work on the device, and `deckhost` runs
 the PC-side actions (open a URL, launch an app, webhooks) on Linux. The configuration website
 and OTA updates are not done yet.
-See [docs/design.md](docs/design.md).
+See [docs/design.md](docs/design.md); Discord support is planned in [docs/discord.md](docs/discord.md).
 
 ## Configuration
 

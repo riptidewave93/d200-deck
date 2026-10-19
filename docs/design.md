@@ -69,7 +69,9 @@ the firmware. `deckhost` uses the same channel (hidraw on Linux, the HID API on 
 
 **Config channel** (`proto/raw.go`): a second HID interface with vendor usage page `0xFFD2`,
 64-byte input reports and 1024-byte output reports, and no OUT endpoint (output reports arrive
-by SET_REPORT on ep0, so the shared RX FIFO can't stall). One request in flight at a time.
+by SET_REPORT on ep0, so the shared RX FIFO can't stall). Protocol version 3: requests and
+replies carry a 16-bit seq, and each client starts at a random one and has one request in flight
+at a time (the device keeps only the latest unread output report).
 
 Measured (Linux hidraw and Chrome WebHID): ~50 KB/s to the device, limited by ep0 moving 64-byte
 packets at ~1.25 ms each. Enough for configs; custom icons in bulk would want a 64-byte
@@ -78,16 +80,19 @@ interrupt OUT endpoint (about 10x faster), which needs a check against the share
 Firefox and Safari have no WebHID; their users go through `deckhost`. Linux needs a udev
 `uaccess` rule for the hidraw node (`contrib/linux/70-d200-deck.rules`).
 
-The device also sends **events** on its own: input reports with seq 0, which requests never use.
-Clients reassemble reports per seq, so events and replies can interleave, and drop events that
-arrive before their first reply (left over from before they connected).
+Every client (the website, `deckhost`, `deckhost hello`) sees every input report, so clients
+ignore replies to seqs they didn't send. The device also sends **events** on its own: messages
+with seq 0, which requests never use. Clients reassemble each message from its reports (the first
+is flagged, so one cut short is dropped, as is one over 64 KiB), events and replies can
+interleave, and clients drop events that arrive before their first reply (left over from before
+they connected).
 
 | Message | Direction | Status | Purpose |
 |---|---|---|---|
 | `hello` (0x01) | client -> device | done | protocol version, deckd version, OS version and flavour, serial, key count |
 | `identify` (0x03) | client -> device | done | flash a key |
-| `action-host` (0x05) | PC -> device | done | heartbeat every 2 s from `deckhost`; PC actions are only sent while one arrived in the last 5 s, otherwise the key flashes red |
-| `action` (event 0x01) | device -> PC | done | run a PC action, with an id; sent on press |
+| `action-host` (0x05) | PC -> device | done | heartbeat every 2 s from `deckhost`, with a random host id; PC actions are only sent while one arrived in the last 5 s (otherwise the key flashes red), to the host heard from last |
+| `action` (event 0x01) | device -> PC | done | run a PC action, with an id and the host's id; on release an event with `release` follows (no result) |
 | `result` (0x04) | PC -> device | done | ok/error for an action id; an error, or no result within 15 s, flashes the key red |
 | `config.get` / `config.put` | client -> device | | read or replace the config (`base` revision, validated, written atomically, applied live) |
 | `config.changed` | device -> clients | | the config changed |
@@ -95,7 +100,7 @@ arrive before their first reply (left over from before they connected).
 | `image.put` / `image.list` | client -> device | | upload / list custom images |
 | `key` | device -> clients | | live key events for the web app |
 | `usb.rebinding` | device -> clients | | the USB gadget is about to re-plug; reconnect |
-| `state` | PC -> device | | live key overrides (e.g. a mic-muted icon), later |
+| `state` (0x06) | PC -> device | done | named on/off state (e.g. `discord.mute`) from the current action host; forgotten when it goes away. Keys showing it come next |
 
 Whatever can write the config can make `deckhost` run commands on the PC (via `launch`/`http`
 actions), so the config channel is security-critical.

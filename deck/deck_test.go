@@ -2,6 +2,7 @@ package deck
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,13 @@ func TestValidateLimits(t *testing.T) {
 		{Action: Action{Type: ActionText, Text: strings.Repeat("a", MaxText+1)}},
 		{Action: Action{Type: ActionMacro, Steps: make([]Action, MaxSteps+1)}},
 		{Action: Action{Type: ActionMacro, Steps: []Action{{Type: ActionDelay, MS: MaxDelayMS + 1}}}},
+		{Action: Action{Type: ActionHTTP, URL: "https://x", Body: strings.Repeat("b", MaxPCAction)}},
+		{Action: Action{Type: ActionLaunch, Command: slices.Repeat([]string{"arg"}, MaxPCAction/4)}},
+	}
+	ok := DefaultConfig()
+	ok.Pages[ok.Home].Keys[4] = Button{Action: Action{Type: ActionHTTP, URL: "https://x", Body: strings.Repeat("b", MaxPCAction-100)}}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("PC action under the limit: %v", err)
 	}
 	for i, b := range bad {
 		c := DefaultConfig()

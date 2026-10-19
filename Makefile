@@ -17,7 +17,7 @@ DEVICE := GOOS=linux GOARCH=arm64 CGO_ENABLED=0
 PC := GOOS=linux GOARCH=amd64 CGO_ENABLED=0
 WINDOWS := GOOS=windows GOARCH=amd64 CGO_ENABLED=0
 # what deckhost builds from: checked for Windows too
-PC_PKGS := ./cmd/deckhost ./internal/hidraw ./proto/... ./deck ./netid
+PC_PKGS := ./cmd/deckhost ./internal/discord ./internal/hidraw ./proto/... ./deck ./netid
 
 .PHONY: all build deckd deck-update deckhost deckhost.exe test check cover clean
 
