@@ -19,18 +19,30 @@ var version = "dev"
 // reopening the gadget if it goes away (e.g. the USB gadget was rebound).
 func (d *deckd) serveChannel(path string) {
 	buf := make([]byte, 4096)
+	// log each error once, not on every retry while no PC is listening
+	var last string
+	logErr := func(err error) {
+		if s := err.Error(); s != last {
+			log.Printf("config channel: %v", err)
+			last = s
+		}
+	}
 	for {
 		raw, err := hidg.OpenRaw(path)
 		if err != nil {
-			log.Printf("config channel: %v", err)
+			logErr(err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
 		for {
 			n, err := raw.Read(buf)
 			if err != nil {
-				log.Printf("config channel: %v", err)
+				logErr(err)
 				break
+			}
+			if last != "" {
+				log.Print("config channel: ok")
+				last = ""
 			}
 			req, err := proto.DecodeRequest(buf[:n])
 			status, reply := byte(proto.StatusBadRequest), []byte(nil)
@@ -39,7 +51,7 @@ func (d *deckd) serveChannel(path string) {
 			}
 			for _, r := range proto.EncodeReply(req.Seq, status, reply) {
 				if err := raw.Write(r); err != nil {
-					log.Printf("config channel: %v", err)
+					logErr(err)
 					break
 				}
 			}
