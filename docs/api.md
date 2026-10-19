@@ -64,7 +64,7 @@ Payloads are JSON unless noted.
 
 | Cmd | Name | Payload | Reply |
 |---|---|---|---|
-| `0x01` | hello | none | `{"protocol": 3, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.148.17"}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API |
+| `0x01` | hello | none | `{"protocol": 3, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.23.5"}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API |
 | `0x03` | identify | 1 byte: key number | none; the key flashes |
 | `0x04` | result | `{"id": 7, "error": "..."}`: how a PC action went; leave out `error` if it worked | none |
 | `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | none |
@@ -192,7 +192,7 @@ Errors: 403 no header, 409 an update is already under way, 411 no length, 400 no
 {
   "state": "installing",
   "step": "Kernel (3/4)",
-  "update": {"version": "4b96a04", "flavour": "debug", "build": "202610192038", "signed": false},
+  "update": {"version": "v1.2.0", "flavour": "release", "build": "202611010000", "signed": true},
   "slot": "b",
   "slots": {"a": {...}, "b": {...}},
   "ota_result": "ok",
