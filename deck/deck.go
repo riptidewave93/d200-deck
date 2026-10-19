@@ -58,6 +58,9 @@ const (
 	ActionNone ActionType = ""
 	// ActionConsumer sends a USB HID consumer control usage (media keys).
 	ActionConsumer ActionType = "hid-consumer"
+	// ActionSystem sends a USB HID system control (System: sleep, power down,
+	// wake up).
+	ActionSystem ActionType = "hid-system"
 	// ActionPage opens Page, remembering the current page for ActionBack.
 	ActionPage ActionType = "page"
 	// ActionBack returns to the previous page.
@@ -92,6 +95,7 @@ func (t ActionType) OnPC() bool {
 type Action struct {
 	Type    ActionType        `json:"type,omitempty"`
 	Usage   Usage             `json:"usage,omitempty"`
+	System  System            `json:"system,omitempty"`
 	Page    string            `json:"page,omitempty"`
 	Keys    []string          `json:"keys,omitempty"`
 	Text    string            `json:"text,omitempty"`
@@ -126,6 +130,46 @@ var UsageNames = map[string]Usage{
 	"mute":        UsageMute,
 	"volume-up":   UsageVolumeUp,
 	"volume-down": UsageVolumeDn,
+}
+
+// System is a HID system control, as its bit in the system control report.
+// In JSON it is a name from SystemNames.
+type System byte
+
+// System controls.
+const (
+	SystemPowerDown System = 1 << 0
+	SystemSleep     System = 1 << 1
+	SystemWakeUp    System = 1 << 2
+)
+
+// SystemNames are the system control names accepted in JSON.
+var SystemNames = map[string]System{
+	"power-down": SystemPowerDown,
+	"sleep":      SystemSleep,
+	"wake-up":    SystemWakeUp,
+}
+
+func (s System) MarshalJSON() ([]byte, error) {
+	for name, v := range SystemNames {
+		if v == s {
+			return json.Marshal(name)
+		}
+	}
+	return nil, fmt.Errorf("unknown system control %d", s)
+}
+
+func (s *System) UnmarshalJSON(b []byte) error {
+	var name string
+	if err := json.Unmarshal(b, &name); err != nil {
+		return err
+	}
+	v, ok := SystemNames[name]
+	if !ok {
+		return fmt.Errorf("unknown system control %q", name)
+	}
+	*s = v
+	return nil
 }
 
 func (u Usage) MarshalJSON() ([]byte, error) {
@@ -186,6 +230,10 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 	case ActionConsumer:
 		if a.Usage == 0 {
 			return errors.New("hid-consumer needs a usage")
+		}
+	case ActionSystem:
+		if a.System == 0 {
+			return errors.New("hid-system needs a system control")
 		}
 	case ActionPage:
 		if _, ok := c.Pages[a.Page]; !ok {
@@ -283,6 +331,7 @@ func DefaultConfig() *Config {
 				1:  media("prev", UsagePrevTrack),
 				2:  media("play-pause", UsagePlayPause),
 				3:  media("next", UsageNextTrack),
+				4:  {Icon: "sleep", Action: Action{Type: ActionSystem, System: SystemSleep}},
 				5:  folder("headphones", "Discord", "discord"),
 				6:  media("volume-down", UsageVolumeDn),
 				7:  media("mute", UsageMute),

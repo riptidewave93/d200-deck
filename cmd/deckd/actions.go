@@ -38,6 +38,7 @@ func (r *runner) releaseAll() {
 	r.combos = [deck.KeyCount]*combo{}
 	r.keyboard(0)
 	r.consumer(0)
+	r.system(0)
 }
 
 func (r *runner) do(job func()) {
@@ -53,6 +54,8 @@ func (r *runner) press(i int, a deck.Action) {
 	switch a.Type {
 	case deck.ActionConsumer:
 		r.do(func() { r.consumer(a.Usage) })
+	case deck.ActionSystem:
+		r.do(func() { r.system(a.System) })
 	case deck.ActionKey:
 		mods, keys, _ := deck.ParseKeys(a.Keys)
 		r.do(func() { r.combos[i] = &combo{mods, keys}; r.sendKeys() })
@@ -67,6 +70,8 @@ func (r *runner) release(i int, a deck.Action) {
 	switch a.Type {
 	case deck.ActionConsumer:
 		r.do(func() { r.consumer(0) })
+	case deck.ActionSystem:
+		r.do(func() { r.system(0) })
 	case deck.ActionKey:
 		r.do(func() { r.combos[i] = nil; r.sendKeys() })
 	}
@@ -80,6 +85,9 @@ func (r *runner) macro(steps []deck.Action) {
 		case deck.ActionConsumer:
 			r.consumer(s.Usage)
 			r.consumer(0)
+		case deck.ActionSystem:
+			r.system(s.System)
+			r.system(0)
 		case deck.ActionKey:
 			mods, keys, _ := deck.ParseKeys(s.Keys)
 			r.keyboard(mods, keys...)
@@ -124,6 +132,15 @@ func (r *runner) keyboard(mods byte, keys ...byte) {
 		return
 	}
 	if err := r.hid.Keyboard(mods, keys...); err != nil {
+		log.Print(err)
+	}
+}
+
+func (r *runner) system(s deck.System) {
+	if r.hid == nil {
+		return
+	}
+	if err := r.hid.System(byte(s)); err != nil {
 		log.Print(err)
 	}
 }
