@@ -88,9 +88,11 @@ type daemon struct {
 	find    func() []string
 	open    func(path string) (proto.Transport, error)
 	apps    map[string]app // by name, as in app actions
-	// state is what the decks show (e.g. discord.mute); each session is
-	// told on its channel when it changes
+	// state is the names that are on (e.g. discord.mute), which the decks
+	// show; known is every name ever set. Each session is told when it
+	// changes.
 	state    map[string]bool
+	known    map[string]bool
 	watchers map[chan struct{}]bool
 }
 
@@ -102,9 +104,15 @@ func newDaemon() *daemon {
 		devices:  map[string]*Device{},
 		find:     func() []string { return hidraw.FindAll(proto.RawDescriptor) },
 		open:     func(path string) (proto.Transport, error) { return hidraw.Open(path) },
+		state:    map[string]bool{},
+		known:    map[string]bool{},
 		watchers: map[chan struct{}]bool{},
 	}
-	d.apps = map[string]app{deck.AppDiscord: newDiscordLink(discordLogin, d.setState)}
+	d.apps = map[string]app{
+		deck.AppDiscord: newDiscordLink(discordLogin, d.setState),
+		deck.AppOBS:     newOBSLink(obsDial, d.setState),
+		deck.AppMedia:   newMediaLink(openMedia, d.setState),
+	}
 	return d
 }
 
@@ -114,13 +122,15 @@ func (d *daemon) setState(s map[string]bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	changed := false
-	for k, v := range s {
-		if old, ok := d.state[k]; !ok || old != v {
-			if d.state == nil {
-				d.state = map[string]bool{}
-			}
-			d.state[k] = v
+	for k, on := range s {
+		d.known[k] = true
+		if on != d.state[k] {
 			changed = true
+			if on {
+				d.state[k] = true
+			} else {
+				delete(d.state, k)
+			}
 		}
 	}
 	if changed {
@@ -147,11 +157,40 @@ func (d *daemon) watchState() (<-chan struct{}, func()) {
 	}
 }
 
-func (d *daemon) stateMessage() []byte {
+// stateMessages are the state requests that bring a device from sent, the
+// names it was last told are on (nil if it was told nothing), to now: the
+// names on, and those now off. Each fits in one request. on is the names now
+// on.
+func (d *daemon) stateMessages(sent map[string]bool) (msgs [][]byte, on map[string]bool) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	b, _ := json.Marshal(proto.State{Host: d.id, State: d.state})
-	return b
+	on = maps.Clone(d.state)
+	off := sent
+	if off == nil {
+		off = d.known
+	}
+	change := map[string]bool{}
+	for k := range off {
+		if !on[k] {
+			change[k] = false
+		}
+	}
+	d.mu.Unlock()
+	maps.Copy(change, on)
+	msg := proto.State{Host: d.id, State: map[string]bool{}}
+	for _, k := range slices.Sorted(maps.Keys(change)) {
+		msg.State[k] = change[k]
+		if b, _ := json.Marshal(msg); len(b) > proto.MaxRequest && len(msg.State) > 1 {
+			delete(msg.State, k)
+			b, _ = json.Marshal(msg)
+			msgs = append(msgs, b)
+			msg.State = map[string]bool{k: change[k]}
+		}
+	}
+	if len(msg.State) > 0 {
+		b, _ := json.Marshal(msg)
+		msgs = append(msgs, b)
+	}
+	return msgs, on
 }
 
 func (d *daemon) getStatus() Status {
@@ -282,6 +321,7 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	stateChanged, unwatch := d.watchState()
 	defer unwatch()
 	sendState := true
+	var sent map[string]bool // the names the device was last told are on
 	heartbeat := time.NewTicker(heartbeatPeriod)
 	defer heartbeat.Stop()
 	// the device has no battery-backed clock
@@ -334,8 +374,17 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	}
 	for {
 		if sendState {
-			_, err := c.Do(proto.CmdState, d.stateMessage())
-			sendState = err != nil
+			msgs, on := d.stateMessages(sent)
+			sendState = false
+			for _, m := range msgs {
+				if _, err := c.Do(proto.CmdState, m); err != nil {
+					sendState = true
+					break
+				}
+			}
+			if !sendState {
+				sent = on
+			}
 		}
 		select {
 		case <-c.Done():

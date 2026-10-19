@@ -5,7 +5,7 @@ The PC side of the D200, for Linux and Windows (the OS-specific parts are in
 
 | Part | Does |
 |---|---|
-| `deckhost daemon` | Runs the buttons USB HID can't: `open-url`, `launch`, `http`, and `app` integrations ([Discord](discord.md)). A systemd user service on Linux; started by the tray on Windows |
+| `deckhost daemon` | Runs the buttons USB HID can't: `open-url`, `launch`, `http`, and `app` integrations ([Discord](discord.md), [OBS](obs.md), [media](media.md)). A systemd user service on Linux; started by the tray on Windows |
 | `deckhost tray` | Tray icon: blue when the D200 is connected, grey when not. Started at login |
 
 ## Install
@@ -14,8 +14,9 @@ See [install.md](install.md).
 
 ## Tray menu
 
-Below its header the menu lists the connected D200s and, once it's [set up](discord.md#setup),
-how the Discord link is.
+Below its header the menu lists the connected D200s and how each app integration is, such as
+**Discord: connected**, **OBS: not running** or the media players. An app that isn't set up has
+no line.
 
 | Item | Does |
 |---|---|

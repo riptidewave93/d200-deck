@@ -212,6 +212,7 @@ type Usage uint16
 const (
 	UsageNextTrack Usage = 0x00b5
 	UsagePrevTrack Usage = 0x00b6
+	UsageStop      Usage = 0x00b7
 	UsagePlayPause Usage = 0x00cd
 	UsageMute      Usage = 0x00e2
 	UsageVolumeUp  Usage = 0x00e9
@@ -223,6 +224,7 @@ var UsageNames = map[string]Usage{
 	"next-track":  UsageNextTrack,
 	"prev-track":  UsagePrevTrack,
 	"play-pause":  UsagePlayPause,
+	"stop":        UsageStop,
 	"mute":        UsageMute,
 	"volume-up":   UsageVolumeUp,
 	"volume-down": UsageVolumeDn,

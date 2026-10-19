@@ -89,7 +89,7 @@ example Discord mute shows `mic`, and `mic_off` while muted). The
 | `open-url` | PC | `url`: http or https |
 | `launch` | PC | `command`: the program and its arguments, e.g. `["code", "--new-window"]`; no shell, so `~` and `$VARS` aren't expanded |
 | `http` | PC | `method`, `url`, `headers`, `body` |
-| `app` | PC | `app`, `op`, `args` (an object): see [App integrations](design.md#app-integrations) and [Discord](discord.md) |
+| `app` | PC | `app`, `op`, `args` (an object): see [App integrations](design.md#app-integrations), [Discord](discord.md), [OBS](obs.md) and [media](media.md) |
 
 PC actions need `deckhost` on the PC. Without it the key flashes red, unless it has a `fallback`:
 a deck action to run instead, such as a keyboard shortcut.

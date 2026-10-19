@@ -80,3 +80,17 @@ func TestEmbed(t *testing.T) {
 		t.Errorf("icons %v", len(c.Icons))
 	}
 }
+
+func TestAppLooks(t *testing.T) {
+	// every built-in look's icons are in the catalog
+	keys := map[int]deck.Button{}
+	for app, ops := range map[string][]string{deck.AppDiscord: deck.DiscordOps, deck.AppOBS: deck.OBSOps, deck.AppMedia: deck.MediaOps} {
+		for _, op := range ops {
+			keys[len(keys)] = deck.Button{Action: deck.Action{Type: deck.ActionApp, App: app, Op: op}}
+		}
+	}
+	c := &deck.Config{Pages: map[string]deck.Page{"p": {Keys: keys}}}
+	if unknown := Embed(c); len(unknown) > 0 {
+		t.Errorf("not in the catalog: %q", unknown)
+	}
+}

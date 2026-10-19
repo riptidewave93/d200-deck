@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -142,18 +143,18 @@ func TestDaemonDiscord(t *testing.T) {
 	d.open = func(string) (proto.Transport, error) { return dev, nil }
 	d.scan()
 
+	seen := map[string]bool{} // as the deck has it: a name not sent is off
 	waitDeck := func(mute bool) {
 		t.Helper()
-		for {
+		deadline := time.After(3 * time.Second)
+		for !seen["discord.ready"] || seen["discord.mute"] != mute {
 			select {
 			case s := <-states:
 				if s.Host != d.id {
 					t.Fatalf("state from host %q", s.Host)
 				}
-				if v, ok := s.State["discord.mute"]; ok && v == mute {
-					return
-				}
-			case <-time.After(3 * time.Second):
+				maps.Copy(seen, s.State)
+			case <-deadline:
 				t.Fatalf("deck never told mute %v", mute)
 			}
 		}
@@ -205,7 +206,7 @@ func TestDaemonDiscord(t *testing.T) {
 
 func TestUnknownApp(t *testing.T) {
 	d := newDaemon()
-	if err := d.runAction(deck.Action{Type: deck.ActionApp, App: "obs", Op: "record"}, false); err == nil || !strings.Contains(err.Error(), `no "obs" app`) {
+	if err := d.runAction(deck.Action{Type: deck.ActionApp, App: "zoom", Op: "mute"}, false); err == nil || !strings.Contains(err.Error(), `no "zoom" app`) {
 		t.Errorf("unknown app: %v", err)
 	}
 	l := newDiscordLink(nil, nil)

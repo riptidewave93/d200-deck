@@ -17,15 +17,15 @@ import "encoding/json"
 
 // builtin is what the device knows of an app op; all of it optional.
 type builtin struct {
-	look     Look     // for a key that sets no icon, image or label
-	on       *Look    // while the op's state is on
-	fallback []string // a keybind, while the host can't run the op
+	look     Look    // for a key that sets no icon, image or label
+	on       *Look   // while the op's state is on
+	fallback *Action // runs on the device while the host can't run the op
 }
 
 // appOps are the built-in looks and fallbacks, by "<app>.<op>".
 var appOps = map[string]builtin{
-	"discord.mute":         {discordLook("mic"), &Look{Icon: "mic_off", Background: red}, []string{"ctrl", "shift", "m"}},
-	"discord.deafen":       {discordLook("headphones"), &Look{Icon: "headset_off", Background: red}, []string{"ctrl", "shift", "d"}},
+	"discord.mute":         {discordLook("mic"), &Look{Icon: "mic_off", Background: red}, keybind("ctrl", "shift", "m")},
+	"discord.deafen":       {discordLook("headphones"), &Look{Icon: "headset_off", Background: red}, keybind("ctrl", "shift", "d")},
 	"discord.push-to-talk": {look: discordLook("record_voice_over")},
 	"discord.push-to-mute": {look: discordLook("voice_over_off")},
 	"discord.open":         {look: discordLook("discord")},
@@ -41,7 +41,65 @@ var appOps = map[string]builtin{
 	"discord.input-volume-down":  {look: discordLabel("mic", "Mic −")},
 	"discord.output-volume-up":   {look: discordLook("volume_up")},
 	"discord.output-volume-down": {look: discordLook("volume_down")},
+
+	"obs.scene":         {look: Look{Icon: "tv"}, on: &Look{Background: green}},
+	"obs.stream":        {Look{Icon: "cell_tower", Label: "Stream"}, &Look{Label: "Live", Background: red}, nil},
+	"obs.record":        {Look{Icon: "radio_button_checked", Label: "Record"}, &Look{Label: "REC", Background: red}, nil},
+	"obs.pause-record":  {Look{Icon: "pause_circle", Label: "Pause"}, &Look{Icon: "play_circle", Label: "Resume", Background: red}, nil},
+	"obs.replay-buffer": {Look{Icon: "replay", Label: "Replay"}, &Look{Background: green}, nil},
+	"obs.save-replay":   {look: Look{Icon: "save", Label: "Clip"}},
+	"obs.virtual-cam":   {Look{Icon: "videocam", Label: "Cam"}, &Look{Background: green}, nil},
+	"obs.mute":          {Look{Icon: "mic"}, &Look{Icon: "mic_off", Background: red}, nil},
+
+	"media.play-pause": {Look{Icon: "play_arrow"}, &Look{Icon: "pause"}, consumer(UsagePlayPause)},
+	"media.next":       {Look{Icon: "skip_next"}, nil, consumer(UsageNextTrack)},
+	"media.previous":   {Look{Icon: "skip_previous"}, nil, consumer(UsagePrevTrack)},
+	"media.stop":       {Look{Icon: "stop"}, nil, consumer(UsageStop)},
+	"media.shuffle":    {look: Look{Icon: "shuffle"}, on: &Look{Icon: "shuffle_on"}},
+	"media.repeat":     {look: Look{Icon: "repeat"}, on: &Look{Icon: "repeat_on"}},
 }
+
+func keybind(keys ...string) *Action { return &Action{Type: ActionKey, Keys: keys} }
+
+func consumer(u Usage) *Action { return &Action{Type: ActionConsumer, Usage: u} }
+
+// AppOBS is OBS Studio, through its WebSocket server.
+const AppOBS = "obs"
+
+// OBS operations (Action.Op). Scene and mute take args.id: the scene's or
+// the audio source's name.
+const (
+	OBSScene        = "scene"         // switch to scene args.id
+	OBSStream       = "stream"        // toggle streaming
+	OBSRecord       = "record"        // toggle recording
+	OBSPauseRecord  = "pause-record"  // pause or resume the recording
+	OBSReplayBuffer = "replay-buffer" // toggle the replay buffer
+	OBSSaveReplay   = "save-replay"   // save the replay buffer
+	OBSVirtualCam   = "virtual-cam"   // toggle the virtual camera
+	OBSMute         = "mute"          // toggle mute of audio source args.id
+)
+
+// OBSOps are the OBS operations; the host checks them.
+var OBSOps = []string{OBSScene, OBSStream, OBSRecord, OBSPauseRecord, OBSReplayBuffer, OBSSaveReplay, OBSVirtualCam, OBSMute}
+
+// AppMedia is the PC's media players (MPRIS on Linux, the system media
+// controls on Windows). Without args.id an op is for the player playing (or
+// last playing); with it, for the player whose name starts with args.id,
+// e.g. "spotify".
+const AppMedia = "media"
+
+// Media operations (Action.Op).
+const (
+	MediaPlayPause = "play-pause" // on while playing
+	MediaNext      = "next"
+	MediaPrevious  = "previous"
+	MediaStop      = "stop"
+	MediaShuffle   = "shuffle" // toggle shuffle
+	MediaRepeat    = "repeat"  // toggle repeating the playlist
+)
+
+// MediaOps are the media operations; the host checks them.
+var MediaOps = []string{MediaPlayPause, MediaNext, MediaPrevious, MediaStop, MediaShuffle, MediaRepeat}
 
 // iconColors are the colours of brand icons in keys that set none, as their
 // brand rules require.
@@ -141,8 +199,9 @@ func (a Action) FallbackAction() *Action {
 	if a.Fallback != nil {
 		return a.Fallback
 	}
-	if keys := appOps[a.appOp()].fallback; keys != nil {
-		return &Action{Type: ActionKey, Keys: keys}
+	if f := appOps[a.appOp()].fallback; f != nil {
+		c := *f
+		return &c
 	}
 	return nil
 }

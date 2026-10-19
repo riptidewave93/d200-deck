@@ -126,7 +126,7 @@ func TestShown(t *testing.T) {
 		{Button{Icon: "discord"}, false, "discord", white, ""},
 		{Button{Icon: "discord", Color: DiscordBlurple}, false, "discord", DiscordBlurple, ""},
 		{Button{Icon: "play"}, false, "play", "", ""},
-		{Button{Action: Action{Type: ActionApp, App: "obs", Op: "record"}}, true, "", "", ""}, // no built-in look
+		{Button{Action: Action{Type: ActionApp, App: "zoom", Op: "mute"}}, true, "", "", ""}, // no built-in look
 	}
 	for i, tc := range cases {
 		got := tc.b.Shown(tc.on)
@@ -206,9 +206,15 @@ func TestAppState(t *testing.T) {
 	if b := mode.Shown(true); b.Label != "PTT" || b.Icon != "keyboard" {
 		t.Errorf("push to talk mode %+v", b)
 	}
-	for _, op := range DiscordOps {
-		if _, ok := appOps["discord."+op]; !ok {
-			t.Errorf("%s has no built-in look", op)
+	for app, ops := range map[string][]string{AppDiscord: DiscordOps, AppOBS: OBSOps, AppMedia: MediaOps} {
+		for _, op := range ops {
+			if _, ok := appOps[app+"."+op]; !ok {
+				t.Errorf("%s.%s has no built-in look", app, op)
+			}
 		}
+	}
+	play := Action{Type: ActionApp, App: AppMedia, Op: MediaPlayPause}
+	if f := play.FallbackAction(); f == nil || f.Type != ActionConsumer || f.Usage != UsagePlayPause {
+		t.Errorf("media play-pause fallback %+v", f)
 	}
 }

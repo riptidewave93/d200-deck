@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -560,9 +561,43 @@ func TestHeartbeat(t *testing.T) {
 	if err := json.Unmarshal(newDaemon().heartbeat(), &h); err != nil {
 		t.Fatal(err)
 	}
-	if h.ID == "" || h.Name != "deckhost" || h.OS == "" || len(h.Apps) != 1 ||
-		h.Apps[0].Name != "discord" || len(h.Apps[0].Ops) != len(deck.DiscordOps) {
+	if h.ID == "" || h.Name != "deckhost" || h.OS == "" || len(h.Apps) != 3 ||
+		h.Apps[0].Name != "discord" || len(h.Apps[0].Ops) != len(deck.DiscordOps) ||
+		h.Apps[1].Name != "media" || h.Apps[2].Name != "obs" {
 		t.Errorf("%+v", h)
+	}
+}
+
+func TestStateMessages(t *testing.T) {
+	d := newDaemon()
+	d.setState(map[string]bool{"a.on": true, "a.off": false})
+	msgs, on := d.stateMessages(nil)
+	// a new session hears of every name
+	if len(msgs) != 1 || string(msgs[0]) != `{"host":"`+d.id+`","state":{"a.off":false,"a.on":true}}` {
+		t.Errorf("first %s", msgs)
+	}
+	d.setState(map[string]bool{"a.on": false, "b.on": true})
+	if msgs, _ := d.stateMessages(on); len(msgs) != 1 || string(msgs[0]) != `{"host":"`+d.id+`","state":{"a.on":false,"b.on":true}}` {
+		t.Errorf("change %s", msgs)
+	}
+	// a lot of state goes in several requests
+	many := map[string]bool{}
+	for i := range 200 {
+		many[fmt.Sprintf("obs.scene:Scene number %03d", i)] = i%2 == 0
+	}
+	d.setState(many)
+	msgs, _ = d.stateMessages(nil)
+	got := map[string]bool{}
+	for _, m := range msgs {
+		if len(m) > proto.MaxRequest {
+			t.Fatalf("%d bytes", len(m))
+		}
+		var s proto.State
+		json.Unmarshal(m, &s)
+		maps.Copy(got, s.State)
+	}
+	if len(msgs) < 2 || len(got) != 203 || got["obs.scene:Scene number 001"] || !got["obs.scene:Scene number 002"] {
+		t.Errorf("%d messages, %d names", len(msgs), len(got))
 	}
 }
 

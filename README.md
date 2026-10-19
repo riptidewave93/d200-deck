@@ -17,17 +17,17 @@ Stream-deck software for the [Ulanzi D200](https://www.ulanzi.com/) running main
 |---|---|---|
 | `deckd keys` | the D200 | draws pages of buttons on the screen, runs key actions (USB HID keyboard, media keys, macros), serves the config channel |
 | `deckd update` | the D200 | serves the update page at `http://<deck IPv4>/update` (or `d200-<serial>.local`) and installs updates uploaded to it, confirmed on the keys; `/debug` downloads debug info for bug reports ([update guide](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/update.md)) |
-| `deckhost` | the PC | daemon that runs the PC actions (open a URL, launch a program, HTTP requests, Discord) plus a tray icon; Linux and Windows ([docs/deckhost.md](docs/deckhost.md), [install](docs/install.md)) |
+| `deckhost` | the PC | daemon that runs the PC actions (open a URL, launch a program, HTTP requests, Discord, OBS, media players) plus a tray icon; Linux and Windows ([docs/deckhost.md](docs/deckhost.md), [install](docs/install.md)) |
 
 Status: early. Buttons, pages, HID actions and macros work on the device, and `deckhost` runs
-the PC-side actions (open a URL, launch an app, webhooks, Discord) on Linux and Windows. Updates
+the PC-side actions (open a URL, launch an app, webhooks, Discord, OBS, media players) on Linux and Windows. Updates
 install over USB from the update page. Configure the keys with the
 [configuration website](https://riptidewave93.github.io/d200-configure/).
 
 On the D200, `deckd` runs both parts as child processes and restarts either if it exits or stops
 answering for 30 s (`deckd keys` or `deckd update` runs just one). While it can, it writes a new
 count to `/run/deckd.alive` every 5 s, so init can restart a hung `deckd`.
-See [docs/design.md](docs/design.md); the API is in [docs/api.md](docs/api.md), and Discord keys are in [docs/discord.md](docs/discord.md).
+See [docs/design.md](docs/design.md); the API is in [docs/api.md](docs/api.md), and app keys are in [Discord](docs/discord.md), [OBS](docs/obs.md) and [media](docs/media.md).
 
 ## Configuration
 

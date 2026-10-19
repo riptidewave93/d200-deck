@@ -1,0 +1,145 @@
+package main
+
+import (
+	"errors"
+	"slices"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/riptidewave93/d200-deck/deck"
+)
+
+// fakeMedia is a media backend with players to set.
+type fakeMedia struct {
+	mu   sync.Mutex
+	ps   []mediaPlayer
+	done []string // "<player ID> <op>"
+	fail error
+}
+
+func (f *fakeMedia) players() ([]mediaPlayer, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.ps), f.fail
+}
+
+func (f *fakeMedia) control(p mediaPlayer, op string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.done = append(f.done, p.ID+" "+op)
+	for i := range f.ps {
+		if f.ps[i].ID == p.ID && op == deck.MediaPlayPause {
+			f.ps[i].Playing = !f.ps[i].Playing
+		}
+	}
+	return nil
+}
+
+func (f *fakeMedia) close() {}
+
+func (f *fakeMedia) set(ps ...mediaPlayer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ps = ps
+}
+
+func TestMedia(t *testing.T) {
+	fake := &fakeMedia{}
+	var mu sync.Mutex
+	state := map[string]bool{}
+	l := newMediaLink(func() (mediaBackend, error) { return fake, nil }, func(s map[string]bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		for k, v := range s {
+			state[k] = v
+		}
+	})
+	l.poll = 5 * time.Millisecond
+	is := func(name string, on bool) func() bool {
+		return func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return state[name] == on
+		}
+	}
+	stop := make(chan struct{})
+	defer close(stop)
+	go l.run(stop)
+	waitFor(t, "no players", func() bool { return l.statusText() == "no players" })
+	if err := l.do(deck.MediaPlayPause, nil, false); err == nil {
+		t.Error("play-pause worked without players")
+	}
+
+	spotify := mediaPlayer{ID: "org.mpris.MediaPlayer2.spotify", Name: "spotify", Shuffle: true}
+	firefox := mediaPlayer{ID: "org.mpris.MediaPlayer2.firefox.instance_1_2", Name: "firefox", Playing: true}
+	fake.set(spotify, firefox)
+	waitFor(t, "firefox playing", is("media.play-pause", true))
+	waitFor(t, "spotify's shuffle", is("media.shuffle:spotify", true))
+	if !is("media.ready", true)() || is("media.play-pause:firefox", false)() || l.statusText() != "spotify, firefox (playing)" {
+		t.Errorf("state %v, status %q", state, l.statusText())
+	}
+
+	// without an id: the one playing; with one: the player it names
+	if err := l.do(deck.MediaPlayPause, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.do(deck.MediaNext, []byte(`{"id":"Spot"}`), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.do(deck.MediaNext, []byte(`{"id":"vlc"}`), false); err == nil {
+		t.Error("a missing player worked")
+	}
+	fake.mu.Lock()
+	done := slices.Clone(fake.done)
+	fake.mu.Unlock()
+	if !slices.Equal(done, []string{firefox.ID + " play-pause", spotify.ID + " next"}) {
+		t.Errorf("done %q", done)
+	}
+	// firefox paused: still the one ops are for
+	waitFor(t, "paused", is("media.play-pause", false))
+	if p, _ := l.find(""); p.ID != firefox.ID {
+		t.Errorf("active %q", p.ID)
+	}
+
+	fake.set(spotify)
+	waitFor(t, "firefox gone", func() bool { return l.statusText() == "spotify" })
+	if is("media.play-pause:firefox", true)() {
+		t.Error("firefox's state stayed")
+	}
+	fake.mu.Lock()
+	fake.fail = errors.New("bus gone")
+	fake.mu.Unlock()
+	waitFor(t, "not available", is("media.ready", false))
+}
+
+func TestPickActive(t *testing.T) {
+	a := mediaPlayer{ID: "a"}
+	b := mediaPlayer{ID: "b", Playing: true}
+	c := mediaPlayer{ID: "c", Playing: true}
+	for _, tc := range []struct {
+		ps   []mediaPlayer
+		last string
+		want string
+	}{
+		{nil, "a", ""},
+		{[]mediaPlayer{a}, "", "a"},
+		{[]mediaPlayer{a, b}, "a", "b"},
+		{[]mediaPlayer{a, b, c}, "c", "c"},
+		{[]mediaPlayer{a, {ID: "b"}}, "b", "b"},
+	} {
+		if got := pickActive(tc.ps, tc.last); got != tc.want {
+			t.Errorf("%v, %q: %q", tc.ps, tc.last, got)
+		}
+	}
+}
+
+func TestShortName(t *testing.T) {
+	for in, want := range map[string]string{
+		"spotify": "spotify", "firefox.instance_1_84": "firefox", "VLC": "vlc", "chromium.instance123": "chromium",
+	} {
+		if got := shortName(in); got != want {
+			t.Errorf("%q: %q", in, got)
+		}
+	}
+}

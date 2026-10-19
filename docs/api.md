@@ -167,6 +167,9 @@ A host can set named on/off states, which the deck forgets when the host goes aw
 | `<app>.<op>` | On: keys with that app action show their `on` look, e.g. `discord.mute` |
 | `<app>.<op>:<id>` | The same, for an action with `args.id`, e.g. one voice channel |
 
+A name not set is off. Each message changes only the names it gives, so a host can send what's on
+and what just went off, over several messages if it doesn't fit in one.
+
 See [App integrations](design.md#app-integrations).
 
 ## Web API

@@ -30,7 +30,8 @@ A PC action can set a `fallback`: an action the device runs instead while `deckh
 connected (for an `app` action, while the host can't reach that app). Without one, the key flashes red
 instead of silently doing nothing.
 
-Discord keys, for one, fall back to Discord's shortcuts ([discord.md](discord.md#without-deckhost)).
+Discord keys, for one, fall back to Discord's shortcuts ([discord.md](discord.md#without-deckhost)),
+and media keys to the plain media keys ([media.md](media.md)).
 
 ## App integrations
 
@@ -41,7 +42,7 @@ Apps such as Discord are integrated in `deckhost`, not the device, so a new one 
 |---|---|
 | Action | `{"type": "app", "app": "<app>", "op": "<op>", "args": {…}}`; names are lowercase letters, digits and `-` |
 | State | `<app>.ready` and `<app>.<op>`, set by the host ([api.md](api.md#state)) |
-| Built-ins | Optional built-in looks, on looks and fallback keybinds per app op (`deck/apps.go`) |
+| Built-ins | Optional built-in looks, on looks and fallbacks (a keybind or media key) per app op (`deck/apps.go`) |
 
 In `deckhost`, an integration implements `app` (`cmd/deckhost/apps.go`): it keeps itself
 connected, runs ops (each app's in order), sets its state and reports a status line for the tray.
