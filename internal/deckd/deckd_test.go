@@ -162,7 +162,7 @@ func TestPCActionEvent(t *testing.T) {
 	d := newTestDeckd()
 	d.ch.set(raw)
 	defer d.ch.set(nil)
-	d.pc.heartbeat("host1")
+	d.pc.heartbeat(proto.ActionHost{ID: "host1"})
 	d.press(13, true)
 	ev := readEvent(t, r)
 	if ev.Key != 13 || ev.Host != "host1" || ev.Release || ev.Action.URL != deck.RepoURL {
@@ -208,7 +208,7 @@ func itoa(n uint32) string { b, _ := json.Marshal(n); return string(b) }
 
 func TestPCActionSendFails(t *testing.T) {
 	d := newTestDeckd()
-	d.pc.heartbeat("h")
+	d.pc.heartbeat(proto.ActionHost{ID: "h"})
 	d.press(13, true) // channel closed: the send fails
 	runUI(t, d)
 	if got := keyColour(d, 13); got != keyColours[keyError] {
@@ -222,7 +222,7 @@ func TestPCActions(t *testing.T) {
 	if _, ok := p.hostAlive(); ok {
 		t.Error("host alive before any heartbeat")
 	}
-	p.heartbeat("h")
+	p.heartbeat(proto.ActionHost{ID: "h"})
 	if h, ok := p.hostAlive(); !ok || h != "h" {
 		t.Error("host not alive after a heartbeat")
 	}
@@ -316,12 +316,12 @@ func TestChannelSend(t *testing.T) {
 
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
-	if c := loadConfig(filepath.Join(dir, "missing.json")); c.Home != "main" {
+	if c, _ := loadConfig(filepath.Join(dir, "missing.json")); c.Home != "main" {
 		t.Error("missing config didn't fall back to the default")
 	}
 	bad := filepath.Join(dir, "bad.json")
 	os.WriteFile(bad, []byte("{"), 0o644)
-	if c := loadConfig(bad); c.Home != "main" {
+	if c, _ := loadConfig(bad); c.Home != "main" {
 		t.Error("broken config didn't fall back to the default")
 	}
 	custom := &deck.Config{Version: deck.ConfigVersion, Home: "only", Pages: map[string]deck.Page{
@@ -330,13 +330,13 @@ func TestLoadConfig(t *testing.T) {
 	good := filepath.Join(dir, "good.json")
 	b, _ := json.Marshal(custom)
 	os.WriteFile(good, b, 0o644)
-	if c := loadConfig(good); c.Home != "only" {
+	if c, _ := loadConfig(good); c.Home != "only" {
 		t.Error("good config not loaded")
 	}
 	custom.Pages["only"].Keys[0] = deck.Button{Icon: "no-such-icon"}
 	b, _ = json.Marshal(custom)
 	os.WriteFile(good, b, 0o644)
-	if c := loadConfig(good); c.Home != "main" {
+	if c, _ := loadConfig(good); c.Home != "main" {
 		t.Error("config with an unknown icon was loaded")
 	}
 }
@@ -450,7 +450,7 @@ func TestPCState(t *testing.T) {
 	if p.getState("x") {
 		t.Error("state taken without an action host")
 	}
-	p.heartbeat("a")
+	p.heartbeat(proto.ActionHost{ID: "a"})
 	p.setState(proto.State{Host: "b", State: map[string]bool{"x": true}})
 	if p.getState("x") {
 		t.Error("state taken from another host")
@@ -463,7 +463,7 @@ func TestPCState(t *testing.T) {
 	<-changed
 
 	// a new host starts afresh
-	p.heartbeat("b")
+	p.heartbeat(proto.ActionHost{ID: "b"})
 	<-changed
 	if p.getState("x") {
 		t.Error("old host's state kept")
@@ -487,7 +487,7 @@ func TestStateLook(t *testing.T) {
 	if got := keyColour(d, 4); got != keyColours[keyIdle] {
 		t.Fatalf("unmuted key colour %#x", got)
 	}
-	d.pc.heartbeat("h")
+	d.pc.heartbeat(proto.ActionHost{ID: "h"})
 	d.pc.setState(proto.State{Host: "h", State: map[string]bool{"discord.mute": true}})
 	runUI(t, d)
 	if got := keyColour(d, 4); got != 0xc62828 {
@@ -515,7 +515,7 @@ func TestDiscordFallback(t *testing.T) {
 	}
 
 	keybind() // no deckhost
-	d.pc.heartbeat("h")
+	d.pc.heartbeat(proto.ActionHost{ID: "h"})
 	d.pc.setState(proto.State{Host: "h", State: map[string]bool{"discord.ready": false}})
 	keybind() // deckhost without Discord
 
@@ -646,4 +646,40 @@ func TestCommand(t *testing.T) {
 	if fi, _ := out.Stat(); fi.Size() < 1000 {
 		t.Errorf("only %d bytes printed", fi.Size())
 	}
+}
+
+func TestKeyEvents(t *testing.T) {
+	d := newTestDeckd()
+	d.sendKey(3, true) // no queue: dropped, doesn't block
+	d.keys = make(chan proto.KeyEvent, 1)
+	d.sendKey(3, true)
+	d.sendKey(3, false) // queue full: dropped
+	if k := <-d.keys; k.Key != 3 || k.Release {
+		t.Errorf("%+v", k)
+	}
+	p, r := fifo(t)
+	raw, err := hidg.OpenRaw(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.ch.set(raw)
+	go d.sendKeys()
+	d.sendKey(5, false)
+	buf := make([]byte, proto.RawInSize)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		n, _ := r.Read(buf)
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no key event")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	part, err := proto.DecodeReply(buf)
+	if err != nil || part.Seq != proto.EventSeq || part.Status != proto.EventKey || string(part.Payload) != `{"key":5,"release":true}` {
+		t.Errorf("%+v %v", part, err)
+	}
+	close(d.keys)
 }

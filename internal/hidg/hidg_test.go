@@ -113,3 +113,19 @@ func TestDescriptors(t *testing.T) {
 		t.Error("report descriptor doesn't end a collection")
 	}
 }
+
+func TestWake(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ff400000.usb")
+	os.MkdirAll(dir, 0o755)
+	old := udcGlob
+	udcGlob = filepath.Join(filepath.Dir(dir), "*")
+	t.Cleanup(func() { udcGlob = old })
+
+	os.WriteFile(filepath.Join(dir, "srp"), nil, 0o644)
+	if err := Wake(); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "srp")); string(b) != "1" {
+		t.Errorf("srp %q", b)
+	}
+}

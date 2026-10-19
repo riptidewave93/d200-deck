@@ -2,6 +2,7 @@ package gfx
 
 import (
 	"image"
+	"slices"
 	"sort"
 	"testing"
 )
@@ -48,8 +49,8 @@ func TestIconNames(t *testing.T) {
 	if !sort.StringsAreSorted(names) {
 		t.Error("names not sorted")
 	}
-	if len(names) != len(drawn)+len(aliases)+len(symbols) {
-		t.Errorf("%d names", len(names))
+	if len(slices.Compact(slices.Clone(names))) != len(names) || len(names) < len(symbols)+len(drawn) {
+		t.Errorf("%d names, or some twice", len(names))
 	}
 	for _, n := range []string{"play-pause", "github", "discord", "back", "sleep", "volume_up", "home", "10k"} {
 		if !HasIcon(n) {

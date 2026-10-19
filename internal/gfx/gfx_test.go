@@ -2,6 +2,7 @@ package gfx
 
 import (
 	"image"
+	"strings"
 	"testing"
 )
 
@@ -196,5 +197,24 @@ func TestParsePathCurve(t *testing.T) {
 	}
 	if top < 7 || top > 7.6 {
 		t.Errorf("curve peaks at %v, want 7.5", top)
+	}
+}
+
+func TestIconsSVG(t *testing.T) {
+	icons := IconsSVG()
+	for _, n := range IconNames() {
+		ic, ok := icons[n]
+		if !ok || !strings.HasPrefix(strings.ToUpper(ic.D), "M") || ic.ViewBox == "" {
+			t.Errorf("%s: %+v", n, ic)
+		}
+	}
+	if len(icons) != len(IconNames()) {
+		t.Errorf("%d icons as SVG, %d names", len(icons), len(IconNames()))
+	}
+	if icons["reload"] != icons["refresh"] {
+		t.Error("an alias isn't its icon")
+	}
+	if p := icons["play-pause"]; p.ViewBox != "0 0 100 100" || !strings.HasSuffix(p.D, "Z") {
+		t.Errorf("play-pause %+v", p)
 	}
 }

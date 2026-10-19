@@ -24,20 +24,9 @@ internal/      device-only (deckd, deckupdate, ota, drm, gfx, input, hidg, scree
 A button's action runs on the device whenever USB HID can do it, so those buttons work on any
 PC with nothing installed. Only what HID can't do goes to `deckhost`.
 
-| Action `type` | Runs on | Fields | Examples |
-|---|---|---|---|
-| `hid-consumer` | device | `usage` | play/pause, volume |
-| `hid-key` | device | `keys` (e.g. `["ctrl","shift","m"]`), held while the key is held | browser back (`alt+left`), reload (`ctrl+r`), Discord mute/deafen keybinds, push-to-talk |
-| `type-text` | device | `text` (ASCII, US layout) | canned text |
-| `macro` | device (no PC steps yet) | `steps`: actions and `{"type":"delay","ms":N}` | key sequences; press again to stop it |
-| `page` / `back` / `home` | device | `page` (one already open is gone back to) | folders |
-| `open-url` | PC | `url` | open a page in the default browser |
-| `launch` | PC | `command` (argv), optional per-OS overrides | start an app or script |
-| `http` | PC | `method`, `url`, `headers`, `body` | Discord webhook, Home Assistant |
-| `app` | PC | `app`, `op`, optional `args` (an object): see [App integrations](#app-integrations) | Discord mute ([discord.md](discord.md)) |
-
-`hid-key` with F13–F24 combos is a good way to drive apps: nothing else uses those keys, so
-users bind them to global shortcuts in Discord, OBS, etc.
+The device runs `hid-key`, `hid-consumer`, `hid-system`, `type-text`, `macro`, `page`, `back` and
+`home`; the PC runs `open-url`, `launch`, `http` and `app`. Their fields are in
+[config.md](config.md#actions).
 
 A PC action can set a `fallback`: an action the device runs instead while `deckhost` isn't
 connected (for an `app` action, while the host can't reach that app). Without one, the key flashes red
@@ -86,11 +75,9 @@ Configuration is done from a **hosted website**, in the style of VIA (usevia.app
 the site talks to the device from the browser over WebHID, so it can be updated without touching
 the firmware. `deckhost` uses the same channel (hidraw on Linux, the HID API on Windows).
 
-**Config channel** (`proto/raw.go`): a second HID interface with vendor usage page `0xFFD2`,
-64-byte input reports and 1024-byte output reports, and no OUT endpoint (output reports arrive
-by SET_REPORT on ep0, so the shared RX FIFO can't stall). Protocol version 3: requests and
-replies carry a 16-bit seq, and each client starts at a random one and has one request in flight
-at a time (the device keeps only the latest unread output report).
+**Config channel**: a second HID interface (vendor usage page `0xFFD2`) with 64-byte input reports
+and 1024-byte output reports, and no OUT endpoint (output reports arrive by SET_REPORT on ep0, so
+the shared RX FIFO can't stall). The messages are in [api.md](api.md).
 
 Measured (Linux hidraw and Chrome WebHID): ~50 KB/s to the device, limited by ep0 moving 64-byte
 packets at ~1.25 ms each. Enough for configs; custom icons in bulk would want a 64-byte
@@ -98,28 +85,6 @@ interrupt OUT endpoint (about 10x faster), which needs a check against the share
 
 Firefox and Safari have no WebHID; their users go through `deckhost`. Linux needs a udev
 `uaccess` rule for the hidraw node (`contrib/linux/70-d200-deck.rules`).
-
-Every client (the website, `deckhost`, `deckhost hello`) sees every input report, so clients
-ignore replies to seqs they didn't send. The device also sends **events** on its own: messages
-with seq 0, which requests never use. Clients reassemble each message from its reports (the first
-is flagged, so one cut short is dropped, as is one over 64 KiB), events and replies can
-interleave, and clients drop events that arrive before their first reply (left over from before
-they connected).
-
-| Message | Direction | Status | Purpose |
-|---|---|---|---|
-| `hello` (0x01) | client -> device | done | protocol version, deckd version, OS version and flavour, serial, key count |
-| `identify` (0x03) | client -> device | done | flash a key |
-| `action-host` (0x05) | PC -> device | done | heartbeat every 2 s from `deckhost`, with a random host id; PC actions are only sent while one arrived in the last 5 s (otherwise the key flashes red), to the host heard from last |
-| `action` (event 0x01) | device -> PC | done | run a PC action, with an id and the host's id; on release an event with `release` follows (no result) |
-| `result` (0x04) | PC -> device | done | ok/error for an action id; an error, or no result within 15 s, flashes the key red |
-| `config.get` / `config.put` | client -> device | | read or replace the config (`base` revision, validated, written atomically, applied live) |
-| `config.changed` | device -> clients | | the config changed |
-| `settings.get` / `settings.put` | client -> device | | device settings, kept apart from pages |
-| `image.put` / `image.list` | client -> device | | upload / list custom images |
-| `key` | device -> clients | | live key events for the web app |
-| `usb.rebinding` | device -> clients | | the USB gadget is about to re-plug; reconnect |
-| `state` (0x06) | PC -> device | done | named on/off state (e.g. `discord.mute`) from the current action host; forgotten when it goes away. A key whose action has that state shows its `on` look; `<app>.ready` says that app's keys can go to the host |
 
 Whatever can write the config can make `deckhost` run commands on the PC (via `launch`/`http`
 actions), so the config channel is security-critical.
@@ -133,10 +98,14 @@ behind the user's back, so release builds disable the U-Boot console, the root s
 ## Device settings
 
 Kept in their own file and messages, so pushing pages can't change USB settings by accident.
+`deckd usb-net` prints the USB addresses for the image's gadget setup (`DEV_IP4`, `PEER_IP4`,
+`DEV_IP6`, `NET6`): from the serial (package `netid`), or `net4=`.
 
-- `usb.drive` (default on): the read-only USB drive. `S30usb-gadget` takes its function list from
-  `deckd usb-functions`. A change unbinds the gadget, removes or adds the drive and rebinds: the PC
-  sees a 1-3 s re-plug, `usb0` keeps its address, and `/dev/hidg0` is re-created (deckd reopens it).
+- USB drive (default on): the read-only USB drive. The image owns the setting: `drive=0|1` in
+  `/data/usb-gadget.conf`, read by `S30usb-gadget` at boot; `S30usb-gadget apply` re-binds the
+  gadget to match. To change it (the settings command), deckd rewrites the file (keeping lines it
+  doesn't know), replies, sends usb-rebinding, runs `apply` and reopens its HID devices. The PC sees a re-plug of about a second, `usb0`
+  keeps its address, and `/dev/hidg*` are re-created.
 
 ## Recovery
 

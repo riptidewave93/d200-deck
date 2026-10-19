@@ -19,6 +19,8 @@ type runner struct {
 	path     string // the HID gadget; "" for none
 	hid      *hidg.Device
 	lastOpen time.Time
+	lastWake time.Time
+	asked    bool // logged asking the PC to wake, since a report last went out
 	openErr  string
 
 	mu   sync.Mutex
@@ -72,6 +74,9 @@ func (h *holding) reports() reports {
 	}
 	return r
 }
+
+// wakeEvery limits how often a sleeping PC is asked to wake.
+var wakeEvery = time.Second
 
 // reopenEvery limits how often a missing gadget is opened again.
 var reopenEvery = time.Second
@@ -292,6 +297,11 @@ var errNoGadget = errors.New("no HID gadget")
 // any reason but the PC not reading closes it, so it's opened afresh (it may
 // have been re-created).
 func (r *runner) send(f func(*hidg.Device) error) error {
+	if r.hid != nil && r.hid.Replaced(r.path) {
+		log.Print("HID gadget re-created: reopening it")
+		r.hid.Close()
+		r.hid, r.lastOpen, r.valid = nil, time.Time{}, false
+	}
 	if r.hid == nil && r.path != "" && time.Since(r.lastOpen) >= reopenEvery {
 		r.lastOpen = time.Now()
 		dev, err := hidg.Open(r.path)
@@ -309,6 +319,23 @@ func (r *runner) send(f func(*hidg.Device) error) error {
 		return errNoGadget
 	}
 	err := f(r.hid)
+	if errors.Is(err, hidg.ErrNotReading) {
+		// the PC may be asleep: ask it to wake (only a sleeping PC that
+		// allows it does). The press is lost, as on a keyboard.
+		if time.Since(r.lastWake) >= wakeEvery {
+			r.lastWake = time.Now()
+			// the kernel says yes even when it doesn't wake the PC
+			if hidg.Wake() == nil && !r.asked {
+				log.Print("asked the PC to wake")
+				r.asked = true
+			}
+		}
+		r.valid = false
+		return err
+	}
+	if err == nil {
+		r.asked = false
+	}
 	if err != nil {
 		log.Print(err)
 		r.valid = false

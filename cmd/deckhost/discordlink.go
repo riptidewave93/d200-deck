@@ -153,6 +153,8 @@ func (l *discordLink) publishLocked() {
 
 func (l *discordLink) title() string { return "Discord" }
 
+func (l *discordLink) ops() []string { return deck.DiscordOps }
+
 // discordArgs are the args Discord ops take.
 type discordArgs struct {
 	ID    string  `json:"id"`    // a channel

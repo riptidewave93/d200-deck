@@ -96,7 +96,8 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 	switch req.Cmd {
 	case proto.CmdHello:
 		info, _ := osrelease.Read(osrelease.Path)
-		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: Version, OS: info, Serial: readSerial(), Keys: deck.KeyCount})
+		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: Version, OS: info, Serial: readSerial(),
+			Keys: deck.KeyCount, IPv4: usbIPv4()})
 		return proto.StatusOK, b
 	case proto.CmdIdentify:
 		if len(req.Payload) != 1 || int(req.Payload[0]) >= deck.KeyCount {
@@ -110,7 +111,7 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 		if json.Unmarshal(req.Payload, &h) != nil || h.ID == "" {
 			return proto.StatusBadRequest, nil
 		}
-		d.pc.heartbeat(h.ID)
+		d.pc.heartbeat(h)
 		return proto.StatusOK, nil
 	case proto.CmdState:
 		var s proto.State
@@ -119,6 +120,12 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 		}
 		d.pc.setState(s)
 		return proto.StatusOK, nil
+	case proto.CmdConfigInfo, proto.CmdConfigRead, proto.CmdConfigWrite, proto.CmdConfigData, proto.CmdConfigCommit:
+		return d.configRequest(req.Cmd, req.Payload)
+	case proto.CmdHost:
+		return okJSON(d.pc.hostInfo())
+	case proto.CmdSettings:
+		return d.settings(req.Payload)
 	case proto.CmdResult:
 		var r proto.Result
 		if json.Unmarshal(req.Payload, &r) != nil {
@@ -133,4 +140,21 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 func readSerial() string {
 	s, _ := serial.Read()
 	return s
+}
+
+// sendKey tells the config channel's clients about a key, without making
+// the keys wait for them: with no PC reading, each report takes up to 50 ms
+// to give up on. If too many are queued, it's dropped.
+func (d *deckd) sendKey(key int, pressed bool) {
+	select {
+	case d.keys <- proto.KeyEvent{Key: key, Release: !pressed}:
+	default:
+	}
+}
+
+func (d *deckd) sendKeys() {
+	for k := range d.keys {
+		b, _ := json.Marshal(k)
+		d.ch.send(proto.EventSeq, proto.EventKey, b) // nobody may be listening
+	}
 }

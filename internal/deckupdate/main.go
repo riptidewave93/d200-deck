@@ -55,6 +55,7 @@ func Main(args []string) {
 	config := fs.String("config", "/data/deckd/config.json", "deckd's config, for the debug info")
 	fs.Parse(args)
 	debug.SetMemoryLimit(12 << 20)
+	os.RemoveAll("/data/deck-update") // the state of the updater before deckd update
 	log.Printf("deckd %s", Version)
 
 	srv := &http.Server{

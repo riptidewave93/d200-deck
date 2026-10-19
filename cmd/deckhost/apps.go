@@ -20,6 +20,8 @@ type app interface {
 	title() string
 	// statusText is how it is, for the tray; "" if it isn't set up.
 	statusText() string
+	// ops are the ops it runs.
+	ops() []string
 }
 
 // AppStatus is how an app integration is.

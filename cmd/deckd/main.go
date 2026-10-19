@@ -2,7 +2,7 @@
 // parts as child processes, the keys (internal/deckd) and the update page
 // (internal/deckupdate), and restarts either when it exits; the system's
 // init restarts deckd itself. "deckd keys ..." and "deckd update ..." run
-// one directly; "deckd icons", "deckd hid-descriptor" and so on print
+// one directly; "deckd usb-net", "deckd hid-descriptor" and so on print
 // what they say.
 package main
 
@@ -34,7 +34,7 @@ func main() {
 		if len(os.Args) == 2 && deckd.Command(os.Args[1]) {
 			return
 		}
-		fmt.Fprintln(os.Stderr, "usage: deckd [keys|update] [flags], or deckd icons|fonts|default-config|hid-descriptor|raw-descriptor")
+		fmt.Fprintln(os.Stderr, "usage: deckd [keys|update] [flags], or deckd icons|icons-json|fonts|default-config|hid-descriptor|raw-descriptor|usb-net")
 		os.Exit(2)
 	}
 	log.SetPrefix(os.Args[1] + ": ") // they share deckd's log

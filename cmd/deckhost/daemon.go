@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
 	"os/signal"
+	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -66,7 +69,10 @@ func (s Status) UpdateURL(serial string) (string, error) {
 	case len(found) > 1:
 		return "", errors.New("several D200s connected: name one by its serial")
 	}
-	id, err := netid.For(found[0].Hello.Serial)
+	if ip := found[0].Hello.IPv4; ip != "" {
+		return "http://" + ip + "/update", nil
+	}
+	id, err := netid.For(found[0].Hello.Serial) // a deckd too old to say
 	if err != nil {
 		return "", fmt.Errorf("D200 %q: %w", found[0].Hello.Serial, err)
 	}
@@ -266,8 +272,7 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	if hello.Protocol != proto.Version {
 		return fmt.Errorf("device speaks protocol %d, deckhost %d; update the older one", hello.Protocol, proto.Version)
 	}
-	beat, _ := json.Marshal(proto.ActionHost{ID: d.id})
-	if _, err := c.Do(proto.CmdActionHost, beat); err != nil {
+	if _, err := c.Do(proto.CmdActionHost, d.heartbeat()); err != nil {
 		return err
 	}
 	d.connected(path, hello)
@@ -331,7 +336,7 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 			sendState = true
 		case <-heartbeat.C:
 			// another client's request can displace ours: allow one miss
-			if _, err := c.Do(proto.CmdActionHost, beat); err == nil {
+			if _, err := c.Do(proto.CmdActionHost, d.heartbeat()); err == nil {
 				missed, sendState = 0, true
 			} else if missed++; missed > 1 {
 				return err
@@ -382,4 +387,22 @@ func shorten(s string, n int) string {
 		n--
 	}
 	return s[:n]
+}
+
+// heartbeat says deckhost runs PC actions, and what it can do: the device
+// tells the configuration website.
+func (d *daemon) heartbeat() []byte {
+	h := proto.ActionHost{ID: d.id, Name: "deckhost", Version: version, OS: runtime.GOOS}
+	for _, name := range slices.Sorted(maps.Keys(d.apps)) {
+		a := d.apps[name]
+		h.Apps = append(h.Apps, proto.HostApp{Name: name, Title: a.title(), Status: a.statusText(), Ops: a.ops()})
+	}
+	b, _ := json.Marshal(h)
+	if len(b) > proto.MaxRequest {
+		for i := range h.Apps {
+			h.Apps[i].Ops = nil
+		}
+		b, _ = json.Marshal(h)
+	}
+	return b
 }

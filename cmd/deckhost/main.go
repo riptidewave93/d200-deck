@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -32,6 +33,11 @@ const usageText = `usage: deckhost <command>
 
   hello        ask the first D200 directly who it is
   identify N   flash key N on the first D200
+  host         show what the first D200 knows of its PC helper
+  config get   print the first D200's config
+  config put F replace it with file F
+  usb-drive [on|off]
+               show or set the D200's USB drive (it re-plugs to change it)
   discord-test check the Discord setup: toggles mute on and off
   version      show deckhost's version
 `
@@ -66,8 +72,8 @@ func main() {
 		}
 	case "version":
 		fmt.Println(version)
-	case "hello":
-		b, err := direct(proto.CmdHello, nil)
+	case "hello", "host":
+		b, err := direct(map[string]byte{"hello": proto.CmdHello, "host": proto.CmdHost}[cmd], nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -83,6 +89,27 @@ func main() {
 		if _, err := direct(proto.CmdIdentify, []byte{byte(k)}); err != nil {
 			log.Fatal(err)
 		}
+	case "config":
+		if err := config(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+	case "usb-drive":
+		var payload []byte
+		switch {
+		case len(os.Args) == 3 && (os.Args[2] == "on" || os.Args[2] == "off"):
+			payload = []byte(fmt.Sprintf(`{"usb_drive": %v}`, os.Args[2] == "on"))
+		case len(os.Args) != 2:
+			usage()
+		}
+		b, err := direct(proto.CmdSettings, payload)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var s proto.Settings
+		if json.Unmarshal(b, &s) != nil || s.USBDrive == nil {
+			log.Fatalf("bad reply %q", b)
+		}
+		fmt.Println(map[bool]string{true: "on", false: "off"}[*s.USBDrive])
 	default:
 		usage()
 	}
@@ -90,6 +117,16 @@ func main() {
 
 // direct sends one request to the device itself, not through the daemon.
 func direct(cmd byte, payload []byte) ([]byte, error) {
+	c, err := connect()
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	return c.Do(cmd, payload)
+}
+
+// connect opens the first D200's config channel.
+func connect() (*proto.Conn, error) {
 	paths := hidraw.FindAll(proto.RawDescriptor)
 	if len(paths) == 0 {
 		return nil, errors.New("no D200 found")
@@ -98,7 +135,30 @@ func direct(cmd byte, payload []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := proto.NewConn(dev)
+	return proto.NewConn(dev), nil
+}
+
+// config reads or replaces the device's config.
+func config(args []string) error {
+	if !(len(args) == 1 && args[0] == "get") && !(len(args) == 2 && args[0] == "put") {
+		usage()
+	}
+	c, err := connect()
+	if err != nil {
+		return err
+	}
 	defer c.Close()
-	return c.Do(cmd, payload)
+	if args[0] == "get" {
+		b, _, err := c.ReadConfig()
+		if err == nil {
+			_, err = os.Stdout.Write(b)
+		}
+		return err
+	}
+	b, err := os.ReadFile(args[1])
+	if err != nil {
+		return err
+	}
+	_, err = c.WriteConfig("", b)
+	return err
 }

@@ -3,6 +3,7 @@ package deckd
 import (
 	"encoding/json"
 	"log"
+	"maps"
 	"sync"
 	"time"
 
@@ -17,7 +18,8 @@ var pcActionTimeout = 15 * time.Second
 // the state it set.
 type pcActions struct {
 	mu      sync.Mutex
-	host    string    // the host heard from last
+	host    string // the host heard from last
+	info    proto.ActionHost
 	beat    time.Time // and when
 	state   map[string]bool
 	nextID  uint32
@@ -34,9 +36,11 @@ type pending struct {
 }
 
 // heartbeat makes host the action host. A new host starts with no state.
-func (p *pcActions) heartbeat(host string) {
+func (p *pcActions) heartbeat(h proto.ActionHost) {
+	host := h.ID
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.info = h
 	if host != p.host || !p.aliveLocked() {
 		p.host = host
 		if len(p.state) > 0 {
@@ -49,6 +53,16 @@ func (p *pcActions) heartbeat(host string) {
 
 func (p *pcActions) aliveLocked() bool {
 	return !p.beat.IsZero() && time.Since(p.beat) < proto.ActionHostTimeout
+}
+
+// hostInfo describes the action host.
+func (p *pcActions) hostInfo() proto.HostInfo {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.aliveLocked() {
+		return proto.HostInfo{}
+	}
+	return proto.HostInfo{Connected: true, ActionHost: p.info, State: maps.Clone(p.state)}
 }
 
 // hostAlive returns the action host, if one is connected.

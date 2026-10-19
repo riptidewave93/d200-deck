@@ -95,6 +95,24 @@ func TestEachChange(t *testing.T) {
 	expect(t, reports())
 }
 
+func TestReopenReplacedGadget(t *testing.T) {
+	r, g, reports := testRunner(t)
+	// a USB gadget re-bind re-creates the device node
+	os.Remove(r.path)
+	if err := syscall.Mkfifo(r.path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(r.path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	g.r = f
+	r.press(0, deck.Action{Type: deck.ActionConsumer, Usage: deck.UsageMute})
+	// the new node gets the press, then every report, as after any reopen
+	expect(t, reports(), []byte{2, 0xe2, 0}, kbd(0), []byte{2, 0xe2, 0}, []byte{3, 0})
+}
+
 func TestComboUnion(t *testing.T) {
 	r, _, reports := testRunner(t)
 	r.press(0, deck.Action{Type: deck.ActionKey, Keys: []string{"ctrl", "a"}})

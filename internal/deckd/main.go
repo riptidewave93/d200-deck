@@ -28,6 +28,7 @@ import (
 	"github.com/riptidewave93/d200-deck/internal/input"
 	"github.com/riptidewave93/d200-deck/internal/ota"
 	"github.com/riptidewave93/d200-deck/internal/screen"
+	"github.com/riptidewave93/d200-deck/internal/serial"
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
@@ -56,6 +57,12 @@ type deckd struct {
 	assets assetCache
 	// overlay, if set, is shown instead of the pages (e.g. an update)
 	overlay *overlay
+	// file is the config file shown, and upload one being written; the
+	// config channel's loop owns both
+	file   configFile
+	upload *upload
+	// keys queues key events for the config channel; nil sends none
+	keys chan proto.KeyEvent
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -204,21 +211,33 @@ func guardConfig(path string) {
 }
 
 // loadConfig reads the config file, falling back to the default config when
-// it is missing or broken.
-func loadConfig(path string) *deck.Config {
-	c, err := deck.Load(path)
+// it is missing or broken. It returns the config and the file it's from.
+func loadConfig(path string) (*deck.Config, []byte) {
+	b, err := os.ReadFile(path)
+	var c *deck.Config
 	if err == nil {
-		err = checkIcons(c)
+		c, err = parseConfig(b)
 	}
 	switch {
 	case err == nil:
-		return c
+		return c, b
 	case errors.Is(err, fs.ErrNotExist):
 		log.Printf("no %s, using the default config", path)
 	default:
 		log.Printf("bad config, using the default: %v", err)
 	}
-	return deck.DefaultConfig()
+	c = deck.DefaultConfig()
+	b, _ = json.MarshalIndent(c, "", "  ")
+	return c, append(b, '\n')
+}
+
+// parseConfig reads a config deckd can show.
+func parseConfig(b []byte) (*deck.Config, error) {
+	c, err := deck.Parse(b)
+	if err == nil {
+		err = checkIcons(c)
+	}
+	return c, err
 }
 
 func checkIcons(c *deck.Config) error {
@@ -243,9 +262,19 @@ func Command(name string) bool {
 		os.Stdout.Write(hidg.ReportDescriptor)
 	case "raw-descriptor":
 		os.Stdout.Write(proto.RawDescriptor)
+	case "usb-net": // for the USB gadget setup
+		out, err := usbNet(serial.Path, usbConf)
+		if err != nil {
+			log.Fatal(err)
+		}
+		os.Stdout.WriteString(out)
 	case "icons":
 		for _, n := range gfx.IconNames() {
 			fmt.Println(n)
+		}
+	case "icons-json": // the icons as SVG, for the configuration website
+		if err := json.NewEncoder(os.Stdout).Encode(gfx.IconsSVG()); err != nil {
+			log.Fatal(err)
 		}
 	case "fonts":
 		for _, n := range gfx.FontNames() {
@@ -282,8 +311,10 @@ func Main(args []string) {
 	if !*test && *preview == "" {
 		guardConfig(*config)
 	}
-	d := &deckd{cfg: loadConfig(*config), canvas: gfx.NewCanvas(screen.Width, screen.Height),
-		test: *test, redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 4)}
+	cfg, file := loadConfig(*config)
+	d := &deckd{cfg: cfg, canvas: gfx.NewCanvas(screen.Width, screen.Height),
+		test: *test, redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 4),
+		file: configFile{path: *config, b: file}}
 	d.pages = []string{d.cfg.Home}
 	d.assets.reset(d.cfg)
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
@@ -320,6 +351,8 @@ func Main(args []string) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	if !d.test {
+		d.keys = make(chan proto.KeyEvent, 32)
+		go d.sendKeys()
 		go d.serveChannel(*channel)
 	}
 
@@ -334,6 +367,7 @@ func Main(args []string) {
 	for {
 		select {
 		case ev := <-events:
+			d.sendKey(ev.Key, ev.Pressed)
 			d.press(ev.Key, ev.Pressed)
 		case f := <-d.ui:
 			f()

@@ -153,6 +153,9 @@ func (c *Conn) Do(cmd byte, payload []byte) ([]byte, error) {
 				continue // a late reply to an earlier request
 			}
 			c.synced.Store(true)
+			if r.status == StatusFailed {
+				return nil, fmt.Errorf("device: %s", r.payload)
+			}
 			if r.status != StatusOK {
 				return nil, fmt.Errorf("device: status %d", r.status)
 			}

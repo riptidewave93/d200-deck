@@ -469,15 +469,24 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	c, err := Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return c, nil
+}
+
+// Parse reads and validates a config file's contents.
+func Parse(b []byte) (*Config, error) {
 	if len(b) > MaxConfigBytes {
-		return nil, fmt.Errorf("%s: larger than %d bytes", path, MaxConfigBytes)
+		return nil, fmt.Errorf("larger than %d bytes", MaxConfigBytes)
 	}
 	var c Config
 	if err := json.Unmarshal(b, &c); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	if err := c.Validate(); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	return &c, nil
 }

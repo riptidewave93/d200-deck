@@ -77,6 +77,39 @@ const (
 	// whether Discord is muted. The device takes it from the current action
 	// host only and forgets it when the host goes away.
 	CmdState = 0x06
+	// CmdSettings reads the device settings (no payload) or changes the
+	// ones given (Settings as JSON). Reply: Settings, after any change.
+	CmdSettings = 0x07
+
+	// The config, which can be larger than one request or reply, moves in
+	// parts. To read it: CmdConfigInfo, then CmdConfigRead until it's all
+	// there; it's the version Rev names if its SHA-256 matches. To write it:
+	// CmdConfigWrite, CmdConfigData for each part in order, CmdConfigCommit.
+
+	CmdConfigInfo = 0x08 // reply: ConfigInfo as JSON
+	// CmdConfigRead payload: offset (uint32) and length (uint16, 0 for
+	// ConfigReadSize; at most MaxConfigRead). Reply: the bytes there, none
+	// past the end.
+	CmdConfigRead = 0x09
+	// CmdConfigWrite (payload: ConfigWrite as JSON) starts a write,
+	// dropping any other unfinished one.
+	CmdConfigWrite = 0x0a
+	// CmdConfigData payload: offset (uint32), the next one, and the bytes.
+	CmdConfigData = 0x0b
+	// CmdConfigCommit checks the config written, saves and applies it, then
+	// sends EventConfigChanged. Reply: ConfigInfo. It fails (StatusFailed,
+	// with why) if the config changed since Base or isn't valid.
+	CmdConfigCommit = 0x0c
+
+	// CmdHost reports the action host. Reply: HostInfo as JSON.
+	CmdHost = 0x0d
+)
+
+// Config transfer sizes.
+const (
+	ConfigReadSize = 4096
+	MaxConfigRead  = 16384
+	MaxConfigData  = MaxRequest - 4
 )
 
 // Action host heartbeat timing.
@@ -91,6 +124,13 @@ const EventSeq = 0
 // Events.
 const (
 	EventAction = 0x01 // payload: ActionEvent as JSON
+	// EventUSBRebinding says the USB gadget re-plugs in a moment, after a
+	// setting changed: reconnect.
+	EventUSBRebinding = 0x02
+	// EventConfigChanged (payload: ConfigInfo as JSON) says a new config was
+	// saved.
+	EventConfigChanged = 0x03
+	EventKey           = 0x04 // payload: KeyEvent as JSON
 )
 
 // Reply statuses.
@@ -98,6 +138,7 @@ const (
 	StatusOK         = 0x00
 	StatusUnknownCmd = 0x01
 	StatusBadRequest = 0x02
+	StatusFailed     = 0x03 // payload: why
 )
 
 // Report flags.
@@ -113,12 +154,51 @@ type Hello struct {
 	OS       osrelease.Info `json:"os"`
 	Serial   string         `json:"serial"`
 	Keys     int            `json:"keys"`
+	IPv4     string         `json:"ipv4,omitempty"` // its address on the USB network, now
 }
 
-// ActionHost identifies an action host. ID is random, chosen when the host
-// starts.
+// ActionHost identifies an action host and what it can do. ID is random,
+// chosen when the host starts.
 type ActionHost struct {
-	ID string `json:"id"`
+	ID      string    `json:"id"`
+	Name    string    `json:"name,omitempty"`    // e.g. deckhost
+	Version string    `json:"version,omitempty"` // the host program's
+	OS      string    `json:"os,omitempty"`      // linux, windows, ...
+	Apps    []HostApp `json:"apps,omitempty"`
+}
+
+// HostApp is an app integration of the action host.
+type HostApp struct {
+	Name   string   `json:"name"`             // as in app actions, e.g. discord
+	Title  string   `json:"title"`            // for people, e.g. Discord
+	Status string   `json:"status,omitempty"` // e.g. connected; "" if not set up
+	Ops    []string `json:"ops,omitempty"`
+}
+
+// HostInfo is the action host as the device knows it.
+type HostInfo struct {
+	Connected bool `json:"connected"`
+	ActionHost
+	State map[string]bool `json:"state,omitempty"`
+}
+
+// KeyEvent is a key pressed or let go on the device.
+type KeyEvent struct {
+	Key     int  `json:"key"`
+	Release bool `json:"release,omitempty"`
+}
+
+// ConfigInfo names a config version.
+type ConfigInfo struct {
+	Rev  string `json:"rev"` // SHA-256 of the config file, hex
+	Size int    `json:"size"`
+}
+
+// ConfigWrite starts a config write.
+type ConfigWrite struct {
+	Base   string `json:"base"` // the Rev it replaces; "" to replace any
+	Size   int    `json:"size"`
+	SHA256 string `json:"sha256"` // of the new config, hex
 }
 
 // ActionEvent asks action host Host to run a PC action. The host answers
@@ -137,6 +217,16 @@ type ActionEvent struct {
 type State struct {
 	Host  string          `json:"host"`
 	State map[string]bool `json:"state"`
+}
+
+// Settings are the device settings. In a change, a missing field stays as
+// it is.
+type Settings struct {
+	USBDrive *bool `json:"usb_drive,omitempty"` // the read-only USB drive
+	// USBNet4 picks the USB network: the device takes the first address of
+	// the /30 holding it, the PC the second. "" is the default, derived from
+	// the serial.
+	USBNet4 *string `json:"usb_net4,omitempty"`
 }
 
 // Result says how a PC action went; Error is empty on success.

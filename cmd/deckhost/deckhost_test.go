@@ -417,6 +417,8 @@ func TestUpdateURL(t *testing.T) {
 		{two, "", "", "several D200s connected: name one by its serial"},
 		{two, "aa9988", "http://198.18.72.229/update", ""},
 		{Status{Devices: []Device{dev("zz")}}, "", "", `D200 "zz": serial must be 1-64 hex digits`},
+		// a device that reports its address, e.g. one set by hand
+		{Status{Devices: []Device{{Hello: &proto.Hello{Serial: "00112233445566aa", IPv4: "10.77.0.5"}}}}, "", "http://10.77.0.5/update", ""},
 	}
 	for _, tc := range cases {
 		url, err := tc.s.UpdateURL(tc.serial)
@@ -539,5 +541,16 @@ func TestStateResent(t *testing.T) {
 		case <-time.After(3 * time.Second):
 			t.Fatal("state not resent")
 		}
+	}
+}
+
+func TestHeartbeat(t *testing.T) {
+	var h proto.ActionHost
+	if err := json.Unmarshal(newDaemon().heartbeat(), &h); err != nil {
+		t.Fatal(err)
+	}
+	if h.ID == "" || h.Name != "deckhost" || h.OS == "" || len(h.Apps) != 1 ||
+		h.Apps[0].Name != "discord" || len(h.Apps[0].Ops) != len(deck.DiscordOps) {
+		t.Errorf("%+v", h)
 	}
 }

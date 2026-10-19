@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -125,3 +126,25 @@ func (d *Device) Mouse(buttons byte, dx, dy, wheel int8) error {
 
 // Close closes the gadget.
 func (d *Device) Close() error { return d.f.Close() }
+
+// Replaced reports whether path is no longer the file d has open, as after a
+// USB gadget re-bind: writes to the old one fail silently.
+func (d *Device) Replaced(path string) bool {
+	a, err := d.f.Stat()
+	b, err2 := os.Stat(path)
+	return err == nil && (err2 != nil || !os.SameFile(a, b))
+}
+
+// udcGlob finds the USB device controller in sysfs.
+var udcGlob = "/sys/class/udc/*"
+
+// Wake signals the PC to resume the bus, which wakes it from sleep if it
+// allows that. It fails if the bus isn't suspended or the PC didn't allow
+// it. The PC takes seconds to come back.
+func Wake() error {
+	dirs, _ := filepath.Glob(udcGlob)
+	if len(dirs) == 0 {
+		return errors.New("no USB device controller")
+	}
+	return os.WriteFile(filepath.Join(dirs[0], "srp"), []byte("1"), 0)
+}
