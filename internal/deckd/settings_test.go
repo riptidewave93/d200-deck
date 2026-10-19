@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,6 +154,12 @@ func TestUSBNet(t *testing.T) {
 	if got, err := usbNet(ser, conf); err != nil || got != want {
 		t.Errorf("%q %v", got, err)
 	}
+	// IPv6 in its canonical form (RFC 5952): no leading zeros
+	os.WriteFile(ser, []byte("c0ffee0003"), 0o644)
+	if got, _ := usbNet(ser, conf); !strings.Contains(got, "DEV_IP6=fd9b:b65:8c1b::1\n") {
+		t.Errorf("%q", got)
+	}
+	os.WriteFile(ser, []byte("00112233445566AA\x00"), 0o644)
 	os.WriteFile(conf, []byte("drive=1\nnet4=10.77.0.6\n"), 0o644)
 	want = "DEV_IP4=10.77.0.5\nPEER_IP4=10.77.0.6\nDEV_IP6=fdc1:8f70:cc5e::1\nNET6=fdc1:8f70:cc5e::/64\n"
 	if got, err := usbNet(ser, conf); err != nil || got != want {

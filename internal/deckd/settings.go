@@ -167,9 +167,7 @@ func usbNet(serialPath, conf string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		p := id.Net6.Addr().As16()
-		g := fmt.Sprintf("%02x%02x:%02x%02x:%02x%02x", p[0], p[1], p[2], p[3], p[4], p[5])
-		dev4, peer4, dev6, net6 = id.Dev4.String(), id.Peer4.String(), g+"::1", g+"::/64"
+		dev4, peer4, dev6, net6 = id.Dev4.String(), id.Peer4.String(), id.Dev6.String(), id.Net6.String()
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", err
 	}
