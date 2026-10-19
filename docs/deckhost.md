@@ -1,30 +1,16 @@
 # deckhost
 
-The PC side of the D200, for Linux (Windows later: the OS-specific parts are in
+The PC side of the D200, for Linux and Windows (the OS-specific parts are in
 `cmd/deckhost/os_*.go` and `internal/hidraw`). It runs as your user, not root.
 
 | Part | Does |
 |---|---|
-| `deckhost daemon` | Runs the buttons USB HID can't: `open-url`, `launch`, `http`. A systemd user service |
+| `deckhost daemon` | Runs the buttons USB HID can't: `open-url`, `launch`, `http`. A systemd user service on Linux; started by the tray on Windows |
 | `deckhost tray` | Tray icon: blue when the D200 is connected, grey when not. Started at login |
 
 ## Install
 
-```bash
-make deckhost
-contrib/linux/install.sh build/deckhost
-```
-
-This installs `~/.local/bin/deckhost`, enables `deckhost.service` (systemd user unit) and adds the
-tray to login autostart. If the daemon logs a permission error on `/dev/hidraw*`, install the udev
-rule once:
-
-```bash
-sudo install -m644 contrib/linux/70-d200-deck.rules /etc/udev/rules.d/ && sudo udevadm trigger
-```
-
-On GNOME the tray icon needs the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/)
-(Ubuntu and Bluefin ship it; stock Fedora doesn't).
+See [install.md](install.md).
 
 ## Tray menu
 

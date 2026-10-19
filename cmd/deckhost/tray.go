@@ -18,11 +18,12 @@ import (
 )
 
 func runTray() {
+	ensureDaemon()
 	systray.Run(trayReady, nil)
 }
 
 func trayReady() {
-	icons := map[bool][]byte{true: drawIcon(0x2f6fde), false: drawIcon(0x8a8a8a)}
+	icons := map[bool][]byte{true: trayIcon(drawIcon(0x2f6fde)), false: trayIcon(drawIcon(0x8a8a8a))}
 	systray.SetIcon(icons[false])
 	systray.SetTitle("D200")
 	systray.SetTooltip("D200 Deck")

@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !windows
 
 package main
 
@@ -20,6 +20,14 @@ func runtimeDir() (string, error) { return "", errUnsupported }
 
 func lockInstance(path string) (*os.File, error) { return nil, errUnsupported }
 
-func restartSelf() error { return errUnsupported }
+func restartSelf(lock *os.File) error { return errUnsupported }
 
 func restartService() error { return errUnsupported }
+
+func secureSocket(path string) error { return nil }
+
+func ensureDaemon() {}
+
+func logToFile() {}
+
+func trayIcon(png []byte) []byte { return png }

@@ -48,8 +48,9 @@ func lockInstance(path string) (*os.File, error) {
 	return f, nil
 }
 
-// restartSelf replaces this process with a fresh deckhost.
-func restartSelf() error {
+// restartSelf replaces this process with a fresh deckhost. exec releases
+// lock.
+func restartSelf(lock *os.File) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -61,3 +62,16 @@ func restartSelf() error {
 func restartService() error {
 	return exec.Command("systemctl", "--user", "restart", "deckhost.service").Run()
 }
+
+// secureSocket makes the control socket the user's alone.
+func secureSocket(path string) error { return os.Chmod(path, 0o600) }
+
+// ensureDaemon starts the daemon if the system doesn't: systemd does here.
+func ensureDaemon() {}
+
+// logToFile sends the daemon's log to a file if nothing else keeps it:
+// journald does here.
+func logToFile() {}
+
+// trayIcon is the tray icon in the format the system wants: PNG here.
+func trayIcon(png []byte) []byte { return png }

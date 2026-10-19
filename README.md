@@ -7,10 +7,10 @@ Stream-deck software for the [Ulanzi D200](https://www.ulanzi.com/) running main
 |---|---|---|
 | `deckd` | the D200 | draws pages of buttons on the screen, runs key actions (USB HID keyboard, media keys, macros), serves the config channel |
 | `deck-update` | the D200 | serves the update page at `http://<deck IPv4>/update` (or `d200-<serial>.local`); shows the installed version, can't install updates yet |
-| `deckhost` | the PC | daemon that runs the PC actions (open a URL, launch a program, HTTP requests) plus a tray icon; Linux for now ([docs/deckhost.md](docs/deckhost.md)) |
+| `deckhost` | the PC | daemon that runs the PC actions (open a URL, launch a program, HTTP requests) plus a tray icon; Linux and Windows ([docs/deckhost.md](docs/deckhost.md), [install](docs/install.md)) |
 
 Status: early. Buttons, pages, HID actions and macros work on the device, and `deckhost` runs
-the PC-side actions (open a URL, launch an app, webhooks) on Linux. The configuration website
+the PC-side actions (open a URL, launch an app, webhooks) on Linux and Windows. The configuration website
 and OTA updates are not done yet.
 See [docs/design.md](docs/design.md); Discord support is planned in [docs/discord.md](docs/discord.md).
 
@@ -66,8 +66,10 @@ and in CI:
 make            # check (gofmt, vet, go.mod tidy), test, build
 make test       # unit tests with the race detector, and the coverage total
 make cover      # per-function coverage of the last test run
-make build      # build/deckd and build/deck-update (arm64), build/deckhost (amd64),
-                # build/deckhost.exe (builds, but Windows support isn't written yet)
+make build      # build/deckd and build/deck-update (arm64), build/deckhost and
+                # build/deckhost.exe (amd64)
+make dist       # deckhost installers into build/dist: .deb, .rpm, Linux tarball,
+                # Windows setup.exe (see docs/install.md)
 make test DOCKER=   # use the host's Go instead of Docker
 ```
 

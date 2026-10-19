@@ -41,7 +41,7 @@ func listenControl(d *daemon) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := secureSocket(path); err != nil {
 		l.Close()
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (d *daemon) serveControl(c net.Conn, l net.Listener) {
 		reply(nil)
 		c.Close()
 		l.Close()
-		log.Fatalf("restart: %v", restartSelf())
+		log.Fatalf("restart: %v", restartSelf(d.lock))
 	case "exit":
 		reply(nil)
 		c.Close()

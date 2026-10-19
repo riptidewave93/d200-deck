@@ -1,0 +1,32 @@
+# deb and rpm packages of deckhost; contrib/linux/package.sh fills in ARCH,
+# PKG_VERSION and STAGE.
+name: deckhost
+arch: ${ARCH}
+platform: linux
+version: ${PKG_VERSION}
+version_schema: none
+section: utils
+maintainer: d200-deck project
+description: PC companion for the D200 deck - runs PC actions and shows a tray icon.
+homepage: https://github.com/riptidewave93/d200-deck
+license: GPL-3.0-or-later
+contents:
+  - src: ${STAGE}/deckhost
+    dst: /usr/bin/deckhost
+    file_info: {mode: 0755}
+  - src: contrib/linux/70-d200-deck.rules
+    dst: /usr/lib/udev/rules.d/70-d200-deck.rules
+  - src: ${STAGE}/deckhost.service
+    dst: /usr/lib/systemd/user/deckhost.service
+  - src: ${STAGE}/deckhost-tray.desktop
+    dst: /etc/xdg/autostart/deckhost-tray.desktop
+    type: config
+  - src: LICENSE
+    dst: /usr/share/doc/deckhost/LICENSE
+  - src: NOTICE.md
+    dst: /usr/share/doc/deckhost/NOTICE.md
+  - src: LICENSES
+    dst: /usr/share/doc/deckhost/LICENSES
+scripts:
+  postinstall: contrib/linux/postinstall.sh
+  preremove: contrib/linux/preremove.sh

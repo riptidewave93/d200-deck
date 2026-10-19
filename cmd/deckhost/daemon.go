@@ -104,6 +104,7 @@ func (d *daemon) getStatus() Status {
 }
 
 func runDaemon() {
+	logToFile()
 	d := newDaemon()
 	ctl, err := listenControl(d)
 	if err != nil {
