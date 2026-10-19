@@ -7,10 +7,11 @@ Stream-deck software for the [Ulanzi D200](https://www.ulanzi.com/) running main
 |---|---|---|
 | `deckd` | the D200 | draws pages of buttons on the screen, runs key actions (USB HID keyboard, media keys, macros), serves the config channel |
 | `deck-update` | the D200 | serves the update page at `http://172.31.254.1/update`; shows the installed version, can't install updates yet |
-| `deckhost` | the PC | talks to the device over the config channel; early stage, Linux only for now |
+| `deckhost` | the PC | daemon that runs the PC actions (open a URL, launch a program, HTTP requests) plus a tray icon; Linux for now ([docs/deckhost.md](docs/deckhost.md)) |
 
-Status: early. Buttons, pages, HID actions and macros work on the device; the configuration
-website and the PC-side actions (open a URL, launch an app, webhooks) are not done yet.
+Status: early. Buttons, pages, HID actions and macros work on the device, and `deckhost` runs
+the PC-side actions (open a URL, launch an app, webhooks) on Linux. The configuration website,
+custom icons and OTA updates are not done yet.
 See [docs/design.md](docs/design.md).
 
 ## Configuration
@@ -45,12 +46,18 @@ key. Action types are listed in [docs/design.md](docs/design.md#where-an-action-
 
 ## Building
 
+You need Docker and `make`. Everything builds and tests in a Go container, the same way locally
+and in CI:
+
 ```bash
-go test ./...
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags='-s -w' ./cmd/deckd ./cmd/deck-update
-go build ./cmd/deckhost
-go run ./cmd/deckd -preview screen.png   # render the default config on a PC
+make            # check (gofmt, vet), test, build
+make test       # unit tests with the race detector, and the coverage total
+make cover      # per-function coverage of the last test run
+make build      # build/deckd and build/deck-update (arm64), build/deckhost (amd64)
+make test DOCKER=   # use the host's Go instead of Docker
 ```
+
+`go run ./cmd/deckd -preview screen.png` renders the default config on a PC.
 
 ## License
 

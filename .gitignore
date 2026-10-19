@@ -1,4 +1,4 @@
 vendor/
-/deckd
-/deckhost
+/build/
+/.cache/
 *.png
