@@ -65,7 +65,7 @@ func TestInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v %+v", err, results)
 	}
-	if len(results) != 4 || len(steps) != 4 || string(u.vols[3].data) != "kernel" || string(u.vols[5].data) != "rootfs" {
+	if len(results) != 4 || results[3].Name != "System" || len(steps) != 4 || string(u.vols[3].data) != "kernel" || string(u.vols[5].data) != "rootfs" {
 		t.Errorf("results %+v, steps %q", results, steps)
 	}
 	want := []string{"slot", "b", "upgrade_available", "1", "bootcount", "0", "ota_result", "trial"}

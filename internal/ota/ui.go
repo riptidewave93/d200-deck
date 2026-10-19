@@ -1,6 +1,6 @@
 package ota
 
-// deck-update shows an update on the D200 through deckd: deckd listens on
+// deckd update shows an update on the device's screen through deckd keys: deckd listens on
 // UISocket (root only) for UIRequests, one JSON object per line, and
 // answers a confirm with a UIReply once a key is pressed. The screen goes
 // back to normal when the connection closes.
@@ -10,7 +10,13 @@ const UISocket = "/run/deckd-update.sock"
 type UIRequest struct {
 	Confirm  *ConfirmRequest `json:"confirm,omitempty"`
 	Progress string          `json:"progress,omitempty"`
+	Step     string          `json:"step,omitempty"`  // being written, e.g. Kernel
+	Done     int             `json:"done,omitempty"`  // steps done
+	Total    int             `json:"total,omitempty"` // of this many
 }
+
+// StepFailed is the progress step for a failed install.
+const StepFailed = "Failed"
 
 // ConfirmRequest describes the update to confirm.
 type ConfirmRequest struct {
@@ -25,5 +31,5 @@ type UIReply struct {
 }
 
 // ReadyFile is where deckd writes its PID once it's drawn its first page:
-// how deck-update tells deckd is healthy after an update.
+// how deckd update tells deckd keys is healthy after an update.
 const ReadyFile = "/run/deckd.ready"

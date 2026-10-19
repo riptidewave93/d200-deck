@@ -1,6 +1,6 @@
-// Package deckupdate is deck-update: it serves the D200's update page over USB Ethernet and installs
-// update bundles uploaded to it, once confirmed with a key press on the
-// D200 (see internal/ota).
+// Package deckupdate is deckd update: it serves the device's update page over
+// USB Ethernet and installs update bundles uploaded to it, once confirmed with
+// a key press on the device (see internal/ota).
 package deckupdate
 
 import (
@@ -26,7 +26,7 @@ import (
 	"github.com/riptidewave93/d200-deck/netid"
 )
 
-// Version is deck-update's version, set by its main.
+// Version is deckd's version, set by its main.
 var Version = "dev"
 
 //go:embed update.html
@@ -35,7 +35,10 @@ var page string
 // osRelease is where the OS version is read from.
 var osRelease = osrelease.Path
 
-// Main runs deck-update with the given flags.
+// modelPath names the device, e.g. Ulanzi D200.
+var modelPath = "/proc/device-tree/model"
+
+// Main runs deckd update with the given flags.
 func Main(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	addr := fs.String("addr", ":80", "listen address")
@@ -131,7 +134,9 @@ func showUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	model, _ := os.ReadFile(modelPath)
 	strings.NewReplacer(
+		"{model}", show(strings.TrimSpace(strings.TrimRight(string(model), "\x00"))),
 		"{version}", show(info.Version),
 		"{flavour}", show(info.Flavour),
 		"{build}", show(info.Build),

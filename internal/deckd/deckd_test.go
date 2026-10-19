@@ -568,7 +568,7 @@ func TestUpdateScreen(t *testing.T) {
 	if got := keyColour(d, 13); got != 0x2e7d32 {
 		t.Errorf("install key %#x", got)
 	}
-	if got := keyColour(d, 8); got != 0xf9a825 {
+	if got := keyColour(d, 7); got != 0xf9a825 {
 		t.Errorf("older warning %#x", got)
 	}
 	d.press(0, true) // other keys do nothing

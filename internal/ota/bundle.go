@@ -48,6 +48,9 @@ func (m *Manifest) Image(target string) Image {
 }
 
 const (
+	// Product is the device this program updates, as bundles name it.
+	Product = "d200"
+
 	ManifestFile = "manifest.json"
 	maxManifest  = 64 << 10
 	maxImage     = 64 << 20
@@ -56,8 +59,8 @@ const (
 
 // check reports what's wrong with the manifest, if anything.
 func (m *Manifest) check() error {
-	if m.Format != 1 || m.Product != "d200" {
-		return fmt.Errorf("not a D200 update (format %d, product %q)", m.Format, m.Product)
+	if m.Format != 1 || m.Product != Product {
+		return fmt.Errorf("not an update for this device (format %d, product %q)", m.Format, m.Product)
 	}
 	if m.Version == "" || m.BuildID <= 0 || (m.Flavour != "release" && m.Flavour != "debug") {
 		return errors.New("manifest: missing version, build_id or flavour")
@@ -174,7 +177,7 @@ func save(r io.Reader, path string, im Image) error {
 // CheckFlavour refuses a debug bundle on a release device.
 func (m *Manifest) CheckFlavour(device string) error {
 	if device == "release" && m.Flavour != "release" {
-		return fmt.Errorf("a release D200 can't install a %s build", m.Flavour)
+		return fmt.Errorf("a release device can't install a %s build", m.Flavour)
 	}
 	return nil
 }

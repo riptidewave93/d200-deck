@@ -54,7 +54,6 @@ type Slot struct {
 type Report struct {
 	Version string       `json:"version"`
 	Slot    string       `json:"slot"`
-	Time    time.Time    `json:"time"`
 	Results []ota.Result `json:"results"`
 	Error   string       `json:"error,omitempty"`
 }
@@ -65,10 +64,10 @@ type saved struct {
 	Last  *Report         `json:"last,omitempty"`
 }
 
-// screen shows the update on the D200 (deckd).
+// screen shows the update on the device (deckd).
 type screen interface {
 	Confirm(ota.ConfirmRequest) (bool, error)
-	Progress(step string)
+	Progress(title, step string, done, total int)
 	Close() error
 }
 
@@ -99,6 +98,7 @@ func (u *updater) start() {
 	u.saved.Slots[u.slot] = Slot{u.installed.Version, u.installed.Flavour, u.installed.Build}
 	u.saveLocked()
 	u.mu.Unlock()
+	u.readEnv() // the page warns during a trial
 	u.set(stateChecking, "", nil)
 	go func() {
 		outcome, err := ota.Confirm(u.env, u.slot, u.healthy, u.reboot)
@@ -176,7 +176,7 @@ func (u *updater) begin() error {
 	case stateUnsupported:
 		return errors.New("this system can't update itself: flash it over USB instead")
 	case stateChecking:
-		return errors.New("the D200 is still checking the last update; try again in a minute")
+		return errors.New("the device is still checking the last update; try again in a minute")
 	case stateReceiving, stateConfirming, stateInstalling, stateRebooting:
 		return errors.New("an update is already under way")
 	}
@@ -191,8 +191,8 @@ const spare = 1 << 20
 func (u *updater) upload(w http.ResponseWriter, r *http.Request) {
 	// a web page can't send this header to the device without its consent
 	// (CORS), so other sites can't upload
-	if r.Header.Get("X-D200-Update") == "" {
-		http.Error(w, "missing the X-D200-Update header", http.StatusForbidden)
+	if r.Header.Get("X-Deck-Update") == "" {
+		http.Error(w, "missing the X-Deck-Update header", http.StatusForbidden)
 		return
 	}
 	if r.ContentLength <= 0 {
@@ -241,7 +241,7 @@ func (u *updater) receive(r *http.Request) (*ota.Manifest, int, error) {
 	return m, 0, nil
 }
 
-// failDelay is how long a failure stays on the D200's screen; rebootDelay
+// failDelay is how long a failure stays on the device's screen; rebootDelay
 // how long "rebooting" shows before it does.
 var failDelay, rebootDelay = 5 * time.Second, time.Second
 
@@ -254,7 +254,7 @@ func (u *updater) run(m *ota.Manifest) {
 	}()
 	sc, err := u.screen()
 	if err != nil {
-		u.set(stateFailed, "", fmt.Errorf("can't ask for the key press on the D200: %w", err))
+		u.set(stateFailed, "", fmt.Errorf("can't ask for the key press on the device: %w", err))
 		return
 	}
 	defer sc.Close()
@@ -266,13 +266,14 @@ func (u *updater) run(m *ota.Manifest) {
 	}
 
 	u.set(stateInstalling, "", nil)
+	total := 0
 	results, err := u.install(m, func(step string, n, of int) {
-		text := fmt.Sprintf("%s (%d/%d)", step, n, of)
-		u.set(stateInstalling, text, nil)
-		sc.Progress(text)
+		u.set(stateInstalling, fmt.Sprintf("%s (%d/%d)", step, n, of), nil)
+		sc.Progress("Updating", step, n-1, of)
+		total = of
 	})
 	slot := ota.Other(u.slot)
-	report := &Report{Version: m.Version, Slot: slot, Time: time.Now().UTC(), Results: results}
+	report := &Report{Version: m.Version, Slot: slot, Results: results}
 	if err != nil {
 		report.Error = err.Error()
 	}
@@ -286,13 +287,13 @@ func (u *updater) run(m *ota.Manifest) {
 	if err != nil {
 		log.Printf("update %s: %v", m.Version, err)
 		u.set(stateFailed, "", err)
-		sc.Progress("Failed")
+		sc.Progress(ota.StepFailed, "", 0, 0)
 		time.Sleep(failDelay)
 		return
 	}
 	log.Printf("update %s written to slot %s; rebooting", m.Version, slot)
 	u.set(stateRebooting, "", nil)
-	sc.Progress("Restarting")
+	sc.Progress("Restarting", "", total, total)
 	time.Sleep(rebootDelay) // for the page to see it
 	if err := u.reboot(); err != nil {
 		u.set(stateFailed, "", fmt.Errorf("rebooting: %w", err))
@@ -332,8 +333,10 @@ func (s *deckdScreen) Confirm(req ota.ConfirmRequest) (bool, error) {
 	return r.OK, nil
 }
 
-func (s *deckdScreen) Progress(step string) { s.enc.Encode(ota.UIRequest{Progress: step}) }
-func (s *deckdScreen) Close() error         { return s.c.Close() }
+func (s *deckdScreen) Progress(title, step string, done, total int) {
+	s.enc.Encode(ota.UIRequest{Progress: title, Step: step, Done: done, Total: total})
+}
+func (s *deckdScreen) Close() error { return s.c.Close() }
 
 // deckdHealthy waits up to wait for deckd to have drawn its first page
 // (ready holds its PID), then checks it's still running after settle.

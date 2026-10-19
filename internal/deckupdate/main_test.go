@@ -29,9 +29,10 @@ func server(t *testing.T, content string) *httptest.Server {
 	if content != "" {
 		os.WriteFile(p, []byte(content), 0o644)
 	}
-	old := osRelease
-	osRelease = p
-	t.Cleanup(func() { osRelease = old })
+	old, oldModel := osRelease, modelPath
+	osRelease, modelPath = p, filepath.Join(t.TempDir(), "model")
+	os.WriteFile(modelPath, []byte("Some Deck\x00"), 0o644)
+	t.Cleanup(func() { osRelease, modelPath = old, oldModel })
 	u, _ := testUpdater(t, "debug")
 	srv := httptest.NewServer(handler("d200-00112233445566aa.local", u))
 	t.Cleanup(srv.Close)
@@ -45,7 +46,7 @@ func TestUpdatePage(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	for _, want := range []string{"<dd>v1.2.3</dd>", "<dd>release</dd>", "<dd>&lt;b&gt;20261019</dd>"} {
+	for _, want := range []string{"<dd>Some Deck</dd>", "<dd>v1.2.3</dd>", "<dd>release</dd>", "<dd>&lt;b&gt;20261019</dd>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %s", want)
 		}

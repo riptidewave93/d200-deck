@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>D200 Update</title>
+<title>Device Update</title>
 <style>
 :root { --bg: #f6f6f4; --card: #fff; --fg: #1c1c1c; --muted: #666; --line: #ddd; --accent: #2f6fde;
-  --bad: #c62828; }
+  --bad: #c62828; --warn-bg: #fff4d6; --warn-fg: #6b4a00; --warn-line: #f9a825; }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #121212; --card: #1c1c1c; --fg: #e8e8e8; --muted: #9a9a9a; --line: #333; --accent: #6b9cf0;
-    --bad: #ef5350; }
+    --bad: #ef5350; --warn-bg: #3a2e0a; --warn-fg: #ffd77a; --warn-line: #b8860b; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 48px 16px; background: var(--bg); color: var(--fg);
@@ -30,12 +30,15 @@ p { margin: 0 0 8px; }
 .muted { color: var(--muted); }
 .bad { color: var(--bad); }
 progress { width: 100%; }
+.warn { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--warn-line); border-radius: 8px;
+  background: var(--warn-bg); color: var(--warn-fg); font-weight: 700; }
 </style>
 </head>
 <body>
 <main>
-<h1>D200 Update</h1>
+<h1>Device Update</h1>
 <dl>
+  <dt>Device</dt><dd>{model}</dd>
   <dt>Installed</dt><dd>{version}</dd>
   <dt>Flavour</dt><dd>{flavour}</dd>
   <dt>Built</dt><dd>{build}</dd>
@@ -50,35 +53,57 @@ refer to <a href="https://github.com/riptidewave93/d200-buildroot/blob/main/docs
 </fieldset>
 <p id="state" class="muted">Loading…</p>
 <progress id="progress" hidden></progress>
+<p id="warn" class="warn" hidden>Do <u>not</u> unplug the device or let your PC shut down or sleep until this page
+says the update is done.</p>
 </main>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 let uploading = false;
+let updating = false; // an update is under way, or done and not yet told
+
+function warning(on) { $("warn").hidden = !on; }
 
 function describe(s) {
   switch (s.state) {
     case "checking": return ["Checking the last update…", ""];
     case "receiving": return ["Receiving the update…", ""];
-    case "confirming": return [`Press Install on the D200 (the wide key) to install ${s.update.version}, or Cancel.`, ""];
-    case "installing": return [`Installing ${s.update.version}: ${s.step || "starting"}. Don't unplug the D200.`, ""];
-    case "rebooting": return ["Restarting the D200…", ""];
+    case "confirming": return [`Press Install on the device to install ${s.update.version}, or Cancel.`, ""];
+    case "installing": return [`Installing ${s.update.version}: ${s.step || "starting"}.`, ""];
+    case "rebooting": return ["Restarting the device…", ""];
     case "failed": return [`Update failed: ${s.error}`, "bad"];
-    case "cancelled": return ["Cancelled on the D200.", ""];
+    case "cancelled": return ["Cancelled on the device.", ""];
     case "unsupported": return ["This system can't update itself: flash it over USB instead.", "bad"];
     default: return ["", ""];
   }
 }
 
+// written lists what the last update wrote and what it left unchanged.
+function written(last) {
+  const names = (pick) => (last?.results ?? []).filter(pick).map((r) => r.name || r.target).join(", ");
+  const w = names((r) => r.written), u = names((r) => r.skipped);
+  return (w ? ` Written: ${w}.` : "") + (u ? ` Unchanged: ${u}.` : "");
+}
+
 function show(s) {
   // only an update that took: a failed one is as if there was none
   $("last").textContent = s.last && !s.last.error && s.ota_result === "ok" ? s.last.version : "none";
-  const [text, cls] = describe(s);
+  const during = ["receiving", "confirming", "installing", "rebooting"].includes(s.state) ||
+    (s.state === "checking" && s.ota_result === "trial");
+  if (during) updating = true;
+  if (s.state === "failed" || s.state === "cancelled") updating = false;
+  let [text, cls] = describe(s);
+  if (s.state === "idle" && updating) {
+    [text, cls] = s.ota_result === "ok"
+      ? [`The update is done. The device is running ${s.slots?.[s.slot]?.version ?? "it"}.${written(s.last)}`, ""]
+      : ["The update didn't take: the device went back to the version it had.", "bad"];
+  }
   $("state").textContent = text;
   $("state").className = cls || "muted";
   const busy = ["checking", "receiving", "confirming", "installing", "rebooting", "unsupported"].includes(s.state);
   $("form").disabled = busy || uploading;
   $("progress").hidden = !busy || s.state === "unsupported";
+  warning(during);
 }
 
 async function poll() {
@@ -87,7 +112,7 @@ async function poll() {
     if (!uploading) show(await r.json());
   } catch {
     if (!uploading) {
-      $("state").textContent = "Waiting for the D200…";
+      $("state").textContent = "Waiting for the device…";
       $("state").className = "muted";
     }
   }
@@ -100,9 +125,10 @@ $("install").onclick = () => {
   uploading = true;
   $("form").disabled = true;
   $("progress").hidden = false;
+  warning(true);
   const x = new XMLHttpRequest();
   x.open("PUT", "/update/bundle");
-  x.setRequestHeader("X-D200-Update", "1");
+  x.setRequestHeader("X-Deck-Update", "1");
   x.upload.onprogress = (e) => {
     $("progress").max = e.total;
     $("progress").value = e.loaded;
@@ -112,9 +138,10 @@ $("install").onclick = () => {
     uploading = false;
     $("progress").removeAttribute("value");
     if (x.status !== 202) {
-      $("state").textContent = `Update refused: ${x.responseText || "no answer from the D200"}`;
+      $("state").textContent = `Update refused: ${x.responseText || "no answer from the device"}`;
       $("state").className = "bad";
       $("form").disabled = false;
+      warning(false);
     }
   };
   x.send(f);

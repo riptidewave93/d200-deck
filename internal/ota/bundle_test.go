@@ -19,7 +19,7 @@ type member struct {
 
 // testBundle returns a valid bundle's members: the manifest, then the images.
 func testBundle() (*Manifest, []member) {
-	m := &Manifest{Format: 1, Product: "d200", Flavour: "debug", Version: "abc1234", BuildID: 202610191900}
+	m := &Manifest{Format: 1, Product: Product, Flavour: "debug", Version: "abc1234", BuildID: 202610191900}
 	files := map[string][]byte{
 		"idbloader": bytes.Repeat([]byte{1}, idbSize),
 		"u-boot":    []byte("u-boot"),

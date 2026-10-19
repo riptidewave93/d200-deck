@@ -31,12 +31,12 @@ func (in *Installer) Install(m *Manifest, running string) ([]Result, error) {
 		name string
 		run  func() Result
 	}{
-		{"bootloader (IDB)", func() Result { return in.idb(m) }},
-		{"bootloader (U-Boot)", func() Result { return in.uboot(m) }},
-		{"kernel", func() Result {
+		{"IDB loader", func() Result { return in.idb(m) }},
+		{"U-Boot", func() Result { return in.uboot(m) }},
+		{"Kernel", func() Result {
 			return WriteVolume(in.UBI, kernel, "kernel", in.path(m, "kernel"), m.Image("kernel"))
 		}},
-		{"system", func() Result {
+		{"System", func() Result {
 			return WriteVolume(in.UBI, rootfs, "rootfs", in.path(m, "rootfs"), m.Image("rootfs"))
 		}},
 	}
@@ -46,6 +46,7 @@ func (in *Installer) Install(m *Manifest, running string) ([]Result, error) {
 			in.Progress(s.name, i+1, len(steps))
 		}
 		r := s.run()
+		r.Name = s.name
 		results = append(results, r)
 		if r.Error != "" {
 			return results, fmt.Errorf("%s: %s", s.name, r.Error)

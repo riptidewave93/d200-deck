@@ -98,6 +98,12 @@ func (f *Font) face(px int) font.Face {
 	return fc
 }
 
+// Metrics are the font's ascent and descent in pixels at px pixels per em.
+func (f *Font) Metrics(px int) (ascent, descent int) {
+	m := f.face(px).Metrics()
+	return m.Ascent.Ceil(), m.Descent.Ceil()
+}
+
 // TextWidth is the width of s in pixels at px pixels per em.
 func (f *Font) TextWidth(s string, px int) int {
 	return font.MeasureString(f.face(px), s).Ceil()

@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -55,10 +57,10 @@ type fakeScreen struct {
 
 func (s *fakeScreen) Confirm(ota.ConfirmRequest) (bool, error) { return s.answer, s.err }
 
-func (s *fakeScreen) Progress(step string) {
+func (s *fakeScreen) Progress(title, step string, done, total int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.steps = append(s.steps, step)
+	s.steps = append(s.steps, strings.TrimSpace(fmt.Sprintf("%s %s %d/%d", title, step, done, total)))
 }
 
 func (s *fakeScreen) Close() error {
@@ -104,7 +106,7 @@ func testUpdater(t *testing.T, flavour string) (*updater, *fakes) {
 		freeSpace: func(string) (int64, error) { return 100 << 20, nil },
 		healthy:   func() bool { return true },
 		install: func(m *ota.Manifest, progress func(string, int, int)) ([]ota.Result, error) {
-			progress("kernel", 3, 4)
+			progress("Kernel", 3, 4)
 			f.mu.Lock()
 			f.installed = append(f.installed, m.Version)
 			f.mu.Unlock()
@@ -131,7 +133,7 @@ func waitState(t *testing.T, u *updater, want string) Status {
 
 // bundle is an update bundle (with fake images) for version.
 func bundle(t *testing.T, version, flavour string, build int64) []byte {
-	m := ota.Manifest{Format: 1, Product: "d200", Flavour: flavour, Version: version, BuildID: build}
+	m := ota.Manifest{Format: 1, Product: ota.Product, Flavour: flavour, Version: version, BuildID: build}
 	files := map[string][]byte{"idbloader": bytes.Repeat([]byte{0xff}, 256<<10), "u-boot": []byte("u"), "kernel": []byte("k"), "rootfs": []byte("r")}
 	for _, target := range ota.Targets {
 		sum := sha256.Sum256(files[target])
@@ -158,7 +160,7 @@ func put(t *testing.T, u *updater, body []byte, header bool) (int, string) {
 	defer srv.Close()
 	req, _ := http.NewRequest("PUT", srv.URL, bytes.NewReader(body))
 	if header {
-		req.Header.Set("X-D200-Update", "1")
+		req.Header.Set("X-Deck-Update", "1")
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -189,7 +191,7 @@ func TestInstallFlow(t *testing.T) {
 	if s.Update.Version != "new" || installed[0] != "new" || reboots != 1 {
 		t.Errorf("status %+v, installed %q, %d reboots", s, installed, reboots)
 	}
-	if len(steps) != 2 || steps[0] != "kernel (3/4)" || steps[1] != "Restarting" {
+	if len(steps) != 2 || steps[0] != "Updating Kernel 2/4" || steps[1] != "Restarting  4/4" {
 		t.Errorf("screen steps %q", steps)
 	}
 	if s.Slots["b"].Version != "new" || s.Slots["a"].Version != "old" || s.Last == nil || s.Last.Slot != "b" {
@@ -319,11 +321,11 @@ func TestDeckdScreen(t *testing.T) {
 	if ok, err := sc.Confirm(ota.ConfirmRequest{Version: "v"}); !ok || err != nil {
 		t.Errorf("confirm %v %v", ok, err)
 	}
-	sc.Progress("step")
+	sc.Progress("title", "step", 1, 4)
 	if r := <-got; r.Confirm.Version != "v" {
 		t.Errorf("%+v", r)
 	}
-	if r := <-got; r.Progress != "step" {
+	if r := <-got; r.Progress != "title" || r.Step != "step" || r.Done != 1 || r.Total != 4 {
 		t.Errorf("%+v", r)
 	}
 	sc.Close()

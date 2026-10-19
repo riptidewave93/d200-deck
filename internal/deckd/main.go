@@ -72,8 +72,12 @@ func (d *deckd) drawKey(i int, state keyState) {
 	if d.test {
 		drawTestKey(d.canvas, i, r, state != keyIdle)
 	} else if d.overlay != nil {
-		b, ok := d.overlay.keys[i]
-		drawSafely(d.canvas, r, b, ok, state, &d.assets)
+		if draw, ok := d.overlay.drawn[i]; ok {
+			draw(d.canvas, r)
+		} else {
+			b, ok := d.overlay.keys[i]
+			drawSafely(d.canvas, r, b, ok, state, &d.assets)
+		}
 	} else {
 		b, ok := d.cfg.Pages[d.page()].Keys[i]
 		st := b.Action.State()

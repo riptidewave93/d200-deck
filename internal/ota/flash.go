@@ -28,6 +28,7 @@ type NAND interface {
 // Result is what happened to one target.
 type Result struct {
 	Target     string `json:"target"`
+	Name       string `json:"name,omitempty"` // as people see it, e.g. System
 	Written    bool   `json:"written"`
 	Skipped    bool   `json:"skipped,omitempty"` // it already matched
 	Retries    int    `json:"retries,omitempty"`
