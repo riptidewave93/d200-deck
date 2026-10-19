@@ -97,6 +97,9 @@ func (d *deckd) commit(seq uint16, u *upload) (byte, []byte) {
 		return failed(fmt.Errorf("the config changed since you read it; read it again"))
 	}
 	c, err := parseConfig(u.b)
+	if err == nil {
+		err = c.CheckIcons()
+	}
 	if err != nil {
 		return failed(err)
 	}

@@ -240,30 +240,11 @@ func loadConfig(path string) (*deck.Config, []byte) {
 	return c, append(b, '\n')
 }
 
-// parseConfig reads a config deckd can show.
-func parseConfig(b []byte) (*deck.Config, error) {
-	c, err := deck.Parse(b)
-	if err == nil {
-		err = checkIcons(c)
-	}
-	return c, err
-}
+// parseConfig reads a config deckd can show. Keys whose icons it lacks show
+// none; commit refuses those.
+func parseConfig(b []byte) (*deck.Config, error) { return deck.Parse(b) }
 
-func checkIcons(c *deck.Config) error {
-	for name, p := range c.Pages {
-		for k, b := range p.Keys {
-			if b.Icon != "" && !gfx.HasIcon(b.Icon) {
-				return fmt.Errorf("page %q key %d: unknown icon %q", name, k, b.Icon)
-			}
-			if b.On != nil && b.On.Icon != "" && !gfx.HasIcon(b.On.Icon) {
-				return fmt.Errorf("page %q key %d: unknown on icon %q", name, k, b.On.Icon)
-			}
-		}
-	}
-	return nil
-}
-
-// Command runs one of deckd's own commands, such as "icons", reporting
+// Command runs one of deckd's own commands, such as "fonts", reporting
 // whether name is one.
 func Command(name string) bool {
 	switch name {
@@ -277,14 +258,6 @@ func Command(name string) bool {
 			log.Fatal(err)
 		}
 		os.Stdout.WriteString(out)
-	case "icons":
-		for _, n := range gfx.IconNames() {
-			fmt.Println(n)
-		}
-	case "icons-json": // the icons as SVG, for the configuration website
-		if err := json.NewEncoder(os.Stdout).Encode(gfx.IconsSVG()); err != nil {
-			log.Fatal(err)
-		}
 	case "fonts":
 		for _, n := range gfx.FontNames() {
 			fmt.Println(n)
@@ -326,6 +299,7 @@ func Main(args []string) {
 		file: configFile{path: *config, b: file}}
 	d.pages = []string{d.cfg.Home}
 	d.renderer = render.New(d.cfg)
+	d.renderer.Extra = systemIcons
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	d.pc.changed = func() { d.ui <- d.drawPage }
 	if d.test {

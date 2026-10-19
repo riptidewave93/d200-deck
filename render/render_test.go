@@ -11,6 +11,7 @@ import (
 	"golang.org/x/image/font/gofont/gomono"
 
 	"github.com/riptidewave93/d200-deck/deck"
+	"github.com/riptidewave93/d200-deck/icons"
 	"github.com/riptidewave93/d200-deck/internal/gfx"
 )
 
@@ -76,7 +77,7 @@ func TestPressedShade(t *testing.T) {
 func TestCustomColoursDrawn(t *testing.T) {
 	c := gfx.NewCanvas(Width, Height)
 	r := Key(0)
-	New(nil).draw(c, r, deck.Button{Icon: "mute", Color: "#ff0000", Background: "#000080"}, true, Idle)
+	withIcons().draw(c, r, deck.Button{Icon: "mute", Color: "#ff0000", Background: "#000080"}, true, Idle)
 	if count(c, r, 0x000080) < 1000 || count(c, r, 0xff0000) < 500 {
 		t.Errorf("background %d px, icon %d px", count(c, r, 0x000080), count(c, r, 0xff0000))
 	}
@@ -85,8 +86,8 @@ func TestCustomColoursDrawn(t *testing.T) {
 func TestMultiLineLabel(t *testing.T) {
 	r := Key(1)
 	one, three := gfx.NewCanvas(Width, Height), gfx.NewCanvas(Width, Height)
-	New(nil).draw(one, r, deck.Button{Label: "Hello"}, true, Idle)
-	New(nil).draw(three, r, deck.Button{Label: "Hello\nthere\nfriend"}, true, Idle)
+	withIcons().draw(one, r, deck.Button{Label: "Hello"}, true, Idle)
+	withIcons().draw(three, r, deck.Button{Label: "Hello\nthere\nfriend"}, true, Idle)
 	rows := func(c *gfx.Canvas) int {
 		n := 0
 		for y := r.Min.Y; y < r.Max.Y; y++ {
@@ -101,7 +102,7 @@ func TestMultiLineLabel(t *testing.T) {
 	}
 	// with an icon, the lines join into one
 	c := gfx.NewCanvas(Width, Height)
-	New(nil).draw(c, r, deck.Button{Icon: "mute", Label: "a\nb"}, true, Idle)
+	withIcons().draw(c, r, deck.Button{Icon: "mute", Label: "a\nb"}, true, Idle)
 }
 
 func TestImageButtons(t *testing.T) {
@@ -264,7 +265,7 @@ func TestDrawButton(t *testing.T) {
 	for _, tc := range cases {
 		c := gfx.NewCanvas(Width, Height)
 		r := Key(tc.key)
-		New(nil).draw(c, r, tc.b, true, Idle)
+		withIcons().draw(c, r, tc.b, true, Idle)
 		fg := 0
 		for y := r.Min.Y; y < r.Max.Y; y++ {
 			for x := r.Min.X; x < r.Max.X; x++ {
@@ -279,7 +280,7 @@ func TestDrawButton(t *testing.T) {
 	}
 	c := gfx.NewCanvas(Width, Height)
 	c.Fill(image.Rect(0, 0, Width, Height), 0x123456)
-	New(nil).draw(c, Key(5), deck.Button{}, false, Idle)
+	withIcons().draw(c, Key(5), deck.Button{}, false, Idle)
 	if c.Pix[Key(5).Min.Y*c.W+Key(5).Min.X] != 0 {
 		t.Error("blank key not cleared")
 	}
@@ -333,17 +334,43 @@ func TestKeysFitAndDontOverlap(t *testing.T) {
 	}
 }
 
-func TestIcons(t *testing.T) {
-	names := IconNames()
-	if len(names) < 1000 || !HasIcon("mute") || HasIcon("no-such-icon") {
-		t.Fatalf("%d icons", len(names))
+// withIcons is a renderer for a config with a few catalog icons.
+func withIcons() *Renderer {
+	c := &deck.Config{Icons: map[string]deck.Icon{}}
+	for _, n := range []string{"mute", "github"} {
+		c.Icons[n], _ = icons.Get(n)
 	}
-	for _, name := range []string{"mute", "github", "launch", "volume_up"} {
-		if d, vb, ok := IconPath(name); !ok || d == "" || vb == "" {
-			t.Errorf("%s: %q %q %v", name, d, vb, ok)
-		}
+	return New(c)
+}
+
+func TestConfigIcons(t *testing.T) {
+	r := Key(0)
+	draw := func(rn *Renderer, b deck.Button) *gfx.Canvas {
+		c := gfx.NewCanvas(Width, Height)
+		rn.Draw(c, r, b, true, Idle)
+		return c
 	}
-	if _, _, ok := IconPath("no-such-icon"); ok {
-		t.Error("found a missing icon")
+	// a missing icon draws nothing; the label takes the key
+	if c := draw(New(&deck.Config{}), deck.Button{Icon: "mute", Color: "#ff0000"}); count(c, r, 0xff0000) != 0 {
+		t.Error("drew a missing icon")
 	}
+	// Extra icons, for the device's own screens
+	extra := New(&deck.Config{})
+	extra.Extra = map[string]deck.Icon{"mute": must(icons.Get("mute"))}
+	if c := draw(extra, deck.Button{Icon: "mute", Color: "#ff0000"}); count(c, r, 0xff0000) < 500 {
+		t.Error("Extra icon not drawn")
+	}
+	// a picture icon is drawn at icon size, untinted
+	pic := New(&deck.Config{Icons: map[string]deck.Icon{"e": {PNG: solidPNG(t, 64, 64, color.NRGBA{0, 0xff, 0, 0xff})}}})
+	c := draw(pic, deck.Button{Icon: "e", Label: "Hi", Color: "#ff0000"})
+	if n := count(c, r, 0x00ff00); n != 100*100 {
+		t.Errorf("%d green pixels", n)
+	}
+}
+
+func must(ic deck.Icon, ok bool) deck.Icon {
+	if !ok {
+		panic("no icon")
+	}
+	return ic
 }

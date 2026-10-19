@@ -74,6 +74,7 @@ func TestConfigOverChannel(t *testing.T) {
 		{info.Rev, string(newFile), "changed since you read it"},
 		{"", `{"version": 1, "home": "nowhere", "pages": {}}`, "nowhere"},
 		{"", "not json", "invalid character"},
+		{"", `{"version": 1, "home": "m", "pages": {"m": {"keys": {"0": {"icon": "mic"}}}}}`, "icons not in the config"},
 	} {
 		if _, err := c.WriteConfig(bad.base, []byte(bad.file)); err == nil || !strings.Contains(err.Error(), bad.want) {
 			t.Errorf("%.20q: %v, want %q", bad.file, err, bad.want)

@@ -24,6 +24,12 @@ keeps it at `/data/deckd/config.json`; read and replace it over USB with the
       }
     }
   },
+  "icons": {
+    "public": {"d": "M480-80q-83 0-156-31.5T197-197...Z", "viewBox": "0 -960 960 960"},
+    "play-pause": {"d": "M8 22L8 78L50 50Z...", "viewBox": "0 0 100 100"},
+    "back": {"d": "...", "viewBox": "0 -960 960 960"},
+    "refresh": {"d": "...", "viewBox": "0 -960 960 960"}
+  },
   "images": {"logo": "<base64 PNG or JPEG>"},
   "fonts": {"brand": "<base64 TTF or OTF>"}
 }
@@ -34,7 +40,8 @@ keeps it at `/data/deckd/config.json`; read and replace it over USB with the
 | `version` | `1` |
 | `home` | the page shown at start |
 | `pages` | pages by name; each has `keys`, buttons by key number. Keys without one are blank. |
-| `images` | custom images by ID, base64 |
+| `icons` | the icons keys use, by name: `d` (SVG path data, filled nonzero, drawn in the key's `color`) and `viewBox`, or `png` (base64, up to 128x128 px and 24 KiB, drawn as it is, e.g. an emoji) |
+| `images` | custom images by ID, base64; one alone fills the key |
 | `fonts` | custom fonts by ID, base64 |
 
 ## Keys
@@ -53,7 +60,7 @@ Key 13 is the wide one. The `render` package draws keys as the deck does; it bui
 
 | Field | |
 |---|---|
-| `icon` | a built-in icon: any [Material Symbols](https://fonts.google.com/icons) name, such as `volume_up`, or `play-pause`, `next`, `prev`, `mute`, `volume-up`, `volume-down`, `github`, `discord`. `deckd icons` lists them all, and `deckd icons-json` gives them as SVG. |
+| `icon` | an icon in `icons`, by name |
 | `image` | a custom image's ID, instead of `icon` |
 | `label` | text, up to 32 characters; up to 3 lines (`\n`) on a key without an icon |
 | `font` | the label's font: a custom font's ID, or `go-regular`, `go-medium` (default), `go-bold`, `go-italic`, `go-mono`, ... (`deckd fonts`) |
@@ -62,6 +69,10 @@ Key 13 is the wide one. The `render` package draws keys as the deck does; it bui
 | `on` | another look (`icon`, `image`, `label`, `font`, `color`, `background`) while the action's state is on, e.g. while Discord is muted. Discord mute and deafen have a built-in one. |
 
 A button shows an icon, a label, or both.
+
+Every icon a key can show must be in `icons`, including the built-in looks of app keys (for
+example Discord mute shows `mic`, and `mic_off` while muted). The configuration website adds
+them; the deck refuses to save a config that's missing any.
 
 ## Actions
 
@@ -99,4 +110,5 @@ so on.
 | Config file | 2 MiB, images and fonts included |
 | Image | 256 KiB and 512x512 px; keys are 196 px, so size them to that |
 | Font | 512 KiB |
+| Icons | 256; a path up to 16 KiB, a PNG up to 24 KiB and 128x128 px |
 | One PC action | 8 KiB as JSON |

@@ -2,7 +2,6 @@ package gfx
 
 import (
 	"image"
-	"strings"
 	"testing"
 )
 
@@ -66,49 +65,21 @@ func TestImage(t *testing.T) {
 	}
 }
 
-func TestIconsDraw(t *testing.T) {
-	r := image.Rect(0, 0, 120, 120)
-	names := []string{"undo", "volume_up", "rocket_launch"}
-	for n := range drawn {
-		names = append(names, n)
+func TestIconMask(t *testing.T) {
+	// a square over the left half of a 2:1 box, centred: the middle quarter
+	ic, err := ParseIcon("M0 0H10V10H0Z", "0 0 20 10")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for n := range aliases {
-		names = append(names, n)
+	m := ic.Mask(100)
+	at := func(x, y int) uint8 { return m.AlphaAt(x, y).A }
+	if at(25, 50) != 0xff || at(75, 50) != 0 || at(25, 10) != 0 || at(25, 90) != 0 {
+		t.Errorf("coverage %d %d %d %d", at(25, 50), at(75, 50), at(25, 10), at(25, 90))
 	}
-	for _, name := range names {
-		c := NewCanvas(120, 120)
-		c.DrawIcon(name, r, 100, 0xffffff)
-		n := lit(c, r, 0)
-		if n < 500 || n > 10000-500 {
-			t.Errorf("%s: %d of 10000 pixels lit", name, n)
+	for _, bad := range [][2]string{{"M0", "0 0 1 1"}, {"M0 0H1V1Z", "0 0 0 1"}, {"M0 0H1V1Z", "x"}} {
+		if _, err := ParseIcon(bad[0], bad[1]); err == nil {
+			t.Errorf("%q in %q parsed", bad[0], bad[1])
 		}
-		// cached: drawing again gives the same picture
-		c2 := NewCanvas(120, 120)
-		c2.DrawIcon(name, r, 100, 0xffffff)
-		if lit(c2, r, 0) != n {
-			t.Errorf("%s: cached draw differs", name)
-		}
-	}
-}
-
-func TestUnknownIcon(t *testing.T) {
-	c := NewCanvas(50, 50)
-	c.DrawIcon("no-such-icon", image.Rect(0, 0, 50, 50), 40, 0xffffff)
-	if lit(c, image.Rect(0, 0, 50, 50), 0) != 0 {
-		t.Error("drew an unknown icon")
-	}
-}
-
-func TestMirror(t *testing.T) {
-	r := image.Rect(0, 0, 100, 100)
-	a, b := NewCanvas(100, 100), NewCanvas(100, 100)
-	a.DrawIcon("next", r, 100, 0xffffff)
-	b.DrawIcon("prev", r, 100, 0xffffff)
-	// antialiased edges can differ by a pixel; compare the halves
-	left, right := image.Rect(0, 0, 50, 100), image.Rect(50, 0, 100, 100)
-	if lit(a, left, 0) != lit(b, right, 0) || lit(a, right, 0) != lit(b, left, 0) {
-		t.Errorf("prev isn't next mirrored: halves %d/%d vs %d/%d",
-			lit(a, left, 0), lit(a, right, 0), lit(b, left, 0), lit(b, right, 0))
 	}
 }
 
@@ -145,76 +116,5 @@ func TestDrawNumber(t *testing.T) {
 	// "1" has 8 lit glyph pixels and "8" has 13, each 2x2
 	if got := lit(c, image.Rect(0, 0, 40, 20), 0); got != (8+13)*4 {
 		t.Errorf("%d pixels lit", got)
-	}
-}
-
-func TestParsePath(t *testing.T) {
-	cases := []struct {
-		d     string
-		polys int
-	}{
-		{"M0 0L10 0L10 10Z", 1},
-		{"m0 0h10v10h-10z m20 0l5 5h-5z", 2},
-		{"M0 0H10V10Z", 1},
-		{"M0 0C1 1 2 2 3 3S5 5 6 6Q7 7 8 8T10 10z", 1},
-		{"M0 0c1 1 2 2 3 3s1 1 2 2q1 1 2 2t2 2z", 1},
-		{"M1.5.5-2-3e1L4,4", 1},
-		{"M0 0 1 1 2 0Z", 1},
-	}
-	for _, tc := range cases {
-		polys, err := parsePath(tc.d)
-		if err != nil {
-			t.Errorf("%q: %v", tc.d, err)
-			continue
-		}
-		if len(polys) != tc.polys {
-			t.Errorf("%q: %d polygons, want %d", tc.d, len(polys), tc.polys)
-		}
-	}
-	for _, d := range []string{"M0", "M0 0 X5", "M0 0L1", "M0 0A1 1 0 0 0 1 1", "M0 0L1e"} {
-		if _, err := parsePath(d); err == nil {
-			t.Errorf("%q: parsed", d)
-		}
-	}
-}
-
-func TestParsePathCurve(t *testing.T) {
-	polys, err := parsePath("M0 0C0 10 10 10 10 0Z")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := polys[0]
-	if len(p) < 4 {
-		t.Fatalf("curve flattened to %d points", len(p))
-	}
-	last := p[len(p)-1]
-	if last.X != 10 || last.Y != 0 {
-		t.Errorf("curve ends at %v", last)
-	}
-	top := 0.0
-	for _, pt := range p {
-		top = max(top, pt.Y)
-	}
-	if top < 7 || top > 7.6 {
-		t.Errorf("curve peaks at %v, want 7.5", top)
-	}
-}
-
-func TestIconsSVG(t *testing.T) {
-	icons := IconsSVG()
-	for _, n := range IconNames() {
-		ic, ok := icons[n]
-		if !ok || !strings.HasPrefix(strings.ToUpper(ic.D), "M") || ic.ViewBox == "" {
-			t.Errorf("%s: %+v", n, ic)
-		}
-	}
-	if len(icons) != len(IconNames()) {
-		t.Errorf("%d icons as SVG, %d names", len(icons), len(IconNames()))
-	}
-	if icons["reload"] != icons["refresh"] {
-		t.Error("an alias isn't its icon")
-	}
-	if p := icons["play-pause"]; p.ViewBox != "0 0 100 100" || !strings.HasSuffix(p.D, "Z") {
-		t.Errorf("play-pause %+v", p)
 	}
 }

@@ -1,13 +1,19 @@
-package gfx
+// Package svgpath reads SVG path data, for single-colour icons.
+package svgpath
 
 import (
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 )
 
-// parsePath flattens SVG path data into polygons. It supports the commands
+// Pt is a 2D point.
+type Pt struct{ X, Y float64 }
+
+// Parse flattens SVG path data into polygons. It supports the commands
 // M L H V C S Q T Z, absolute and relative.
-func parsePath(d string) ([][]Pt, error) {
+func Parse(d string) ([][]Pt, error) {
 	toks, err := tokenize(d)
 	if err != nil {
 		return nil, err
@@ -213,4 +219,23 @@ func tokenize(d string) ([]token, error) {
 		}
 	}
 	return toks, nil
+}
+
+// ViewBox parses an SVG viewBox, "minx miny width height", with a positive
+// width and height.
+func ViewBox(s string) (x, y, w, h float64, err error) {
+	f := strings.Fields(strings.ReplaceAll(s, ",", " "))
+	if len(f) != 4 {
+		return 0, 0, 0, 0, fmt.Errorf("viewBox %q: want 4 numbers", s)
+	}
+	v := make([]float64, 4)
+	for i := range f {
+		if v[i], err = strconv.ParseFloat(f[i], 64); err != nil || math.IsNaN(v[i]) || math.IsInf(v[i], 0) {
+			return 0, 0, 0, 0, fmt.Errorf("viewBox %q: bad number", s)
+		}
+	}
+	if v[2] <= 0 || v[3] <= 0 {
+		return 0, 0, 0, 0, fmt.Errorf("viewBox %q: empty", s)
+	}
+	return v[0], v[1], v[2], v[3], nil
 }

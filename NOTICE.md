@@ -4,9 +4,9 @@ d200-deck is licensed under the GNU GPL v3 or later ([LICENSE](LICENSE)). It inc
 
 | Component | Where | Licence |
 |---|---|---|
-| [Material Symbols](https://github.com/google/material-design-icons) (Rounded, filled) icon paths, Copyright Google LLC | `internal/gfx/symbols.go` | Apache-2.0 ([LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)) |
-| GitHub mark from [Primer Octicons](https://github.com/primer/octicons), Copyright GitHub Inc. | `internal/gfx/icons.go` | MIT ([LICENSES/MIT-primer-octicons.txt](LICENSES/MIT-primer-octicons.txt)) |
-| Discord symbol from [Discord's brand assets](https://discord.com/branding), Copyright Discord Inc. | `internal/gfx/icons.go` | used under Discord's brand guidelines |
+| [Material Symbols](https://github.com/google/material-design-icons) (Rounded, filled) icon paths, Copyright Google LLC | `icons/symbols.go`; the ones the device uses itself in `deck/default_icons.go` and `internal/deckd/system_icons.go` | Apache-2.0 ([LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)) |
+| GitHub mark from [Primer Octicons](https://github.com/primer/octicons), Copyright GitHub Inc. | `icons/marks.go`, `deck/default_icons.go` | MIT ([LICENSES/MIT-primer-octicons.txt](LICENSES/MIT-primer-octicons.txt)) |
+| Discord symbol from [Discord's brand assets](https://discord.com/branding), Copyright Discord Inc. | `icons/marks.go`, `deck/default_icons.go` | used under Discord's brand guidelines |
 | [golang.org/x/image](https://pkg.go.dev/golang.org/x/image), including the Go fonts | Go module | BSD-3-Clause (in the module) |
 | [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) (used by x/image) | Go module | BSD-3-Clause (in the module) |
 | [fyne.io/systray](https://github.com/fyne-io/systray) (deckhost tray icon) | Go module | Apache-2.0 (in the module) |

@@ -55,10 +55,14 @@ other settings. An app it doesn't know, or an unknown op, is an error result.
 
 ## Icons and fonts
 
-- **Built-in** (`icon`): all of Material Symbols (Rounded, filled; ~3,900, by their own names such
-  as `volume_up`, see [fonts.google.com/icons](https://fonts.google.com/icons)), a few drawn ones
-  (`play-pause`, `next`, `prev`, `mute`, `volume-up`, `volume-down`, `github`) and older aliases
-  (`back`, `globe`, ...). `deckd icons` lists every name. Paths are parsed only when drawn.
+- **Icons** (`icon`): the config carries the icons its keys use (`icons`, by name), so the
+  device has none of its own (bar its own screens'). Each is a single-colour SVG path, drawn in
+  the key's colour, or a small PNG (emoji) drawn as it is. The configuration website picks them
+  from a catalog (package `icons`: Material Symbols, Rounded, filled, ~3,900; `play-pause`,
+  `next`, `prev`, `mute`, `volume-up`, `volume-down`, `github`, `discord`; older aliases such as
+  `back`) and `icons.Embed` adds the ones a config needs, app keys' built-in looks included.
+  Saving a config without them fails; a config already on the device shows such keys without
+  the icon.
 - **Custom** (`image`): PNG or JPEG files kept in the config itself (`images`, base64 by ID), so
   saving the config saves them too and an OS update can't separate them. Limits: 256 KiB and
   512x512 px per image, 2 MiB per config. Size them to the keys (196 px) before upload. The device

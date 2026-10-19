@@ -28,6 +28,7 @@ func newTestDeckd() *deckd {
 		redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 16)}
 	d.pages = []string{d.cfg.Home}
 	d.renderer = render.New(d.cfg)
+	d.renderer.Extra = systemIcons
 	d.run = newRunner("")
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	return d
@@ -347,8 +348,8 @@ func TestLoadConfig(t *testing.T) {
 	custom.Pages["only"].Keys[0] = deck.Button{Icon: "no-such-icon"}
 	b, _ = json.Marshal(custom)
 	os.WriteFile(good, b, 0o644)
-	if c, _ := loadConfig(good); c.Home != "main" {
-		t.Error("config with an unknown icon was loaded")
+	if c, _ := loadConfig(good); c.Home != "only" {
+		t.Error("config missing an icon not loaded: its keys should show without it")
 	}
 }
 
@@ -599,12 +600,12 @@ func TestCommand(t *testing.T) {
 	old := os.Stdout
 	os.Stdout = out
 	t.Cleanup(func() { os.Stdout = old })
-	for _, name := range []string{"hid-descriptor", "raw-descriptor", "icons", "fonts", "default-config"} {
+	for _, name := range []string{"hid-descriptor", "raw-descriptor", "fonts", "default-config"} {
 		if !Command(name) {
 			t.Errorf("%s isn't a command", name)
 		}
 	}
-	if Command("keys") || Command("nope") {
+	if Command("keys") || Command("nope") || Command("icons") {
 		t.Error("not a command, but ran")
 	}
 	if fi, _ := out.Stat(); fi.Size() < 1000 {

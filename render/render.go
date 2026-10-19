@@ -56,7 +56,11 @@ const Foreground = 0xe8e8e8
 // images and fonts on first use, and keeps them (images up to
 // maxCachedPixels). It is not safe for concurrent use.
 type Renderer struct {
+	// Extra are icons for screens the device draws itself, not configs.
+	Extra map[string]deck.Icon
+
 	cfg       *deck.Config
+	masks     map[imageKey]*image.Alpha // path icons, drawn
 	images    map[imageKey]*image.RGBA
 	pixels    int // in images
 	badImages map[string]bool
@@ -81,6 +85,7 @@ func (r *Renderer) SetConfig(cfg *deck.Config) {
 		return
 	}
 	r.cfg = cfg
+	clear(r.masks)
 	clear(r.fonts)
 	clear(r.images)
 	clear(r.badImages)
@@ -135,12 +140,13 @@ func (r *Renderer) draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok b
 	// icon draws the icon or custom image in a size x size square centred in ir
 	icon := func(ir image.Rectangle, size int) {
 		if b.Image == "" {
-			c.DrawIcon(b.Icon, ir, size, fg)
+			r.drawIcon(c, b.Icon, ir, size, fg)
 		} else if img := r.image(b.Image, size, size); img != nil {
 			c.DrawImage(img, ir)
 		}
 	}
-	hasIcon := b.Image != "" || gfx.HasIcon(b.Icon)
+	_, known := r.icon(b.Icon)
+	hasIcon := b.Image != "" || known
 	label := strings.ReplaceAll(b.Label, "\n", " ")
 	switch {
 	case hasIcon && label != "" && area.Dx() > area.Dy():
@@ -219,11 +225,66 @@ func FitText(f *gfx.Font, s string, width, px int) int {
 	return px
 }
 
+// icon finds an icon: the config's, then Extra. A key naming one that's
+// in neither shows no icon.
+func (r *Renderer) icon(name string) (deck.Icon, bool) {
+	if name == "" {
+		return deck.Icon{}, false
+	}
+	if r.cfg != nil {
+		if ic, ok := r.cfg.Icons[name]; ok {
+			return ic, true
+		}
+	}
+	ic, ok := r.Extra[name]
+	return ic, ok
+}
+
+// maxMasks bounds the path icons kept drawn; a page shows at most a few.
+const maxMasks = 128
+
+// drawIcon draws the named icon centred in ir, size pixels square: a path
+// icon in fg, a picture as it is.
+func (r *Renderer) drawIcon(c *gfx.Canvas, name string, ir image.Rectangle, size int, fg uint32) {
+	ic, ok := r.icon(name)
+	if !ok {
+		return
+	}
+	if ic.PNG != "" {
+		if img := r.picture("\x00"+name, ic.PNG, size, size); img != nil {
+			c.DrawImage(img, ir)
+		}
+		return
+	}
+	k := imageKey{name, size, size}
+	m, ok := r.masks[k]
+	if !ok {
+		if p, err := gfx.ParseIcon(ic.D, ic.ViewBox); err != nil {
+			log.Printf("icon %q: %v", name, err)
+		} else {
+			m = p.Mask(size)
+		}
+		if r.masks == nil || len(r.masks) >= maxMasks {
+			r.masks = map[imageKey]*image.Alpha{}
+		}
+		r.masks[k] = m
+	}
+	if m != nil {
+		c.DrawMask(m, image.Pt(ir.Min.X+(ir.Dx()-size)/2, ir.Min.Y+(ir.Dy()-size)/2), fg)
+	}
+}
+
 // image is custom image id scaled to fit w x h, or nil if it's broken.
 func (r *Renderer) image(id string, w, h int) *image.RGBA {
-	if r.badImages[id] {
+	if r.badImages[id] || r.cfg == nil {
 		return nil
 	}
+	return r.picture(id, r.cfg.Images[id], w, h)
+}
+
+// picture is base64 image data, cached as id, scaled to fit w x h; nil if
+// it's broken.
+func (r *Renderer) picture(id, data string, w, h int) *image.RGBA {
 	k := imageKey{id, w, h}
 	if img, ok := r.images[k]; ok {
 		return img
@@ -232,7 +293,7 @@ func (r *Renderer) image(id string, w, h int) *image.RGBA {
 		r.images = map[imageKey]*image.RGBA{}
 	}
 	var scaled *image.RGBA
-	if img, err := deck.DecodeImage(r.cfg.Images[id]); err != nil {
+	if img, err := deck.DecodeImage(data); err != nil {
 		log.Printf("image %q: %v", id, err)
 	} else {
 		scaled = gfx.Fit(img, w, h)
@@ -287,17 +348,4 @@ func (r *Renderer) broken(b deck.Button) {
 		}
 		r.badImages[b.Image] = true
 	}
-}
-
-// IconNames lists every built-in icon name, aliases included, sorted.
-func IconNames() []string { return gfx.IconNames() }
-
-// HasIcon reports whether name is a built-in icon.
-func HasIcon(name string) bool { return gfx.HasIcon(name) }
-
-// IconPath is built-in icon name as SVG path data, filled nonzero, in a
-// square viewBox.
-func IconPath(name string) (d, viewBox string, ok bool) {
-	s, ok := gfx.IconSVGOf(name)
-	return s.D, s.ViewBox, ok
 }

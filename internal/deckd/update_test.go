@@ -3,7 +3,6 @@ package deckd
 import (
 	"testing"
 
-	"github.com/riptidewave93/d200-deck/internal/gfx"
 	"github.com/riptidewave93/d200-deck/internal/ota"
 )
 
@@ -18,7 +17,7 @@ func TestUpdateScreens(t *testing.T) {
 			if _, ok := o.drawn[k]; ok {
 				t.Errorf("%s: key %d drawn twice", name, k)
 			}
-			if b.Icon != "" && !gfx.HasIcon(b.Icon) {
+			if _, ok := systemIcons[b.Icon]; b.Icon != "" && !ok {
 				t.Errorf("%s key %d: no icon %q", name, k, b.Icon)
 			}
 		}

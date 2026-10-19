@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -59,6 +60,8 @@ type Config struct {
 	Images map[string]string `json:"images,omitempty"`
 	// Fonts are custom fonts by ID: TrueType or OpenType files, base64-encoded.
 	Fonts map[string]string `json:"fonts,omitempty"`
+	// Icons are the icons buttons name, by name.
+	Icons map[string]Icon `json:"icons,omitempty"`
 }
 
 // Page assigns buttons to keys; keys without a button are blank.
@@ -69,7 +72,7 @@ type Page struct {
 // Button is what a key shows and does. It shows an icon (built-in or
 // custom), a label, or both.
 type Button struct {
-	// Icon names a built-in icon.
+	// Icon names an icon in Config.Icons.
 	Icon string `json:"icon,omitempty"`
 	// Image names a custom icon in Config.Images, instead of Icon.
 	Image string `json:"image,omitempty"`
@@ -316,6 +319,17 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("font %q: %w", id, err)
 		}
 	}
+	if len(c.Icons) > MaxIcons {
+		return fmt.Errorf("over %d icons", MaxIcons)
+	}
+	for name, ic := range c.Icons {
+		if !validID(name) {
+			return fmt.Errorf("icon %q: names are 1-64 letters, digits, '-', '_' or '.'", name)
+		}
+		if err := validateIcon(ic); err != nil {
+			return fmt.Errorf("icon %q: %w", name, err)
+		}
+	}
 	for name, p := range c.Pages {
 		for k, b := range p.Keys {
 			where := "page " + strconv.Quote(name) + " key " + strconv.Itoa(k)
@@ -509,7 +523,7 @@ func DefaultConfig() *Config {
 		return Button{Icon: icon, Label: label, Color: white, Background: DiscordBlurple, Action: a}
 	}
 	discordOp := func(op string) Action { return Action{Type: ActionApp, App: AppDiscord, Op: op} }
-	return &Config{
+	c := &Config{
 		Version: ConfigVersion,
 		Home:    "main",
 		Pages: map[string]Page{
@@ -562,4 +576,6 @@ func DefaultConfig() *Config {
 			}},
 		},
 	}
+	c.Icons = maps.Clone(defaultIcons)
+	return c
 }

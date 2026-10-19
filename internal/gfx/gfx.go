@@ -32,9 +32,6 @@ func (c *Canvas) Fill(r Rect, col uint32) {
 	}
 }
 
-// Pt is a 2D point.
-type Pt struct{ X, Y float64 }
-
 // DrawMask paints col through coverage mask m, placed with its origin at at.
 func (c *Canvas) DrawMask(m *image.Alpha, at image.Point, col uint32) {
 	dst := m.Bounds().Add(at).Intersect(image.Rect(0, 0, c.W, c.H))
