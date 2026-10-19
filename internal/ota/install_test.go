@@ -116,6 +116,16 @@ func TestConfirm(t *testing.T) {
 		t.Errorf("fell back: %q %v", got, env.vars)
 	}
 
+	// no trial, but the stable slot didn't start
+	env = &fakeEnv{vars: map[string]string{"slot": "a", "upgrade_available": "0", "ota_result": "ok"}}
+	if got, _ := Confirm(env, "b", healthy(true), reboot); got != FellBack || env.vars["slot"] != "b" || env.vars["ota_result"] != FellBack {
+		t.Errorf("fell back without a trial: %q %v", got, env.vars)
+	}
+	env = &fakeEnv{vars: map[string]string{}} // never updated
+	if got, _ := Confirm(env, "a", healthy(true), reboot); got != "" || len(env.sets) != 0 {
+		t.Errorf("fresh env: %q %v", got, env.vars)
+	}
+
 	if _, err := Confirm(&fakeEnv{fail: true}, "a", healthy(true), reboot); err == nil {
 		t.Error("env error hidden")
 	}

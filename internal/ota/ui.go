@@ -22,7 +22,8 @@ const StepFailed = "Failed"
 type ConfirmRequest struct {
 	Version string `json:"version"`
 	Flavour string `json:"flavour"`
-	Older   bool   `json:"older"` // not newer than the installed build
+	Older   bool   `json:"older"`  // not newer than the installed build
+	Signed  bool   `json:"signed"` // an official build
 }
 
 // UIReply answers a confirm: OK if the user chose Install.

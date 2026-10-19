@@ -36,10 +36,10 @@ type Status struct {
 	State     string          `json:"state"`
 	Step      string          `json:"step,omitempty"`
 	Error     string          `json:"error,omitempty"`
-	Update    *Slot           `json:"update,omitempty"` // the bundle being installed
+	Update    *Bundle         `json:"update,omitempty"` // the bundle being installed
 	Slot      string          `json:"slot"`             // running
 	Slots     map[string]Slot `json:"slots"`
-	OTAResult string          `json:"ota_result,omitempty"` // of the last update: trial, ok, failed, rolled-back
+	OTAResult string          `json:"ota_result,omitempty"` // of the last update: trial, ok, failed, rolled-back; or fell-back
 	Last      *Report         `json:"last,omitempty"`
 }
 
@@ -50,9 +50,16 @@ type Slot struct {
 	Build   string `json:"build"`
 }
 
+// Bundle is an update received.
+type Bundle struct {
+	Slot
+	Signed bool `json:"signed"` // an official build
+}
+
 // Report is what the last install did.
 type Report struct {
 	Version string       `json:"version"`
+	Signed  bool         `json:"signed"`
 	Slot    string       `json:"slot"`
 	Results []ota.Result `json:"results"`
 	Error   string       `json:"error,omitempty"`
@@ -211,7 +218,7 @@ func (u *updater) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.mu.Lock()
-	u.st.Update = &Slot{m.Version, m.Flavour, strconv.FormatInt(m.BuildID, 10)}
+	u.st.Update = &Bundle{Slot{m.Version, m.Flavour, strconv.FormatInt(m.BuildID, 10)}, m.Signed}
 	u.mu.Unlock()
 	u.set(stateConfirming, "", nil)
 	go u.run(m)
@@ -259,7 +266,7 @@ func (u *updater) run(m *ota.Manifest) {
 	}
 	defer sc.Close()
 	installed, _ := strconv.ParseInt(u.installed.Build, 10, 64)
-	ok, err := sc.Confirm(ota.ConfirmRequest{Version: m.Version, Flavour: m.Flavour, Older: m.BuildID <= installed})
+	ok, err := sc.Confirm(ota.ConfirmRequest{Version: m.Version, Flavour: m.Flavour, Older: m.BuildID <= installed, Signed: m.Signed})
 	if err != nil || !ok {
 		u.set(stateCancelled, "", err)
 		return
@@ -273,7 +280,7 @@ func (u *updater) run(m *ota.Manifest) {
 		total = of
 	})
 	slot := ota.Other(u.slot)
-	report := &Report{Version: m.Version, Slot: slot, Results: results}
+	report := &Report{Version: m.Version, Signed: m.Signed, Slot: slot, Results: results}
 	if err != nil {
 		report.Error = err.Error()
 	}

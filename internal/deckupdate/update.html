@@ -41,7 +41,7 @@ function describe(s) {
   switch (s.state) {
     case "checking": return ["Checking the last update…", ""];
     case "receiving": return ["Receiving the update…", ""];
-    case "confirming": return [`Press Install on the device to install ${s.update.version}, or Cancel.`, ""];
+    case "confirming": return [`${s.update.version} is ${official(s.update)}. Press Install on the device to install it, or Cancel.`, ""];
     case "installing": return [`Installing ${s.update.version}: ${s.step || "starting"}.`, ""];
     case "rebooting": return ["Restarting the device…", ""];
     case "failed": return [`Update failed: ${s.error}`, "bad"];
@@ -50,6 +50,8 @@ function describe(s) {
     default: return ["", ""];
   }
 }
+
+function official(u) { return u.signed ? "an official build" : "an unofficial build"; }
 
 // written lists what the last update wrote and what it left unchanged.
 function written(last) {
@@ -60,7 +62,8 @@ function written(last) {
 
 function show(s) {
   // only an update that took: a failed one is as if there was none
-  $("last").textContent = s.last && !s.last.error && s.ota_result === "ok" ? s.last.version : "none";
+  $("last").textContent = s.last && !s.last.error && s.ota_result === "ok"
+    ? `${s.last.version} (${s.last.signed ? "official" : "unofficial"})` : "none";
   const during = ["receiving", "confirming", "installing", "rebooting"].includes(s.state) ||
     (s.state === "checking" && s.ota_result === "trial");
   if (during) updating = true;
@@ -70,6 +73,9 @@ function show(s) {
     [text, cls] = s.ota_result === "ok"
       ? [`The update is done. The device is running ${s.slots?.[s.slot]?.version ?? "it"}.${written(s.last)}`, ""]
       : ["The update didn't take: the device went back to the version it had.", "bad"];
+  }
+  if (s.state === "idle" && !updating && s.ota_result === "fell-back") {
+    [text, cls] = ["The system didn't start, so the device started its other copy. Install an update to repair it.", "bad"];
   }
   $("state").textContent = text;
   $("state").className = cls || "muted";

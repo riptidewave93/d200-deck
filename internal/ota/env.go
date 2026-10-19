@@ -58,16 +58,25 @@ func Other(slot string) string {
 const (
 	Confirmed = "ok"
 	Failed    = "failed"
+	FellBack  = "fell-back" // the env's slot stopped starting
 	Rebooting = "rebooting"
 )
 
 // Confirm settles a trial boot at startup: if the new slot is running and
 // healthy it's kept; if U-Boot couldn't boot it, the env goes back to the
-// running slot. It returns what it did, "" if there was no trial.
+// running slot. Without a trial, if U-Boot booted the other slot because the
+// env's one didn't start, the env takes the running one (FellBack). It
+// returns what it did, "" if nothing.
 func Confirm(env Env, running string, healthy func() bool, reboot func() error) (string, error) {
 	e, err := env.Get()
-	if err != nil || running == "" || e["upgrade_available"] != "1" {
+	if err != nil || running == "" {
 		return "", err
+	}
+	if e["upgrade_available"] != "1" {
+		if s := e["slot"]; (s == "a" || s == "b") && s != running {
+			return FellBack, env.Set("slot", running, "bootcount", "0", "ota_result", FellBack)
+		}
+		return "", nil
 	}
 	if e["slot"] != running {
 		return Failed, env.Set("slot", running, "upgrade_available", "0", "bootcount", "0", "ota_result", Failed)

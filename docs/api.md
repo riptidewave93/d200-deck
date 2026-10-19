@@ -186,11 +186,11 @@ Errors: 403 no header, 409 an update is already under way, 411 no length, 400 no
 {
   "state": "installing",
   "step": "Kernel (3/4)",
-  "update": {"version": "4b96a04", "flavour": "debug", "build": "202610192038"},
+  "update": {"version": "4b96a04", "flavour": "debug", "build": "202610192038", "signed": false},
   "slot": "b",
   "slots": {"a": {...}, "b": {...}},
   "ota_result": "ok",
-  "last": {"version": "...", "slot": "a", "results": [{"target": "kernel", "name": "Kernel", "written": true}]}
+  "last": {"version": "...", "signed": true, "slot": "a", "results": [{"target": "kernel", "name": "Kernel", "written": true}]}
 }
 ```
 
@@ -206,5 +206,9 @@ Errors: 403 no header, 409 an update is already under way, 411 no length, 400 no
 | `cancelled` | Cancel was pressed, or no answer in 2 minutes |
 | `unsupported` | this system can't update itself |
 
+`signed` says it's an official build: its `manifest.sig` checks out with the key in
+`/etc/d200/update-key.pub`. Unsigned builds install just the same.
+
 `ota_result` is how the last update went: `trial` (just installed, being checked), `ok`, `failed`
-or `rolled-back`.
+or `rolled-back`. Or `fell-back`: the system stopped starting, so the device started the one in
+the other slot; the next update writes over the broken one.

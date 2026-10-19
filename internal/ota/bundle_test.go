@@ -3,11 +3,15 @@ package ota
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -124,7 +128,11 @@ func TestCheckFlavour(t *testing.T) {
 func TestReceiveRealBundle(t *testing.T) {
 	path := os.Getenv("D200_BUNDLE")
 	if path == "" {
-		t.Skip("set D200_BUNDLE to a bundle to check it")
+		t.Skip("set D200_BUNDLE to a bundle to check it, and D200_UPDATE_KEY to its key")
+	}
+	if k := os.Getenv("D200_UPDATE_KEY"); k != "" {
+		KeyFile = k
+		t.Cleanup(func() { KeyFile = "/etc/d200/update-key.pub" })
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -135,5 +143,48 @@ func TestReceiveRealBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("%s %s %d", m.Version, m.Flavour, m.BuildID)
+	t.Logf("%s %s %d, signed %v", m.Version, m.Flavour, m.BuildID, m.Signed)
+}
+
+func TestReceiveSigned(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	der, _ := x509.MarshalPKIXPublicKey(pub)
+	KeyFile = filepath.Join(t.TempDir(), "update-key.pub")
+	t.Cleanup(func() { KeyFile = "/etc/d200/update-key.pub" })
+	os.WriteFile(KeyFile, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o644)
+
+	m, ms := testBundle()
+	b, _ := json.Marshal(m)
+	_, other, _ := ed25519.GenerateKey(nil)
+	signed := func(sig []byte) []member { return append([]member{{SigFile, sig}}, ms...) }
+	cases := []struct {
+		name    string
+		members []member
+		signed  bool
+	}{
+		{"signed", signed(ed25519.Sign(priv, b)), true},
+		{"unsigned", ms, false},
+		{"another key", signed(ed25519.Sign(other, b)), false},
+		{"another manifest", signed(ed25519.Sign(priv, append(b, ' '))), false},
+		{"short", signed([]byte("sig")), false},
+	}
+	for _, tc := range cases {
+		got, err := Receive(bytes.NewReader(tarOf(t, m, tc.members)), t.TempDir())
+		if err != nil || got.Signed != tc.signed {
+			t.Errorf("%s: signed %v, %v", tc.name, got != nil && got.Signed, err)
+		}
+	}
+	os.Remove(KeyFile)
+	if got, err := Receive(bytes.NewReader(tarOf(t, m, signed(ed25519.Sign(priv, b)))), t.TempDir()); err != nil || got.Signed {
+		t.Errorf("no key: signed %v, %v", got != nil && got.Signed, err)
+	}
+
+	for name, members := range map[string][]member{
+		"too long": signed(make([]byte, 65)),
+		"late":     append(slices.Clone(ms), member{SigFile, ed25519.Sign(priv, b)}),
+	} {
+		if _, err := Receive(bytes.NewReader(tarOf(t, m, members)), t.TempDir()); err == nil {
+			t.Errorf("%s signature accepted", name)
+		}
+	}
 }

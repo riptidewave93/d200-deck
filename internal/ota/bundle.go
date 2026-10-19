@@ -5,9 +5,12 @@ package ota
 
 import (
 	"archive/tar"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +30,10 @@ type Manifest struct {
 	Version string  `json:"version"`
 	BuildID int64   `json:"build_id"` // UTC YYYYMMDDHHMM, as os-release's BUILD_ID
 	Images  []Image `json:"images"`
+
+	// Signed is set by Receive: the bundle's signature checks out with
+	// KeyFile, so it's an official build.
+	Signed bool `json:"-"`
 }
 
 // Image is one file of a bundle.
@@ -52,10 +59,17 @@ const (
 	Product = "d200"
 
 	ManifestFile = "manifest.json"
-	maxManifest  = 64 << 10
-	maxImage     = 64 << 20
-	idbSize      = 256 << 10 // one IDB copy
+	// SigFile, if present, comes straight after the manifest: an Ed25519
+	// signature of manifest.json, which holds every image's sha256.
+	SigFile     = "manifest.sig"
+	maxManifest = 64 << 10
+	maxImage    = 64 << 20
+	idbSize     = 256 << 10 // one IDB copy
 )
+
+// KeyFile is the public key of official builds (PEM, PKIX, Ed25519). A fork
+// puts its own here.
+var KeyFile = "/etc/d200/update-key.pub"
 
 // check reports what's wrong with the manifest, if anything.
 func (m *Manifest) check() error {
@@ -74,7 +88,7 @@ func (m *Manifest) check() error {
 		switch {
 		case im.Target == "":
 			return fmt.Errorf("manifest: no %s image", t)
-		case !validFile(im.File) || im.File == ManifestFile || slices.Contains(files, im.File):
+		case !validFile(im.File) || im.File == ManifestFile || im.File == SigFile || slices.Contains(files, im.File):
 			return fmt.Errorf("manifest: bad file name %q", im.File)
 		case im.Size <= 0 || im.Size > maxImage || (t == "idbloader" && im.Size != idbSize):
 			return fmt.Errorf("manifest: bad size for %s", im.File)
@@ -101,7 +115,7 @@ func validFile(name string) bool {
 
 // Receive reads a bundle (a tar) from r into dir, one file per member, and
 // checks it: the manifest, and every listed file present once with its size
-// and sha256, and nothing else.
+// and sha256, and nothing else but an optional signature.
 func Receive(r io.Reader, dir string) (*Manifest, error) {
 	tr := tar.NewReader(r)
 	h, err := tr.Next()
@@ -127,13 +141,21 @@ func Receive(r io.Reader, dir string) (*Manifest, error) {
 	}
 
 	seen := map[string]bool{}
-	for {
+	for first := true; ; first = false {
 		h, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return nil, err
+		}
+		if first && h.Name == SigFile && h.Typeflag == tar.TypeReg && h.Size <= ed25519.SignatureSize {
+			sig, err := io.ReadAll(tr)
+			if err != nil {
+				return nil, err
+			}
+			m.Signed = verify(b, sig)
+			continue
 		}
 		i := slices.IndexFunc(m.Images, func(im Image) bool { return im.File == h.Name })
 		if i < 0 || seen[h.Name] || h.Typeflag != tar.TypeReg {
@@ -150,6 +172,21 @@ func Receive(r io.Reader, dir string) (*Manifest, error) {
 		}
 	}
 	return &m, nil
+}
+
+// verify reports whether sig signs manifest with KeyFile's key.
+func verify(manifest, sig []byte) bool {
+	b, err := os.ReadFile(KeyFile)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+	blk, _ := pem.Decode(b)
+	if blk == nil || blk.Type != "PUBLIC KEY" {
+		return false
+	}
+	key, err := x509.ParsePKIXPublicKey(blk.Bytes)
+	pub, ok := key.(ed25519.PublicKey)
+	return err == nil && ok && ed25519.Verify(pub, manifest, sig)
 }
 
 // save writes r to path, checking it against im.

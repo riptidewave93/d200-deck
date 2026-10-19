@@ -51,10 +51,14 @@ const (
 
 // confirmScreen asks whether to install c; answer gets the choice.
 func confirmScreen(c ota.ConfirmRequest, answer func(bool)) *overlay {
+	build := "Unofficial"
+	if c.Signed {
+		build = "Official"
+	}
 	o := &overlay{
 		keys: map[int]deck.Button{
 			2:  {Icon: "system_update_alt", Label: "Update?"},
-			7:  {Label: c.Version + "\n" + c.Flavour},
+			7:  {Label: c.Version + "\n" + c.Flavour + "\n" + build},
 			10: {Icon: "close", Label: "Cancel", Color: white, Background: red},
 		},
 		drawn: map[int]func(*gfx.Canvas, gfx.Rect){
@@ -71,7 +75,7 @@ func confirmScreen(c ota.ConfirmRequest, answer func(bool)) *overlay {
 	}
 	if c.Older {
 		delete(o.keys, 7)
-		o.drawn[7] = text("go-bold", amberRGB, 0, line{c.Version, 30}, line{c.Flavour, 30}, line{"NOT NEWER", 30})
+		o.drawn[7] = text("go-bold", amberRGB, 0, line{c.Version, 30}, line{c.Flavour, 30}, line{build, 30}, line{"NOT NEWER", 30})
 	}
 	return o
 }
