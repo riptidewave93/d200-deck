@@ -112,5 +112,5 @@ so on.
 | Image | 256 KiB and 512x512 px; keys are 196 px, so size them to that |
 | Font | 512 KiB |
 | Icons | 256; a path up to 16 KiB, a PNG or GIF up to 24 KiB and 128x128 px |
-| GIF | 100 frames and 4 M pixels in all (frames x width x height); frames show for 50 ms at least. Past 2 M pixels of animations on screen, the rest show their first frame. |
+| GIF | 100 frames and 4 M pixels in all (frames x width x height); frames show for 50 ms at least. A page animates up to 2 M pixels of frames as drawn (`render.MaxAnimPixels`; a full-key GIF fits with 54 frames); past that, the rest show their first frame. |
 | One PC action | 8 KiB as JSON |

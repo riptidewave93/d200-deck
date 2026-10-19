@@ -6,6 +6,7 @@ import (
 	"image"
 	"log"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,8 +66,9 @@ type Renderer struct {
 
 	start      time.Time
 	next       time.Time // when the key drawn last changes, if it's animated
-	anims      map[imageKey]*gfx.Animation
+	anims      map[imageKey]*anim
 	animPixels int
+	page       int // counts NewPage calls
 
 	cfg       *deck.Config
 	masks     map[imageKey]*image.Alpha // path icons, drawn
@@ -77,12 +79,21 @@ type Renderer struct {
 }
 
 // maxCachedPixels bounds the scaled images kept (4 bytes each): a few pages
-// of full-key images. maxAnimPixels bounds animations' frames; past it, a
-// GIF shows its first frame.
-const (
-	maxCachedPixels = 1 << 20
-	maxAnimPixels   = 2 << 20
-)
+// of full-key images.
+const maxCachedPixels = 1 << 20
+
+// MaxAnimPixels bounds the frames of the animations on a page, as drawn
+// (frames x width x height, 4 bytes each); past it, a GIF shows its first
+// frame. A full-key GIF (196 px) fits with 54 frames.
+const MaxAnimPixels = 2 << 20
+
+// anim is a GIF's frames as drawn; a is nil if it isn't animated, or was
+// refused (no room on its page).
+type anim struct {
+	a       *gfx.Animation
+	refused bool
+	page    int // the page it was last drawn on
+}
 
 type imageKey struct {
 	id   string
@@ -133,6 +144,10 @@ func (r *Renderer) Draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok b
 		c.Fill(area, Colours[Idle])
 	}
 }
+
+// NewPage says the screen now shows another page: animations not drawn since
+// may be dropped to make room for its own.
+func (r *Renderer) NewPage() { r.page++ }
 
 // Next is when the key Draw drew last changes, if it shows an animated GIF;
 // zero if it doesn't.
@@ -345,31 +360,62 @@ func (r *Renderer) picture(id, data string, w, h int) *image.RGBA {
 }
 
 // animation is data's frames scaled to fit k's size if it's an animated GIF
-// and they fit in maxAnimPixels; nil otherwise.
+// and they fit in MaxAnimPixels; nil otherwise.
 func (r *Renderer) animation(k imageKey, data string) *gfx.Animation {
 	if !strings.HasPrefix(data, "R0lGOD") { // "GIF8" in base64
 		return nil
 	}
-	if a, ok := r.anims[k]; ok {
-		return a
+	if e, ok := r.anims[k]; ok && (!e.refused || e.page == r.page) {
+		e.page = r.page
+		return e.a
 	}
 	if r.anims == nil {
-		r.anims = map[imageKey]*gfx.Animation{}
+		r.anims = map[imageKey]*anim{}
 	}
-	var a *gfx.Animation
+	e := &anim{page: r.page}
 	if g, err := deck.DecodeAnimation(data); err != nil {
 		log.Printf("image %q: %v", k.id, err)
 	} else if g != nil {
-		a = gfx.NewAnimation(g, k.w, k.h)
-		if r.animPixels+a.Pixels() > maxAnimPixels {
-			log.Printf("image %q: too many animated frames shown at once; showing the first", k.id)
-			a = nil
+		e.a = gfx.NewAnimation(g, k.w, k.h)
+		if r.animPixels+e.a.Pixels() > MaxAnimPixels {
+			r.dropOtherPages()
+		}
+		if r.animPixels+e.a.Pixels() > MaxAnimPixels {
+			log.Printf("image %q: too many animated frames on this page; showing the first", k.id)
+			e.a, e.refused = nil, true
 		} else {
-			r.animPixels += a.Pixels()
+			r.animPixels += e.a.Pixels()
 		}
 	}
-	r.anims[k] = a
-	return a
+	r.anims[k] = e
+	return e.a
+}
+
+// dropOtherPages drops the animations not drawn on this page.
+func (r *Renderer) dropOtherPages() {
+	for k, e := range r.anims {
+		if e.page != r.page {
+			if e.a != nil {
+				r.animPixels -= e.a.Pixels()
+			}
+			delete(r.anims, k)
+		}
+	}
+}
+
+// MissingGlyphs are the characters in b's labels (its own and its on
+// look's) that their font lacks; the device draws them as boxes.
+func (r *Renderer) MissingGlyphs(b deck.Button) []rune {
+	var missing []rune
+	for _, on := range []bool{false, true} {
+		s := b.Shown(on)
+		for _, c := range r.font(s.Font).Missing(s.Label) {
+			if !slices.Contains(missing, c) {
+				missing = append(missing, c)
+			}
+		}
+	}
+	return missing
 }
 
 // font returns the named font, or the default if it's empty or broken.

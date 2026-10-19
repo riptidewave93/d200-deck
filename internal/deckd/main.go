@@ -153,6 +153,7 @@ func (d *deckd) flash(i int) {
 }
 
 func (d *deckd) drawPage() {
+	d.renderer.NewPage()
 	for i := range deck.KeyCount {
 		d.drawKey(i, render.Idle)
 	}

@@ -2,6 +2,7 @@ package gfx
 
 import (
 	"image"
+	"slices"
 	"sort"
 	"sync"
 
@@ -19,6 +20,7 @@ import (
 	"golang.org/x/image/font/gofont/gosmallcaps"
 	"golang.org/x/image/font/gofont/gosmallcapsitalic"
 	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -102,6 +104,25 @@ func (f *Font) face(px int) font.Face {
 func (f *Font) Metrics(px int) (ascent, descent int) {
 	m := f.face(px).Metrics()
 	return m.Ascent.Ceil(), m.Descent.Ceil()
+}
+
+// Missing are the characters of s, other than spaces and line breaks, that
+// f has no glyph for.
+func (f *Font) Missing(s string) []rune {
+	if f.load() != nil {
+		return nil
+	}
+	var buf sfnt.Buffer
+	var missing []rune
+	for _, c := range s {
+		if c == ' ' || c == '\n' || slices.Contains(missing, c) {
+			continue
+		}
+		if i, err := f.f.GlyphIndex(&buf, c); err != nil || i == 0 {
+			missing = append(missing, c)
+		}
+	}
+	return missing
 }
 
 // TextWidth is the width of s in pixels at px pixels per em.

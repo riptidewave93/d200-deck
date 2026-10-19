@@ -379,13 +379,17 @@ func must(ic deck.Icon, ok bool) deck.Icon {
 
 // redGreenGIF is a base64 GIF of two 196 px frames, red then green, 100 ms
 // each.
-func redGreenGIF(t *testing.T) string {
+func redGreenGIF(t *testing.T) string { return testGIF(t, 2) }
+
+// testGIF is a base64 GIF of n 196 px frames, red and green in turn, 100 ms
+// each.
+func testGIF(t *testing.T, n int) string {
 	pal := color.Palette{color.RGBA{0xff, 0, 0, 0xff}, color.RGBA{0, 0xff, 0, 0xff}}
 	g := &gif.GIF{}
-	for i := range 2 {
+	for i := range n {
 		f := image.NewPaletted(image.Rect(0, 0, 196, 196), pal)
 		for j := range f.Pix {
-			f.Pix[j] = uint8(i)
+			f.Pix[j] = uint8(i % 2)
 		}
 		g.Image = append(g.Image, f)
 		g.Delay = append(g.Delay, 10)
@@ -418,5 +422,38 @@ func TestAnimatedGIF(t *testing.T) {
 	r.Draw(gfx.NewCanvas(Width, Height), Key(1), deck.Button{Label: "x"}, true, Idle)
 	if !r.Next().IsZero() {
 		t.Error("a still key is animated")
+	}
+}
+
+func TestAnimationsPerPage(t *testing.T) {
+	// one 40-frame full-key GIF fits a page's budget, two don't
+	a, b := testGIF(t, 40), testGIF(t, 40)
+	b = b[:len(b)-4] + b[len(b)-4:] // a different image with the same frames
+	r := New(&deck.Config{Images: map[string]string{"a": a, "b": b}})
+	animated := func(id string) bool {
+		r.Draw(gfx.NewCanvas(Width, Height), Key(0), deck.Button{Image: id}, true, Idle)
+		return !r.Next().IsZero()
+	}
+	if !animated("a") || animated("b") {
+		t.Fatal("budget: both GIFs animate on one page, or the first doesn't")
+	}
+	r.NewPage()
+	if !animated("b") {
+		t.Error("the refused GIF stays still on a page of its own")
+	}
+	r.NewPage()
+	if !animated("a") {
+		t.Error("an earlier page's GIF doesn't animate again")
+	}
+}
+
+func TestMissingGlyphs(t *testing.T) {
+	r := New(&deck.Config{})
+	b := deck.Button{Label: "Done ✓", On: &deck.Look{Label: "日本"}}
+	if got := string(r.MissingGlyphs(b)); got != "✓日本" {
+		t.Errorf("missing %q", got)
+	}
+	if got := r.MissingGlyphs(deck.Button{Label: "Mute\nMic"}); len(got) != 0 {
+		t.Errorf("missing %q", string(got))
 	}
 }
