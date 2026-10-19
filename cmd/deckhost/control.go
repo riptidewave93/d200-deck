@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
@@ -20,9 +19,9 @@ import (
 // and answers with one line: JSON for status, "ok" or "error: ..." otherwise.
 
 func socketPath() (string, error) {
-	dir := os.Getenv("XDG_RUNTIME_DIR")
-	if dir == "" {
-		return "", errors.New("XDG_RUNTIME_DIR is not set")
+	dir, err := runtimeDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(dir, "deckhost.sock"), nil
 }
@@ -32,10 +31,11 @@ func listenControl(d *daemon) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c, err := net.Dial("unix", path); err == nil {
-		c.Close()
-		return nil, errors.New("deckhost is already running")
+	lock, err := lockInstance(path + ".lock")
+	if err != nil {
+		return nil, err
 	}
+	d.lock = lock
 	os.Remove(path) // left by a daemon that died
 	l, err := net.Listen("unix", path)
 	if err != nil {
@@ -92,9 +92,7 @@ func (d *daemon) serveControl(c net.Conn, l net.Listener) {
 		reply(nil)
 		c.Close()
 		l.Close()
-		exe, _ := os.Executable()
-		err := syscall.Exec(exe, os.Args, os.Environ())
-		log.Fatalf("restart: %v", err)
+		log.Fatalf("restart: %v", restartSelf())
 	case "exit":
 		reply(nil)
 		c.Close()

@@ -63,10 +63,11 @@ You need Docker and `make`. Everything builds and tests in a Go container, the s
 and in CI:
 
 ```bash
-make            # check (gofmt, vet), test, build
+make            # check (gofmt, vet, go.mod tidy), test, build
 make test       # unit tests with the race detector, and the coverage total
 make cover      # per-function coverage of the last test run
-make build      # build/deckd and build/deck-update (arm64), build/deckhost (amd64)
+make build      # build/deckd and build/deck-update (arm64), build/deckhost (amd64),
+                # build/deckhost.exe (builds, but Windows support isn't written yet)
 make test DOCKER=   # use the host's Go instead of Docker
 ```
 

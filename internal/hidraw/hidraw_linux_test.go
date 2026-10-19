@@ -13,13 +13,14 @@ func TestFindAll(t *testing.T) {
 	for n, desc := range map[string][]byte{
 		"hidraw0": {0x05, 0x01, 0x09, 0x06}, // a keyboard
 		"hidraw1": {0x06, 0xd2, 0xff, 0x09, 0x01},
+		"hidraw3": {0x06, 0xd2, 0xff, 0x09, 0x01, 0xa1}, // same usage page, another device
 		"hidraw7": {0x06, 0xd2, 0xff, 0x09, 0x01},
 	} {
 		d := filepath.Join(sysHidraw, n, "device")
 		os.MkdirAll(d, 0o755)
 		os.WriteFile(filepath.Join(d, "report_descriptor"), desc, 0o644)
 	}
-	got := FindAll([]byte{0x06, 0xd2, 0xff})
+	got := FindAll([]byte{0x06, 0xd2, 0xff, 0x09, 0x01})
 	if len(got) != 2 || got[0] != "/dev/hidraw1" || got[1] != "/dev/hidraw7" {
 		t.Errorf("FindAll = %v", got)
 	}

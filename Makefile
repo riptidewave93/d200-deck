@@ -15,19 +15,26 @@ endif
 LDFLAGS := -s -w -X main.version=$(VERSION)
 DEVICE := GOOS=linux GOARCH=arm64 CGO_ENABLED=0
 PC := GOOS=linux GOARCH=amd64 CGO_ENABLED=0
+WINDOWS := GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+# what deckhost builds from: checked for Windows too
+PC_PKGS := ./cmd/deckhost ./internal/hidraw ./proto/... ./deck ./netid
 
-.PHONY: all build deckd deck-update deckhost test check cover clean
+.PHONY: all build deckd deck-update deckhost deckhost.exe test check cover clean
 
 all : check test build
 
-# Device programs (arm64) and the PC program (amd64) into ./build
-build : deckd deck-update deckhost
+# Device programs (arm64) and the PC program (Linux and Windows amd64) into ./build.
+# deckhost.exe only builds so far: Windows support isn't written yet.
+build : deckd deck-update deckhost deckhost.exe
 
 deckd deck-update :
 	$(RUN) env $(DEVICE) go build -trimpath -ldflags '$(LDFLAGS)' -o $(OUT)/$@ ./cmd/$@
 
 deckhost :
 	$(RUN) env $(PC) go build -trimpath -ldflags '$(LDFLAGS)' -o $(OUT)/$@ ./cmd/$@
+
+deckhost.exe :
+	$(RUN) env $(WINDOWS) go build -trimpath -ldflags '$(LDFLAGS)' -o $(OUT)/$@ ./cmd/deckhost
 
 # Unit tests with the race detector, and a coverage summary
 test :
@@ -38,9 +45,10 @@ test :
 cover :
 	$(RUN) go tool cover -func=$(OUT)/cover.out
 
-# Formatting and vet
+# Formatting, vet (Linux, and the PC packages for Windows) and a tidy go.mod
 check :
-	$(RUN) sh -c 'f=$$(find . -name "*.go" -not -path "./.cache/*" | xargs gofmt -l); test -z "$$f" || { echo "$$f"; exit 1; }; go vet ./...'
+	$(RUN) sh -c 'f=$$(find . -name "*.go" -not -path "./.cache/*" | xargs gofmt -l); test -z "$$f" || { echo "$$f"; exit 1; }; \
+		go vet ./... && $(WINDOWS) go vet $(PC_PKGS) && go mod tidy -diff'
 
 clean :
 	rm -rf ./$(OUT) ./.cache

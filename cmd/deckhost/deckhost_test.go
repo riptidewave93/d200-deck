@@ -89,8 +89,33 @@ func TestRunOther(t *testing.T) {
 	if run(deck.Action{Type: deck.ActionLaunch, Command: []string{"/no/such/program"}}) == nil {
 		t.Error("launched a missing program")
 	}
+	for _, cmd := range [][]string{nil, {""}} {
+		if run(deck.Action{Type: deck.ActionLaunch, Command: cmd}) == nil {
+			t.Errorf("launched %q", cmd)
+		}
+	}
 	if run(deck.Action{Type: deck.ActionKey}) == nil {
 		t.Error("ran a device action")
+	}
+}
+
+func TestShorten(t *testing.T) {
+	for _, c := range []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"short", 10, "short"},
+		{"abcdef", 3, "abc"},
+		{"aé", 2, "a"}, // é is 2 bytes; don't split it
+		{"éé", 1, ""},
+	} {
+		if got := shorten(c.s, c.n); got != c.want {
+			t.Errorf("shorten(%q, %d) = %q", c.s, c.n, got)
+		}
+	}
+	if long := shorten(strings.Repeat("x", 5000), maxResultError); len(long) != maxResultError {
+		t.Errorf("%d bytes", len(long))
 	}
 }
 

@@ -1,12 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
@@ -27,13 +27,16 @@ func run(a deck.Action) error {
 	return fmt.Errorf("deckhost can't run %q actions", a.Type)
 }
 
-// openURL opens u in the default browser.
-var openURL = func(u string) error { return start("xdg-open", u) }
-
-// start runs a program in its own session, so it outlives the daemon.
+// start runs a program detached from deckhost, so it outlives the daemon.
 func start(argv ...string) error {
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if len(argv) == 0 || argv[0] == "" {
+		return errors.New("no command to run")
+	}
+	path, err := exec.LookPath(argv[0])
+	if err != nil {
+		return err
+	}
+	cmd := detached(path, argv[1:])
 	if err := cmd.Start(); err != nil {
 		return err
 	}

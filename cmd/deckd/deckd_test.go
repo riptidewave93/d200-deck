@@ -23,7 +23,7 @@ func newTestDeckd() *deckd {
 		redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 16)}
 	d.pages = []string{d.cfg.Home}
 	d.assets.reset(d.cfg)
-	d.run = newRunner(nil)
+	d.run = newRunner("")
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	return d
 }
@@ -85,6 +85,19 @@ func TestNavigation(t *testing.T) {
 	d.press(11, true) // Back on the home page stays there
 	if d.page() != "main" {
 		t.Error("Back left the home page")
+	}
+	d.press(11, false)
+
+	// pages that link to each other don't grow the stack
+	d.cfg.Pages["browser"].Keys[6] = deck.Button{Action: deck.Action{Type: deck.ActionPage, Page: "main"}}
+	for range 5 {
+		d.press(0, true) // to browser
+		d.press(0, false)
+		d.press(6, true) // to main
+		d.press(6, false)
+	}
+	if len(d.pages) != 1 || d.page() != "main" {
+		t.Errorf("pages %v", d.pages)
 	}
 }
 

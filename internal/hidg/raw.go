@@ -7,22 +7,6 @@ import (
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
-// RawUsagePage is the vendor usage page that identifies the config channel.
-const RawUsagePage = 0xffd2
-
-// RawDescriptor is the config channel's report descriptor: one vendor
-// collection, no report IDs, 64-byte input and 1024-byte output reports.
-// Frozen: hosts identify the channel by it.
-var RawDescriptor = []byte{
-	0x06, RawUsagePage & 0xff, RawUsagePage >> 8, // Usage Page (vendor)
-	0x09, 0x01, // Usage (1)
-	0xa1, 0x01, // Collection (Application)
-	0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08, // bytes
-	0x09, 0x02, 0x95, proto.RawInSize, 0x81, 0x02, // Input
-	0x09, 0x03, 0x96, proto.RawOutSize & 0xff, proto.RawOutSize >> 8, 0x91, 0x02, // Output
-	0xc0,
-}
-
 // Raw is the config channel gadget (/dev/hidg1).
 type Raw struct{ f *os.File }
 
@@ -46,7 +30,7 @@ func (r *Raw) Read(buf []byte) (int, error) {
 func (r *Raw) Write(report []byte) error {
 	var b [proto.RawInSize]byte
 	copy(b[:], report)
-	return write(r.f, b[:], "USB host not reading config channel reports")
+	return write(r.f, b[:], "config channel reports")
 }
 
 // Close closes the channel.

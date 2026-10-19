@@ -1,6 +1,7 @@
 # deckhost
 
-The PC side of the D200, for Linux (Windows later). It runs as your user, not root.
+The PC side of the D200, for Linux (Windows later: the OS-specific parts are in
+`cmd/deckhost/os_*.go` and `internal/hidraw`). It runs as your user, not root.
 
 | Part | Does |
 |---|---|
@@ -40,10 +41,11 @@ connected, `update` needs the end of the device's serial.
 
 ## How it works
 
-- The daemon finds the D200's config channel (hidraw, vendor usage page `0xFFD2`), reconnects when
-  it's replugged, and sends a heartbeat every 2 s.
+- The daemon finds the D200's config channel (the hidraw node whose report descriptor is exactly
+  `proto.RawDescriptor`), reconnects when it's replugged, and sends a heartbeat every 2 s.
+- Only one daemon runs per user: it holds `$XDG_RUNTIME_DIR/deckhost.sock.lock`.
 - A PC action key sends the action to the daemon, which runs it and reports back. The key flashes
   red if no daemon is connected, the action fails, or there's no answer within 15 s.
-- Launched programs run in their own session, so they keep running when the daemon restarts or
-  stops.
+- Launched programs (and the browser) run in their own session and, through `systemd-run --user
+  --scope`, their own systemd scope, so they keep running when the daemon restarts or stops.
 - `deckhost` runs whatever the device config says; see [design.md](design.md#trust).

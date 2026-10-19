@@ -12,15 +12,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/riptidewave93/d200-deck/internal/hidraw"
 	"github.com/riptidewave93/d200-deck/netid"
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
-// channelPrefix starts the config channel's report descriptor (vendor usage
 // page 0xffd2).
-var channelPrefix = []byte{0x06, 0xd2, 0xff}
 
 // Device is one D200 as the daemon sees it.
 type Device struct {
@@ -74,6 +73,7 @@ func (s Status) UpdateURL(serial string) (string, error) {
 type daemon struct {
 	mu      sync.Mutex
 	devices map[string]*Device // by hidraw path
+	lock    *os.File           // the single-instance lock, held while running
 	find    func() []string
 	open    func(path string) (proto.Transport, error)
 }
@@ -81,7 +81,7 @@ type daemon struct {
 func newDaemon() *daemon {
 	return &daemon{
 		devices: map[string]*Device{},
-		find:    func() []string { return hidraw.FindAll(channelPrefix) },
+		find:    func() []string { return hidraw.FindAll(proto.RawDescriptor) },
 		open:    func(path string) (proto.Transport, error) { return hidraw.Open(path) },
 	}
 }
@@ -103,6 +103,7 @@ func runDaemon() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("deckhost %s", version)
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -221,7 +222,7 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 				r := proto.Result{ID: a.ID}
 				if err := run(a.Action); err != nil {
 					log.Printf("key %d: %v", a.Key, err)
-					r.Error = err.Error()
+					r.Error = shorten(err.Error(), maxResultError)
 				}
 				select {
 				case results <- r:
@@ -235,4 +236,19 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 			}
 		}
 	}
+}
+
+// maxResultError bounds an error sent back to the device, which must fit in
+// one request.
+const maxResultError = 200
+
+// shorten cuts s to at most n bytes, on a rune boundary.
+func shorten(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }

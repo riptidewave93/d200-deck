@@ -120,3 +120,25 @@ func TestMDNSName(t *testing.T) {
 		t.Errorf("bad serial: %q", n)
 	}
 }
+
+func TestSameAddr(t *testing.T) {
+	for _, c := range []struct {
+		host, local string
+		want        bool
+	}{
+		{"198.18.0.1", "198.18.0.1:80", true},
+		{"[fdb2:d57:b97e::1]", "[fdb2:d57:b97e::1]:80", true},
+		{"[fdb2:0d57:b97e:0::1]", "[fdb2:d57:b97e::1]:80", true},
+		{"[fe80::1%25usb0]", "[fe80::1%usb0]:80", true}, // the zone is ignored
+		{"[fe80::1]", "[fe80::1%usb0]:80", true},
+		{"198.18.0.1", "[::ffff:198.18.0.1]:80", true},
+		{"198.18.0.2", "198.18.0.1:80", false},
+		{"[fdb2:d57:b97e::1", "[fdb2:d57:b97e::1]:80", true},
+		{"example.com", "198.18.0.1:80", false},
+		{"198.18.0.1", "garbage", false},
+	} {
+		if got := sameAddr(c.host, c.local); got != c.want {
+			t.Errorf("sameAddr(%q, %q) = %v", c.host, c.local, got)
+		}
+	}
+}

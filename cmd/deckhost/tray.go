@@ -9,7 +9,6 @@ import (
 	"image/color"
 	"image/png"
 	"log"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -112,9 +111,7 @@ func trayReady() {
 					ask("update "+serials[i], notRunning)
 				}
 			case <-restart.ClickedCh:
-				ask("restart", func() error {
-					return exec.Command("systemctl", "--user", "restart", "deckhost.service").Run()
-				})
+				ask("restart", restartService)
 				time.Sleep(time.Second)
 				refresh()
 			case <-exit.ClickedCh:

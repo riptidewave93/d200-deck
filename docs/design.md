@@ -29,7 +29,7 @@ PC with nothing installed. Only what HID can't do goes to `deckhost`.
 | `hid-key` | device | `keys` (e.g. `["ctrl","shift","m"]`), held while the key is held | browser back (`alt+left`), reload (`ctrl+r`), Discord mute/deafen keybinds, push-to-talk |
 | `type-text` | device | `text` (ASCII, US layout) | canned text |
 | `macro` | device (no PC steps yet) | `steps`: actions and `{"type":"delay","ms":N}` | key sequences; press again to stop it |
-| `page` / `back` / `home` | device | `page` | folders |
+| `page` / `back` / `home` | device | `page` (one already open is gone back to) | folders |
 | `open-url` | PC | `url` | open a page in the default browser |
 | `launch` | PC | `command` (argv), optional per-OS overrides | start an app or script |
 | `http` | PC | `method`, `url`, `headers`, `body` | Discord webhook, Home Assistant |

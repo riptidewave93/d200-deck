@@ -49,7 +49,7 @@ func TestReports(t *testing.T) {
 	if got := read(t, r, 64); !bytes.Equal(got, []byte{ReportConsumer, 0xe9, 0x00}) {
 		t.Errorf("consumer % x", got)
 	}
-	d.System(SystemSleep)
+	d.System(2) // sleep
 	if got := read(t, r, 64); !bytes.Equal(got, []byte{ReportSystem, 0x02}) {
 		t.Errorf("system % x", got)
 	}
@@ -109,10 +109,6 @@ func TestOpenMissing(t *testing.T) {
 }
 
 func TestDescriptors(t *testing.T) {
-	// the raw descriptor is frozen: hosts find the channel by its prefix
-	if !bytes.HasPrefix(RawDescriptor, []byte{0x06, 0xd2, 0xff}) {
-		t.Errorf("raw descriptor starts % x", RawDescriptor[:3])
-	}
 	if len(ReportDescriptor) == 0 || ReportDescriptor[len(ReportDescriptor)-1] != 0xc0 {
 		t.Error("report descriptor doesn't end a collection")
 	}

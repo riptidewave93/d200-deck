@@ -39,6 +39,22 @@ const (
 	MaxMessage = 64 << 10
 )
 
+// RawUsagePage is the vendor usage page that identifies the config channel.
+const RawUsagePage = 0xffd2
+
+// RawDescriptor is the config channel's report descriptor: one vendor
+// collection, no report IDs, 64-byte input and 1024-byte output reports.
+// Frozen: hosts identify the channel by it.
+var RawDescriptor = []byte{
+	0x06, RawUsagePage & 0xff, RawUsagePage >> 8, // Usage Page (vendor)
+	0x09, 0x01, // Usage (1)
+	0xa1, 0x01, // Collection (Application)
+	0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08, // bytes
+	0x09, 0x02, 0x95, RawInSize, 0x81, 0x02, // Input
+	0x09, 0x03, 0x96, RawOutSize & 0xff, RawOutSize >> 8, 0x91, 0x02, // Output
+	0xc0,
+}
+
 // Version is the protocol version reported by CmdHello.
 const Version = 2
 

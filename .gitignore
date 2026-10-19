@@ -4,4 +4,4 @@ vendor/
 /deckd
 /deck-update
 /deckhost
-*.png
+/*.png

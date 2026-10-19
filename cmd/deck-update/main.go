@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -17,6 +18,9 @@ import (
 	"github.com/riptidewave93/d200-deck/internal/serial"
 	"github.com/riptidewave93/d200-deck/netid"
 )
+
+// version is set at build time.
+var version = "dev"
 
 //go:embed update.html
 var page string
@@ -28,6 +32,7 @@ func main() {
 	addr := flag.String("addr", ":80", "listen address")
 	flag.Parse()
 	debug.SetMemoryLimit(8 << 20)
+	log.Printf("deck-update %s", version)
 
 	srv := &http.Server{
 		Addr:              *addr,
@@ -94,7 +99,7 @@ func sameHost(next http.Handler, name string) http.Handler {
 			host = r.Host
 		}
 		named := name != "" && strings.EqualFold(strings.TrimSuffix(host, "."), name)
-		if !named && (local == nil || host != hostOf(local.String())) {
+		if !named && (local == nil || !sameAddr(host, local.String())) {
 			http.Error(w, "use the device's name or IP address", http.StatusMisdirectedRequest)
 			return
 		}
@@ -102,7 +107,11 @@ func sameHost(next http.Handler, name string) http.Handler {
 	})
 }
 
-func hostOf(addr string) string {
-	h, _, _ := net.SplitHostPort(addr)
-	return h
+// sameAddr reports whether host (from a Host header, e.g. "[fd00::1]") is the
+// IP address of local (host:port).
+func sameAddr(host, local string) bool {
+	l, _, _ := net.SplitHostPort(local)
+	a, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	b, err2 := netip.ParseAddr(l)
+	return err == nil && err2 == nil && a.Unmap().WithZone("") == b.Unmap().WithZone("")
 }

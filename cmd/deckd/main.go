@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +26,7 @@ import (
 	"github.com/riptidewave93/d200-deck/internal/hidg"
 	"github.com/riptidewave93/d200-deck/internal/input"
 	"github.com/riptidewave93/d200-deck/internal/screen"
+	"github.com/riptidewave93/d200-deck/proto"
 )
 
 // held is a pressed key: the page it was pressed on and its action, so the
@@ -121,7 +123,13 @@ func (d *deckd) press(i int, down bool) {
 
 	switch {
 	case a.Type == deck.ActionPage:
-		d.setPages(append(d.pages, a.Page))
+		// a page already on the stack is gone back to, so pages that link to
+		// each other don't grow it
+		if i := slices.Index(d.pages, a.Page); i >= 0 {
+			d.setPages(d.pages[:i+1])
+		} else {
+			d.setPages(append(d.pages, a.Page))
+		}
 	case a.Type == deck.ActionBack:
 		if len(d.pages) > 1 {
 			d.setPages(d.pages[:len(d.pages)-1])
@@ -197,7 +205,7 @@ func main() {
 			os.Stdout.Write(hidg.ReportDescriptor)
 			return
 		case "raw-descriptor":
-			os.Stdout.Write(hidg.RawDescriptor)
+			os.Stdout.Write(proto.RawDescriptor)
 			return
 		case "icons":
 			for _, n := range gfx.IconNames() {
@@ -260,14 +268,10 @@ func main() {
 	d.show(gfx.Rect{Max: image.Pt(screen.Width, screen.Height)})
 	d.drawPage()
 
-	var dev *hidg.Device
-	if !d.test {
-		if dev, err = hidg.Open(*hid); err != nil {
-			log.Printf("no HID gadget, keys won't send anything: %v", err)
-		}
+	if d.test {
+		*hid = ""
 	}
-	d.run = newRunner(dev)
-	d.run.do(d.run.releaseAll)
+	d.run = newRunner(*hid)
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	if !d.test {
@@ -289,16 +293,7 @@ func main() {
 		case f := <-d.ui:
 			f()
 		case s := <-stop:
-			// behind a running macro the release may not get through; don't hang
-			done := make(chan struct{})
-			select {
-			case d.run.jobs <- func() { d.run.releaseAll(); close(done) }:
-				select {
-				case <-done:
-				case <-time.After(time.Second):
-				}
-			default:
-			}
+			d.run.stop(time.Second)
 			log.Printf("%v, exiting", s)
 			os.Remove(startsFile) // stopped, not crashed
 			return

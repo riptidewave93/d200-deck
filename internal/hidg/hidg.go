@@ -9,6 +9,7 @@ package hidg
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"syscall"
 	"time"
@@ -56,13 +57,6 @@ var ReportDescriptor = []byte{
 	0xc0, 0xc0,
 }
 
-// System control bits.
-const (
-	SystemPowerDown = 1 << 0
-	SystemSleep     = 1 << 1
-	SystemWakeUp    = 1 << 2
-)
-
 // Device is an open HID gadget.
 type Device struct{ f *os.File }
 
@@ -78,25 +72,29 @@ func Open(path string) (*Device, error) {
 
 const sendTimeout = 50 * time.Millisecond
 
+// ErrNotReading means the PC didn't take a report within sendTimeout.
+var ErrNotReading = errors.New("USB host not reading")
+
 func (d *Device) send(report ...byte) error {
-	return write(d.f, report, "USB host not reading HID reports")
+	return write(d.f, report, "HID reports")
 }
 
 // write writes b, giving up after sendTimeout if the host doesn't take it.
 // Go's poller waits on a busy gadget (the deadline ends that wait); a file it
 // can't poll returns EAGAIN instead.
-func write(f *os.File, b []byte, busy string) error {
+func write(f *os.File, b []byte, what string) error {
+	busy := fmt.Errorf("%w %s", ErrNotReading, what)
 	deadline := time.Now().Add(sendTimeout)
 	f.SetWriteDeadline(deadline)
 	for {
 		_, err := f.Write(b)
 		switch {
 		case errors.Is(err, os.ErrDeadlineExceeded):
-			return errors.New(busy)
+			return busy
 		case !errors.Is(err, syscall.EAGAIN):
 			return err
 		case time.Now().After(deadline):
-			return errors.New(busy)
+			return busy
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -115,7 +113,7 @@ func (d *Device) Consumer(usage uint16) error {
 	return d.send(ReportConsumer, byte(usage), byte(usage>>8))
 }
 
-// System reports the system control bits (SystemSleep, ...); 0 releases.
+// System reports the system control bits (deck.SystemSleep, ...); 0 releases.
 func (d *Device) System(bits byte) error {
 	return d.send(ReportSystem, bits)
 }

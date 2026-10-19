@@ -1,5 +1,3 @@
-// Package hidraw finds and opens the D200's config channel through Linux
-// hidraw.
 package hidraw
 
 import (
@@ -15,13 +13,13 @@ type Device struct{ f *os.File }
 var sysHidraw = "/sys/class/hidraw"
 
 // FindAll returns the /dev paths of the hidraw nodes whose report descriptor
-// starts with prefix (e.g. the config channel's vendor usage page).
-func FindAll(prefix []byte) []string {
+// is desc.
+func FindAll(desc []byte) []string {
 	var paths []string
 	nodes, _ := filepath.Glob(sysHidraw + "/hidraw*")
 	for _, n := range nodes {
 		d, err := os.ReadFile(filepath.Join(n, "device", "report_descriptor"))
-		if err == nil && bytes.HasPrefix(d, prefix) {
+		if err == nil && bytes.Equal(d, desc) {
 			paths = append(paths, "/dev/"+filepath.Base(n))
 		}
 	}

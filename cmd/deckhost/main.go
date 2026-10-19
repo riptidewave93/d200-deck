@@ -15,6 +15,9 @@ import (
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
+// version is set at build time.
+var version = "dev"
+
 const usageText = `usage: deckhost <command>
 
   daemon       run the daemon (normally started by systemd)
@@ -29,6 +32,7 @@ const usageText = `usage: deckhost <command>
 
   hello        ask the first D200 directly who it is
   identify N   flash key N on the first D200
+  version      show deckhost's version
 `
 
 func usage() {
@@ -55,6 +59,8 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println(reply)
+	case "version":
+		fmt.Println(version)
 	case "hello":
 		b, err := direct(proto.CmdHello, nil)
 		if err != nil {
@@ -79,7 +85,7 @@ func main() {
 
 // direct sends one request to the device itself, not through the daemon.
 func direct(cmd byte, payload []byte) ([]byte, error) {
-	paths := hidraw.FindAll(channelPrefix)
+	paths := hidraw.FindAll(proto.RawDescriptor)
 	if len(paths) == 0 {
 		return nil, errors.New("no D200 found")
 	}
