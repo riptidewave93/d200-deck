@@ -1,6 +1,9 @@
 package deckupdate
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/riptidewave93/d200-deck/internal/debuginfo"
 	"github.com/riptidewave93/d200-deck/internal/serial"
 )
 
@@ -34,9 +38,32 @@ func server(t *testing.T, content string) *httptest.Server {
 	os.WriteFile(modelPath, []byte("Some Deck\x00"), 0o644)
 	t.Cleanup(func() { osRelease, modelPath = old, oldModel })
 	u, _ := testUpdater(t, "debug")
-	srv := httptest.NewServer(handler("d200-00112233445566aa.local", u))
+	dbg := &debuginfo.Collector{Root: t.TempDir(), Version: "v9", Config: "/config.json",
+		Run: func(string, ...string) ([]byte, error) { return nil, errors.New("no") }}
+	srv := httptest.NewServer(handler("d200-00112233445566aa.local", u, dbg))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestDebugPages(t *testing.T) {
+	srv := server(t, "BUILD_ID=20261019\n")
+	req, _ := http.NewRequest("GET", srv.URL+"/debug", nil)
+	resp, body := get(t, req)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "deckd:   v9") || strings.Contains(body, "{summary}") || strings.Contains(body, "{style}") {
+		t.Errorf("debug page %d:\n%s", resp.StatusCode, body)
+	}
+	req, _ = http.NewRequest("GET", srv.URL+"/debug/bundle", nil)
+	resp, body = get(t, req)
+	if resp.Header.Get("Content-Disposition") != `attachment; filename="deck-debug-20261019.tar.gz"` {
+		t.Errorf("bundle headers %v", resp.Header)
+	}
+	zr, err := gzip.NewReader(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h, err := tar.NewReader(zr).Next(); err != nil || h.Name != "debug/summary.txt" {
+		t.Errorf("bundle starts with %v %v", h, err)
+	}
 }
 
 func TestUpdatePage(t *testing.T) {

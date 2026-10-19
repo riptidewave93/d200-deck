@@ -7,7 +7,7 @@ One Go module, two programs that share code:
 | Program | Runs on | Job |
 |---|---|---|
 | `deckd keys` | the D200 | draws pages, reads keys, runs HID actions, forwards PC actions |
-| `deckd update` | the D200 | web page on port 80 for installing OS updates (`internal/ota`), a separate process from the keys so a crash there doesn't stop it |
+| `deckd update` | the D200 | web page on port 80 for installing OS updates (`internal/ota`) and downloading debug info for bug reports (`internal/debuginfo`, `/debug`), a separate process from the keys so a crash there doesn't stop it |
 | `deckhost` | the PC (Linux, Windows; macOS later) | runs the actions HID can't do, pushes config and images to the device |
 
 ```

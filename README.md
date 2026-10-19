@@ -6,7 +6,7 @@ Stream-deck software for the [Ulanzi D200](https://www.ulanzi.com/) running main
 | Program | Runs on | Does |
 |---|---|---|
 | `deckd keys` | the D200 | draws pages of buttons on the screen, runs key actions (USB HID keyboard, media keys, macros), serves the config channel |
-| `deckd update` | the D200 | serves the update page at `http://<deck IPv4>/update` (or `d200-<serial>.local`) and installs updates uploaded to it, confirmed on the keys ([update guide](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/update.md)) |
+| `deckd update` | the D200 | serves the update page at `http://<deck IPv4>/update` (or `d200-<serial>.local`) and installs updates uploaded to it, confirmed on the keys; `/debug` downloads debug info for bug reports ([update guide](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/update.md)) |
 | `deckhost` | the PC | daemon that runs the PC actions (open a URL, launch a program, HTTP requests, Discord) plus a tray icon; Linux and Windows ([docs/deckhost.md](docs/deckhost.md), [install](docs/install.md)) |
 
 Status: early. Buttons, pages, HID actions and macros work on the device, and `deckhost` runs

@@ -4,35 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Device Update</title>
-<style>
-:root { --bg: #f6f6f4; --card: #fff; --fg: #1c1c1c; --muted: #666; --line: #ddd; --accent: #2f6fde;
-  --bad: #c62828; --warn-bg: #fff4d6; --warn-fg: #6b4a00; --warn-line: #f9a825; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #121212; --card: #1c1c1c; --fg: #e8e8e8; --muted: #9a9a9a; --line: #333; --accent: #6b9cf0;
-    --bad: #ef5350; --warn-bg: #3a2e0a; --warn-fg: #ffd77a; --warn-line: #b8860b; }
-}
-* { box-sizing: border-box; }
-body { margin: 0; padding: 48px 16px; background: var(--bg); color: var(--fg);
-  font: 16px/1.5 system-ui, sans-serif; }
-main { max-width: 520px; margin: 0 auto; background: var(--card); border: 1px solid var(--line);
-  border-radius: 12px; padding: 28px; }
-h1 { margin: 0 0 20px; font-size: 22px; }
-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 24px; }
-#form { margin-top: 16px; }
-dt { color: var(--muted); }
-dd { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
-fieldset { border: 1px dashed var(--line); border-radius: 8px; padding: 16px; margin: 0 0 16px; }
-legend { color: var(--muted); padding: 0 6px; }
-input, button { font: inherit; max-width: 100%; }
-button { margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; }
-button:disabled, input:disabled { opacity: .45; }
-p { margin: 0 0 8px; }
-.muted { color: var(--muted); }
-.bad { color: var(--bad); }
-progress { width: 100%; }
-.warn { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--warn-line); border-radius: 8px;
-  background: var(--warn-bg); color: var(--warn-fg); font-weight: 700; }
-</style>
+<style>{style}</style>
 </head>
 <body>
 <main>
@@ -55,6 +27,7 @@ refer to <a href="https://github.com/riptidewave93/d200-buildroot/blob/main/docs
 <progress id="progress" hidden></progress>
 <p id="warn" class="warn" hidden>Do <u>not</u> unplug the device or let your PC shut down or sleep until this page
 says the update is done.</p>
+<p class="muted foot">Having problems? Get <a href="/debug">debug info</a>.</p>
 </main>
 <script>
 "use strict";
