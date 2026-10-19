@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>D200 Update</title>
 <style>
-:root { --bg: #f6f6f4; --card: #fff; --fg: #1c1c1c; --muted: #666; --line: #ddd; --accent: #2f6fde; }
+:root { --bg: #f6f6f4; --card: #fff; --fg: #1c1c1c; --muted: #666; --line: #ddd; --accent: #2f6fde;
+  --bad: #c62828; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #121212; --card: #1c1c1c; --fg: #e8e8e8; --muted: #9a9a9a; --line: #333; --accent: #6b9cf0; }
+  :root { --bg: #121212; --card: #1c1c1c; --fg: #e8e8e8; --muted: #9a9a9a; --line: #333; --accent: #6b9cf0;
+    --bad: #ef5350; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 48px 16px; background: var(--bg); color: var(--fg);
@@ -16,15 +18,18 @@ main { max-width: 520px; margin: 0 auto; background: var(--card); border: 1px so
   border-radius: 12px; padding: 28px; }
 h1 { margin: 0 0 20px; font-size: 22px; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 24px; }
+#form { margin-top: 16px; }
 dt { color: var(--muted); }
 dd { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
 fieldset { border: 1px dashed var(--line); border-radius: 8px; padding: 16px; margin: 0 0 16px; }
 legend { color: var(--muted); padding: 0 6px; }
-input, button { font: inherit; }
+input, button { font: inherit; max-width: 100%; }
 button { margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; }
 button:disabled, input:disabled { opacity: .45; }
-p { margin: 0; color: var(--muted); }
-a { color: var(--accent); }
+p { margin: 0 0 8px; }
+.muted { color: var(--muted); }
+.bad { color: var(--bad); }
+progress { width: 100%; }
 </style>
 </head>
 <body>
@@ -34,14 +39,88 @@ a { color: var(--accent); }
   <dt>Installed</dt><dd>{version}</dd>
   <dt>Flavour</dt><dd>{flavour}</dd>
   <dt>Built</dt><dd>{build}</dd>
+  <dt>Last update</dt><dd id="last">…</dd>
 </dl>
-<fieldset disabled>
-  <legend>Update file</legend>
-  <input type="file" accept=".tar,.gz">
-  <br><button>Install</button>
+<p class="muted">For more information on how to update your device, using this website or other means, please
+refer to <a href="https://github.com/riptidewave93/d200-buildroot/blob/main/docs/update.md">update.md</a>.</p>
+<fieldset id="form" disabled>
+  <legend>Update file (.tar)</legend>
+  <input id="file" type="file" accept=".tar">
+  <br><button id="install">Install</button>
 </fieldset>
-<p>Updating from this page isn't available yet. To update now, flash over USB with fastboot:
-see <a href="https://github.com/riptidewave93/d200-buildroot/blob/main/docs/flashing.md">flashing.md</a>.</p>
+<p id="state" class="muted">Loading…</p>
+<progress id="progress" hidden></progress>
 </main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let uploading = false;
+
+function describe(s) {
+  switch (s.state) {
+    case "checking": return ["Checking the last update…", ""];
+    case "receiving": return ["Receiving the update…", ""];
+    case "confirming": return [`Press Install on the D200 (the wide key) to install ${s.update.version}, or Cancel.`, ""];
+    case "installing": return [`Installing ${s.update.version}: ${s.step || "starting"}. Don't unplug the D200.`, ""];
+    case "rebooting": return ["Restarting the D200…", ""];
+    case "failed": return [`Update failed: ${s.error}`, "bad"];
+    case "cancelled": return ["Cancelled on the D200.", ""];
+    case "unsupported": return ["This system can't update itself: flash it over USB instead.", "bad"];
+    default: return ["", ""];
+  }
+}
+
+function show(s) {
+  // only an update that took: a failed one is as if there was none
+  $("last").textContent = s.last && !s.last.error && s.ota_result === "ok" ? s.last.version : "none";
+  const [text, cls] = describe(s);
+  $("state").textContent = text;
+  $("state").className = cls || "muted";
+  const busy = ["checking", "receiving", "confirming", "installing", "rebooting", "unsupported"].includes(s.state);
+  $("form").disabled = busy || uploading;
+  $("progress").hidden = !busy || s.state === "unsupported";
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/update/status", { cache: "no-store" });
+    if (!uploading) show(await r.json());
+  } catch {
+    if (!uploading) {
+      $("state").textContent = "Waiting for the D200…";
+      $("state").className = "muted";
+    }
+  }
+  setTimeout(poll, 1000);
+}
+
+$("install").onclick = () => {
+  const f = $("file").files[0];
+  if (!f) return;
+  uploading = true;
+  $("form").disabled = true;
+  $("progress").hidden = false;
+  const x = new XMLHttpRequest();
+  x.open("PUT", "/update/bundle");
+  x.setRequestHeader("X-D200-Update", "1");
+  x.upload.onprogress = (e) => {
+    $("progress").max = e.total;
+    $("progress").value = e.loaded;
+    $("state").textContent = `Uploading ${Math.round(100 * e.loaded / e.total)}%…`;
+  };
+  x.onloadend = () => {
+    uploading = false;
+    $("progress").removeAttribute("value");
+    if (x.status !== 202) {
+      $("state").textContent = `Update refused: ${x.responseText || "no answer from the D200"}`;
+      $("state").className = "bad";
+      $("form").disabled = false;
+    }
+  };
+  x.send(f);
+};
+
+poll();
+</script>
 </body>
 </html>

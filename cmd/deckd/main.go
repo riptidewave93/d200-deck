@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -25,6 +26,7 @@ import (
 	"github.com/riptidewave93/d200-deck/internal/gfx"
 	"github.com/riptidewave93/d200-deck/internal/hidg"
 	"github.com/riptidewave93/d200-deck/internal/input"
+	"github.com/riptidewave93/d200-deck/internal/ota"
 	"github.com/riptidewave93/d200-deck/internal/screen"
 	"github.com/riptidewave93/d200-deck/proto"
 )
@@ -52,6 +54,8 @@ type deckd struct {
 	ch     channel
 	pc     pcActions
 	assets assetCache
+	// overlay, if set, is shown instead of the pages (e.g. an update)
+	overlay *overlay
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -67,6 +71,9 @@ func (d *deckd) drawKey(i int, state keyState) {
 	r := screen.Key(i)
 	if d.test {
 		drawTestKey(d.canvas, i, r, state != keyIdle)
+	} else if d.overlay != nil {
+		b, ok := d.overlay.keys[i]
+		drawSafely(d.canvas, r, b, ok, state, &d.assets)
 	} else {
 		b, ok := d.cfg.Pages[d.page()].Keys[i]
 		st := b.Action.State()
@@ -113,6 +120,12 @@ func (d *deckd) press(i int, down bool) {
 		}
 		if h.page == d.page() {
 			d.drawKey(i, keyIdle)
+		}
+		return
+	}
+	if d.overlay != nil {
+		if d.overlay.press != nil {
+			d.overlay.press(i)
 		}
 		return
 	}
@@ -164,10 +177,14 @@ const (
 	stableAfter    = 30 * time.Second
 )
 
-// guardConfig counts this start. If deckd keeps dying soon after starting,
-// the config may be what kills it: it's moved to path.bad, so deckd starts
-// with the default config and can still be reached to fix it.
+// guardConfig makes the config's directory and counts this start. If deckd
+// keeps dying soon after starting, the config may be what kills it: it's
+// moved to path.bad, so deckd starts with the default config and can still
+// be reached to fix it.
 func guardConfig(path string) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		log.Print(err) // the default config it is
+	}
 	b, _ := os.ReadFile(startsFile)
 	n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
 	if n >= maxQuickStarts {
@@ -243,7 +260,7 @@ func main() {
 		}
 	}
 
-	config := flag.String("config", "/etc/deckd/config.json", "config file; the default config is used if it is missing")
+	config := flag.String("config", "/data/deckd/config.json", "config file; the default config is used if it is missing")
 	preview := flag.String("preview", "", "render the screen to this PNG file and exit")
 	card := flag.String("card", "/dev/dri/card0", "DRM device")
 	keys := flag.String("keys", "", "key event device (default: find the keypad)")
@@ -284,6 +301,10 @@ func main() {
 	d.disp = disp
 	d.show(gfx.Rect{Max: image.Pt(screen.Width, screen.Height)})
 	d.drawPage()
+	if !d.test {
+		writeReady(ota.ReadyFile)
+		go d.serveUpdates(ota.UISocket)
+	}
 
 	if d.test {
 		*hid = ""

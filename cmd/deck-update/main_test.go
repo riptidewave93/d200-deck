@@ -32,7 +32,8 @@ func server(t *testing.T, content string) *httptest.Server {
 	old := osRelease
 	osRelease = p
 	t.Cleanup(func() { osRelease = old })
-	srv := httptest.NewServer(handler("d200-00112233445566aa.local"))
+	u, _ := testUpdater(t, "debug")
+	srv := httptest.NewServer(handler("d200-00112233445566aa.local", u))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -140,5 +141,11 @@ func TestSameAddr(t *testing.T) {
 		if got := sameAddr(c.host, c.local); got != c.want {
 			t.Errorf("sameAddr(%q, %q) = %v", c.host, c.local, got)
 		}
+	}
+}
+
+func TestPageLinksUpdateDoc(t *testing.T) {
+	if !strings.Contains(page, "d200-buildroot/blob/main/docs/update.md") {
+		t.Error("the update page doesn't link the update guide")
 	}
 }

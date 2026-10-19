@@ -16,7 +16,8 @@ See [docs/design.md](docs/design.md); Discord keys are in [docs/discord.md](docs
 
 ## Configuration
 
-`deckd` reads `/etc/deckd/config.json`, or uses a built-in default if it is missing or invalid.
+`deckd` reads `/data/deckd/config.json` (`/data` is the D200's writable partition), or uses a
+built-in default if it is missing or invalid.
 `deckd default-config` prints the default as a starting point. A config is a set of named
 pages of buttons:
 
