@@ -1,7 +1,8 @@
 # Installing deckhost
 
-`make dist` builds every installer into `build/dist` (in Docker). There are no published
-releases yet.
+Download the installer from [Releases](https://github.com/riptidewave93/d200-deck/releases);
+`SHA256SUMS` there checks them. Pushing a `v*` tag builds them into a draft release
+(`.github/workflows/release.yml`), and `make dist` builds them into `build/dist` (in Docker).
 
 ## Linux
 
