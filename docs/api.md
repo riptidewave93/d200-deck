@@ -212,9 +212,8 @@ Errors: 403 no header, 409 an update is already under way, 411 no length, 400 no
 | `cancelled` | Cancel was pressed, or no answer in 2 minutes |
 | `unsupported` | this system can't update itself |
 
-`signed` says it's an official build: its `manifest.sig` checks out with the key in
-`/etc/d200/update-key.pub`. Unsigned builds install just the same.
+`signed` says it's an official build ([signing](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/ota.md#signing)). Unsigned
+builds install just the same.
 
-`ota_result` is how the last update went: `trial` (just installed, being checked), `ok`, `failed`
-or `rolled-back`. Or `fell-back`: the system stopped starting, so the device started the one in
-the other slot; the next update writes over the broken one.
+`ota_result` is how the last update went; its values are in d200-buildroot's
+[ota.md](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/ota.md#boot).

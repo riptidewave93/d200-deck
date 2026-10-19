@@ -19,7 +19,7 @@ how the Discord link is.
 
 | Item | Does |
 |---|---|
-| Configure | Opens the configuration website |
+| Configure | Opens the [configuration website](https://riptidewave93.github.io/d200-configure/) |
 | Update | Opens the device's update page, the deck's IPv4 address, e.g. `http://198.19.23.5/update`, since sandboxed browsers often can't resolve `.local` (only while connected; a submenu per device when several are) |
 | Restart | Restarts the daemon (or starts it if it isn't running) |
 | Exit | Stops the daemon and closes the tray; both start again at next login |

@@ -7,7 +7,7 @@ One Go module, two programs that share code:
 | Program | Runs on | Job |
 |---|---|---|
 | `deckd keys` | the D200 | draws pages, reads keys, runs HID actions, forwards PC actions |
-| `deckd update` | the D200 | web page on port 80 for installing OS updates (`internal/ota`) and downloading debug info for bug reports (`internal/debuginfo`, `/debug`), a separate process from the keys so a crash there doesn't stop it |
+| `deckd update` | the D200 | web page on port 80 for installing OS updates (`internal/ota`, to d200-buildroot's [updater spec](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/ota.md)) and downloading debug info for bug reports (`internal/debuginfo`, `/debug`), a separate process from the keys so a crash there doesn't stop it |
 | `deckhost` | the PC (Linux, Windows; macOS later) | runs the actions HID can't do, pushes config and images to the device |
 
 ```
@@ -24,17 +24,13 @@ internal/      device-only (deckd, deckupdate, ota, drm, gfx, input, hidg, scree
 A button's action runs on the device whenever USB HID can do it, so those buttons work on any
 PC with nothing installed. Only what HID can't do goes to `deckhost`.
 
-The device runs `hid-key`, `hid-consumer`, `hid-system`, `type-text`, `macro`, `page`, `back` and
-`home`; the PC runs `open-url`, `launch`, `http` and `app`. Their fields are in
-[config.md](config.md#actions).
+Which runs where is the "Runs on" column of [config.md](config.md#actions).
 
 A PC action can set a `fallback`: an action the device runs instead while `deckhost` isn't
 connected (for an `app` action, while the host can't reach that app). Without one, the key flashes red
 instead of silently doing nothing.
 
-**Discord:** Discord keys go through Discord's local API and show whether you're muted, but need
-a Discord app set up ([discord.md](discord.md)). Until then mute and deafen fall back to
-Discord's default shortcuts, Ctrl+Shift+M and Ctrl+Shift+D.
+Discord keys, for one, fall back to Discord's shortcuts ([discord.md](discord.md#without-deckhost)).
 
 ## App integrations
 
@@ -44,8 +40,7 @@ Apps such as Discord are integrated in `deckhost`, not the device, so a new one 
 | | |
 |---|---|
 | Action | `{"type": "app", "app": "<app>", "op": "<op>", "args": {…}}`; names are lowercase letters, digits and `-` |
-| `<app>.ready` | State the host sets while it can run the app's actions (e.g. logged in to it). Until then the device runs the key's `fallback`, if it has one, or flashes the key red |
-| `<app>.<op>` | State that, while on, shows the key's `on` look (e.g. `discord.mute`) |
+| State | `<app>.ready` and `<app>.<op>`, set by the host ([api.md](api.md#state)) |
 | Built-ins | Optional built-in looks, on looks and fallback keybinds per app op (`deck/apps.go`) |
 
 In `deckhost`, an integration implements `app` (`cmd/deckhost/apps.go`): it keeps itself
@@ -64,24 +59,23 @@ other settings. An app it doesn't know, or an unknown op, is an error result.
   Saving a config without them fails; a config already on the device shows such keys without
   the icon.
 - **Custom** (`image`): PNG or JPEG files kept in the config itself (`images`, base64 by ID), so
-  saving the config saves them too and an OS update can't separate them. Limits: 256 KiB and
-  512x512 px per image, 2 MiB per config. Size them to the keys (196 px) before upload. The device
-  decodes and scales an image the first time it's shown (under 0.1 s for a 512 px PNG on the D200) and
-  keeps the result until the config changes, up to 4 MiB.
+  saving the config saves them too and an OS update can't separate them
+  ([limits](config.md#limits)). The device decodes and scales an image the first time it's shown
+  (under 0.1 s for a 512 px PNG on the D200) and keeps the result until the config changes, up to
+  4 MiB.
 - A button shows an icon, a label, or both; `color` and `background` (`#rrggbb`) are optional.
 - **Fonts** (`font`): the Go font family is built in (`deckd fonts`); custom TrueType/OpenType
-  fonts live in the config like images (`fonts`, up to 512 KiB each). A custom font is parsed on
+  fonts live in the config like images (`fonts`). A custom font is parsed on
   first use and kept while the config is loaded.
 
 ## Device <-> PC link
 
-Configuration is done from a **hosted website**, in the style of VIA (usevia.app) for keyboards:
+Configuration is done from a [hosted website](https://riptidewave93.github.io/d200-configure/) ([d200-configure](https://github.com/riptidewave93/d200-configure)), in the style of VIA (usevia.app) for keyboards:
 the site talks to the device from the browser over WebHID, so it can be updated without touching
 the firmware. `deckhost` uses the same channel (hidraw on Linux, the HID API on Windows).
 
-**Config channel**: a second HID interface (vendor usage page `0xFFD2`) with 64-byte input reports
-and 1024-byte output reports, and no OUT endpoint (output reports arrive by SET_REPORT on ep0, so
-the shared RX FIFO can't stall). The messages are in [api.md](api.md).
+**Config channel**: a second HID interface ([api.md](api.md#finding-it)) with no OUT endpoint:
+output reports arrive by SET_REPORT on ep0, so the shared RX FIFO can't stall.
 
 Measured (Linux hidraw and Chrome WebHID): ~50 KB/s to the device, limited by ep0 moving 64-byte
 packets at ~1.25 ms each. Enough for configs; custom icons in bulk would want a 64-byte
@@ -103,21 +97,18 @@ behind the user's back:
   the PC, can ask, but not without the user seeing it.
 - New screens ignore presses for a second, so a press meant for the keys doesn't answer them.
 - `deckhost` checks again that URLs are http(s), in case the device isn't ours.
-- Release builds disable the U-Boot console, the root shell and SSH (debug builds keep them).
+- Release builds disable the U-Boot console, the root shell and SSH (debug builds keep them;
+  see d200-buildroot's [flavours](https://github.com/riptidewave93/d200-buildroot/blob/main/README.md#building)).
 - Updates need a press on the device too. The confirm screen shows the bundle's version (letters,
   digits and `._+-` only) and whether it's an official build.
 
 ## Device settings
 
-Kept in their own file and messages, so pushing pages can't change USB settings by accident.
-`deckd usb-net` prints the USB addresses for the image's gadget setup (`DEV_IP4`, `PEER_IP4`,
-`DEV_IP6`, `NET6`): from the serial (package `netid`), or `net4=`.
-
-- USB drive (default on): the read-only USB drive. The image owns the setting: `drive=0|1` in
-  `/data/usb-gadget.conf`, read by `S30usb-gadget` at boot; `S30usb-gadget apply` re-binds the
-  gadget to match. To change it (the settings command), deckd rewrites the file (keeping lines it
-  doesn't know), replies, sends usb-rebinding, runs `apply` and reopens its HID devices. The PC sees a re-plug of about a second, `usb0`
-  keeps its address, and `/dev/hidg*` are re-created.
+Kept in their own file and messages, so pushing pages can't change USB settings by accident:
+the [settings command](api.md#settings), and the image's `/data/usb-gadget.conf`
+([d200-buildroot](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/linux.md#usb)). After a change deckd reopens its HID devices,
+which the re-plug re-creates. `deckd usb-net` prints the USB addresses for the image's gadget
+setup (`DEV_IP4`, `PEER_IP4`, `DEV_IP6`, `NET6`): from the serial (package `netid`), or `net4=`.
 
 ## Recovery
 
@@ -128,17 +119,11 @@ Kept in their own file and messages, so pushing pages can't change USB settings 
 
 ## USB identity rules
 
-- Interface order is fixed, always-on functions first: keyboard HID, config channel (raw HID),
-  USB Ethernet, drive last. Turning the drive off then moves nothing else, so PC drivers stay bound.
-- `bcdDevice` is the descriptor-layout version: bump it when always-on interfaces or OS
-  descriptors change, not for the drive toggle. The firmware version goes through the API.
-- Keep the MS OS descriptors (vendor code 0xcd), the serial-derived MACs and the USB serial.
-- USB networking is per device: its /30 in 198.18.0.0/15 and `d200-<serial>.local` come from its
-  serial. The image's boot scripts do it; `netid` must stay byte-for-byte the same derivation
-  (vectors in `netid/testdata`).
-- Get our own VID:PID (e.g. pid.codes) before release; 1d6b:0104 is the kernel's shared test ID.
-- Endpoints: keyboard HID, config channel, NCM and the drive use 5 of 6 IN endpoints; HID input
-  reports stay at 64 bytes or less.
+The USB gadget (interfaces, descriptors, endpoints, VID:PID) is d200-buildroot's
+([linux.md](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/linux.md#usb), [todo](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/todo.md)). On the deck's side:
+
+- `netid` must stay byte-for-byte the image's address derivation (vectors in `netid/testdata`).
+- HID input reports stay at 64 bytes or less.
 
 ## Open items
 
