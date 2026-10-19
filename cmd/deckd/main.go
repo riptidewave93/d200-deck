@@ -1,7 +1,7 @@
 // deckd is the program on the D200. Without arguments it runs its two
 // parts as child processes, the keys (internal/deckd) and the update page
-// (internal/deckupdate), and restarts either when it exits; the system's
-// init restarts deckd itself. "deckd keys ..." and "deckd update ..." run
+// (internal/deckupdate), and restarts either when it exits or hangs; the
+// system's init restarts deckd itself. "deckd keys ..." and "deckd update ..." run
 // one directly; "deckd usb-net", "deckd hid-descriptor" and so on print
 // what they say.
 package main

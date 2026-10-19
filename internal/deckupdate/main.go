@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/riptidewave93/d200-deck/internal/alive"
 	"github.com/riptidewave93/d200-deck/internal/debuginfo"
 	"github.com/riptidewave93/d200-deck/internal/osrelease"
 	"github.com/riptidewave93/d200-deck/internal/ota"
@@ -58,9 +59,16 @@ func Main(args []string) {
 	os.RemoveAll("/data/deck-update") // the state of the updater before deckd update
 	log.Printf("deckd %s", Version)
 
+	u := newUpdater(*dir, *state)
+	go func() {
+		for range time.Tick(alive.Period) {
+			u.status() // not stuck on its lock
+			alive.Beat()
+		}
+	}()
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           handler(mdnsName(), newUpdater(*dir, *state), debuginfo.Device(Version, *config)),
+		Handler:           handler(mdnsName(), u, debuginfo.Device(Version, *config)),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    8 << 10,

@@ -13,8 +13,9 @@ Status: early. Buttons, pages, HID actions and macros work on the device, and `d
 the PC-side actions (open a URL, launch an app, webhooks) on Linux and Windows. Updates install over USB from
 the update page. The configuration website is not done yet.
 
-On the D200, `deckd` runs both parts as child processes and restarts either if it exits
-(`deckd keys` or `deckd update` runs just one).
+On the D200, `deckd` runs both parts as child processes and restarts either if it exits or stops
+answering for 30 s (`deckd keys` or `deckd update` runs just one). While it can, it writes a new
+count to `/run/deckd.alive` every 5 s, so init can restart a hung `deckd`.
 See [docs/design.md](docs/design.md); the API is in [docs/api.md](docs/api.md), and Discord keys are in [docs/discord.md](docs/discord.md).
 
 ## Configuration

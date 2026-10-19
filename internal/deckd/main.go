@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
+	"github.com/riptidewave93/d200-deck/internal/alive"
 	"github.com/riptidewave93/d200-deck/internal/drm"
 	"github.com/riptidewave93/d200-deck/internal/gfx"
 	"github.com/riptidewave93/d200-deck/internal/hidg"
@@ -365,8 +366,12 @@ func Main(args []string) {
 	}
 	events := make(chan input.Event)
 	go func() { log.Fatal(input.Read(*keys, events)) }()
+	beat := time.NewTicker(alive.Period)
+	alive.Beat()
 	for {
 		select {
+		case <-beat.C:
+			alive.Beat()
 		case ev := <-events:
 			d.sendKey(ev.Key, ev.Pressed)
 			d.press(ev.Key, ev.Pressed)

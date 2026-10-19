@@ -5,12 +5,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/riptidewave93/d200-deck/internal/alive"
 )
 
 // TestHelperProcess is the child the tests run: it appends a line to
-// DECKD_TEST_LOG, then exits or, with DECKD_TEST_STAY, waits to be stopped.
+// DECKD_TEST_LOG, then exits or, with DECKD_TEST_STAY, waits to be stopped;
+// with DECKD_TEST_BEAT, it beats while it waits.
 func TestHelperProcess(t *testing.T) {
 	path := os.Getenv("DECKD_TEST_LOG")
 	if path == "" {
@@ -19,13 +23,18 @@ func TestHelperProcess(t *testing.T) {
 	f, _ := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	f.WriteString("start\n")
 	f.Close()
+	if os.Getenv("DECKD_TEST_BEAT") != "" {
+		for range time.Tick(10 * time.Millisecond) {
+			alive.Beat()
+		}
+	}
 	if os.Getenv("DECKD_TEST_STAY") != "" {
 		time.Sleep(time.Minute)
 	}
 	os.Exit(1)
 }
 
-func helper(t *testing.T, stay bool) (func() *exec.Cmd, func() int) {
+func helper(t *testing.T, stay bool, env ...string) (func() *exec.Cmd, func() int) {
 	path := filepath.Join(t.TempDir(), "log")
 	return func() *exec.Cmd {
 			c := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
@@ -33,6 +42,7 @@ func helper(t *testing.T, stay bool) (func() *exec.Cmd, func() int) {
 			if stay {
 				c.Env = append(c.Env, "DECKD_TEST_STAY=1")
 			}
+			c.Env = append(c.Env, env...)
 			return c
 		}, func() int {
 			b, _ := os.ReadFile(path)
@@ -51,7 +61,7 @@ func TestKeepRestarts(t *testing.T) {
 	cmd, starts := helper(t, false)
 	quit := make(chan struct{})
 	done := make(chan struct{})
-	go func() { keep("crasher", cmd, quit); close(done) }()
+	go func() { keep("crasher", cmd, quit, new(atomic.Int64)); close(done) }()
 	for deadline := time.Now().Add(10 * time.Second); starts() < 3; time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatalf("%d starts", starts())
@@ -66,7 +76,7 @@ func TestKeepStops(t *testing.T) {
 	cmd, starts := helper(t, true)
 	quit := make(chan struct{})
 	done := make(chan struct{})
-	go func() { keep("stayer", cmd, quit); close(done) }()
+	go func() { keep("stayer", cmd, quit, new(atomic.Int64)); close(done) }()
 	for deadline := time.Now().Add(10 * time.Second); starts() < 1; time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("never started")
@@ -80,6 +90,45 @@ func TestKeepStops(t *testing.T) {
 	}
 	if n := starts(); n != 1 {
 		t.Errorf("%d starts", n)
+	}
+}
+
+func TestKeepRestartsHung(t *testing.T) {
+	fastRestarts(t)
+	old := []time.Duration{beatEvery, hungAfter}
+	beatEvery, hungAfter = 20*time.Millisecond, 300*time.Millisecond
+	t.Cleanup(func() { beatEvery, hungAfter = old[0], old[1] })
+	for _, tc := range []struct {
+		name  string
+		env   []string
+		hangs bool
+	}{{"hung", nil, true}, {"beating", []string{"DECKD_TEST_BEAT=1"}, false}} {
+		cmd, starts := helper(t, true, tc.env...)
+		quit := make(chan struct{})
+		done := make(chan struct{})
+		var seen atomic.Int64
+		go func() { keep(tc.name, cmd, quit, &seen); close(done) }()
+		time.Sleep(time.Second)
+		if n := starts(); (n > 1) != tc.hangs {
+			t.Errorf("%s: %d starts", tc.name, n)
+		}
+		if since(&seen) > hungAfter {
+			t.Errorf("%s: keeper not seen", tc.name)
+		}
+		close(quit)
+		<-done
+	}
+}
+
+func TestStuckPart(t *testing.T) {
+	seen := make([]atomic.Int64, 2)
+	now(&seen[0])
+	if got := stuckPart([]string{"keys", "update"}, seen); got != "update" {
+		t.Errorf("stuck: %q", got)
+	}
+	now(&seen[1])
+	if got := stuckPart([]string{"keys", "update"}, seen); got != "" {
+		t.Errorf("stuck: %q", got)
 	}
 }
 
