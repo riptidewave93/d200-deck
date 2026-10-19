@@ -1,10 +1,8 @@
 package hidg
 
 import (
-	"errors"
 	"os"
 	"syscall"
-	"time"
 
 	"github.com/riptidewave93/d200-deck/proto"
 )
@@ -48,17 +46,7 @@ func (r *Raw) Read(buf []byte) (int, error) {
 func (r *Raw) Write(report []byte) error {
 	var b [proto.RawInSize]byte
 	copy(b[:], report)
-	deadline := time.Now().Add(sendTimeout)
-	for {
-		_, err := r.f.Write(b[:])
-		if !errors.Is(err, syscall.EAGAIN) {
-			return err
-		}
-		if time.Now().After(deadline) {
-			return errors.New("USB host not reading config channel reports")
-		}
-		time.Sleep(time.Millisecond)
-	}
+	return write(r.f, b[:], "USB host not reading config channel reports")
 }
 
 // Close closes the channel.

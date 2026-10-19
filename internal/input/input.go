@@ -24,9 +24,12 @@ type Event struct {
 	Pressed bool
 }
 
+// sysInput is where the kernel lists input devices.
+var sysInput = "/sys/class/input"
+
 // Find returns the event device of the keypad, or "" if there is none.
 func Find() string {
-	names, _ := filepath.Glob("/sys/class/input/event*/device/name")
+	names, _ := filepath.Glob(sysInput + "/event*/device/name")
 	for _, n := range names {
 		b, err := os.ReadFile(n)
 		if err == nil && strings.Contains(string(b), "keypad") {

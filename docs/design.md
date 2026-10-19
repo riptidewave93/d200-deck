@@ -7,6 +7,7 @@ One Go module, two programs that share code:
 | Program | Runs on | Job |
 |---|---|---|
 | `deckd` | the D200 | draws pages, reads keys, runs HID actions, forwards PC actions |
+| `deck-update` | the D200 | web page on port 80 for installing OS updates, separate from `deckd` so a broken `deckd` can still be updated |
 | `deckhost` | the PC (Linux, Windows; macOS later) | runs the actions HID can't do, pushes config and images to the device |
 
 ```
@@ -67,20 +68,26 @@ packets at ~1.25 ms each. Enough for configs; custom icons in bulk would want a 
 interrupt OUT endpoint (about 10x faster), which needs a check against the shared-FIFO stall.
 
 Firefox and Safari have no WebHID; their users go through `deckhost`. Linux needs a udev
-`uaccess` rule for the hidraw node.
+`uaccess` rule for the hidraw node (`contrib/linux/70-d200-deck.rules`).
 
-| Message | Direction | Purpose |
-|---|---|---|
-| `hello` | both | protocol version, device serial/firmware/key geometry, PC OS |
-| `action` | device -> PC | run a PC action (`press`/`release`, with an id) |
-| `result` | PC -> device | ok/error for an action id (error flashes the key) |
-| `config.get` / `config.put` | client -> device | read or replace the config (`base` revision, validated, written atomically, applied live) |
-| `config.changed` | device -> clients | the config changed |
-| `settings.get` / `settings.put` | client -> device | device settings, kept apart from pages |
-| `image.put` / `image.list` | client -> device | upload / list custom images |
-| `identify`, `key` | both | flash a key; live key events for the web app |
-| `usb.rebinding` | device -> clients | the USB gadget is about to re-plug; reconnect |
-| `state` | PC -> device | live key overrides (e.g. a mic-muted icon), later |
+The device also sends **events** on its own: input reports with seq 0, which requests never use.
+Clients reassemble reports per seq, so events and replies can interleave, and drop events that
+arrive before their first reply (left over from before they connected).
+
+| Message | Direction | Status | Purpose |
+|---|---|---|---|
+| `hello` (0x01) | client -> device | done | protocol version, deckd version, OS version and flavour, serial, key count |
+| `identify` (0x03) | client -> device | done | flash a key |
+| `action-host` (0x05) | PC -> device | done | heartbeat every 2 s from `deckhost`; PC actions are only sent while one arrived in the last 5 s, otherwise the key flashes red |
+| `action` (event 0x01) | device -> PC | done | run a PC action, with an id; sent on press |
+| `result` (0x04) | PC -> device | done | ok/error for an action id; an error, or no result within 15 s, flashes the key red |
+| `config.get` / `config.put` | client -> device | | read or replace the config (`base` revision, validated, written atomically, applied live) |
+| `config.changed` | device -> clients | | the config changed |
+| `settings.get` / `settings.put` | client -> device | | device settings, kept apart from pages |
+| `image.put` / `image.list` | client -> device | | upload / list custom images |
+| `key` | device -> clients | | live key events for the web app |
+| `usb.rebinding` | device -> clients | | the USB gadget is about to re-plug; reconnect |
+| `state` | PC -> device | | live key overrides (e.g. a mic-muted icon), later |
 
 Whatever can write the config can make `deckhost` run commands on the PC (via `launch`/`http`
 actions), so the config channel is security-critical.

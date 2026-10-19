@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=D200 Deck
+Comment=Tray icon for the D200 deck
+Exec=@BIN@ tray
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

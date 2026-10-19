@@ -44,6 +44,8 @@ type deckd struct {
 	redraw chan int
 	// ui runs functions on the main loop, for the config channel
 	ui chan func()
+	ch channel
+	pc pcActions
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -123,8 +125,7 @@ func (d *deckd) press(i int, down bool) {
 	case a.Type == deck.ActionHome:
 		d.setPages([]string{d.cfg.Home})
 	case a.Type.OnPC():
-		log.Printf("key %d: %s needs the PC daemon", i, a.Type)
-		d.flashError(i)
+		d.sendPC(i, a)
 	default:
 		d.run.press(i, a)
 	}
@@ -193,6 +194,7 @@ func main() {
 	d := &deckd{cfg: loadConfig(*config), canvas: gfx.NewCanvas(screen.Width, screen.Height),
 		test: *test, redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 4)}
 	d.pages = []string{d.cfg.Home}
+	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	if d.test {
 		drawGrid(d.canvas)
 	}

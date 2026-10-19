@@ -6,6 +6,7 @@ Stream-deck software for the [Ulanzi D200](https://www.ulanzi.com/) running main
 | Program | Runs on | Does |
 |---|---|---|
 | `deckd` | the D200 | draws pages of buttons on the screen, runs key actions (USB HID keyboard, media keys, macros), serves the config channel |
+| `deck-update` | the D200 | serves the update page at `http://172.31.254.1/update`; shows the installed version, can't install updates yet |
 | `deckhost` | the PC | talks to the device over the config channel; early stage, Linux only for now |
 
 Status: early. Buttons, pages, HID actions and macros work on the device; the configuration
@@ -46,7 +47,7 @@ key. Action types are listed in [docs/design.md](docs/design.md#where-an-action-
 
 ```bash
 go test ./...
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags='-s -w' ./cmd/deckd
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags='-s -w' ./cmd/deckd ./cmd/deck-update
 go build ./cmd/deckhost
 go run ./cmd/deckd -preview screen.png   # render the default config on a PC
 ```

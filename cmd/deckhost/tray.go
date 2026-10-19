@@ -1,0 +1,224 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"log"
+	"os/exec"
+	"path/filepath"
+	"time"
+
+	"fyne.io/systray"
+
+	"github.com/riptidewave93/d200-deck/deck"
+)
+
+func runTray() {
+	systray.Run(trayReady, nil)
+}
+
+func trayReady() {
+	icons := map[bool][]byte{true: drawIcon(0x2f6fde), false: drawIcon(0x8a8a8a)}
+	systray.SetIcon(icons[false])
+	systray.SetTitle("D200")
+	systray.SetTooltip("D200 Deck")
+
+	status := systray.AddMenuItem("D200: checking…", "")
+	status.Disable()
+	var lines []*systray.MenuItem
+	for range maxTrayDevices {
+		l := systray.AddMenuItem("", "")
+		l.Disable()
+		l.Hide()
+		lines = append(lines, l)
+	}
+	systray.AddSeparator()
+	configure := systray.AddMenuItem("Configure", "Open the configuration website")
+	update := systray.AddMenuItem("Update", "Open the device's update page")
+	systray.AddSeparator()
+	restart := systray.AddMenuItem("Restart", "Restart deckhost")
+	exit := systray.AddMenuItem("Exit", "Stop deckhost and close this icon")
+
+	refresh := func() {
+		s, running := daemonStatus()
+		header, text := describe(s, running)
+		status.SetTitle(header)
+		for i, l := range lines {
+			if i < len(text) {
+				l.SetTitle(text[i])
+				l.Show()
+			} else {
+				l.Hide()
+			}
+		}
+		connected := len(s.Connected()) > 0
+		systray.SetIcon(icons[connected])
+		if connected {
+			update.Enable()
+		} else {
+			update.Disable()
+		}
+	}
+	refresh()
+
+	go func() {
+		tick := time.NewTicker(3 * time.Second)
+		for {
+			select {
+			case <-tick.C:
+				refresh()
+			case <-configure.ClickedCh:
+				ask("configure", func() error { return openURL(deck.ConfigureURL) })
+			case <-update.ClickedCh:
+				ask("update", func() error { return openURL(deck.UpdateURL) })
+			case <-restart.ClickedCh:
+				ask("restart", func() error {
+					return exec.Command("systemctl", "--user", "restart", "deckhost.service").Run()
+				})
+				time.Sleep(time.Second)
+				refresh()
+			case <-exit.ClickedCh:
+				control("exit")
+				systray.Quit()
+				return
+			}
+		}
+	}()
+}
+
+// maxTrayDevices is how many devices the menu lists.
+const maxTrayDevices = 8
+
+// describe is the menu's status header and one line per device.
+func describe(s Status, running bool) (header string, lines []string) {
+	if !running {
+		return "deckhost isn't running", nil
+	}
+	n := len(s.Connected())
+	switch {
+	case n == 0:
+		header = "D200 not connected"
+	case n == 1:
+		header = "D200 connected"
+	default:
+		header = fmt.Sprintf("%d D200s connected", n)
+	}
+	for _, d := range s.Devices {
+		var l string
+		switch {
+		case d.Hello != nil && len(s.Devices) == 1:
+			l = fmt.Sprintf("OS %s (%s)", d.Hello.OS.Version, d.Hello.OS.Flavour)
+		case d.Hello != nil:
+			l = fmt.Sprintf("%s: OS %s (%s)", shortSerial(d.Hello.Serial), d.Hello.OS.Version, d.Hello.OS.Flavour)
+		case d.Error != "":
+			l = filepath.Base(d.Path) + ": " + d.Error
+		default:
+			continue
+		}
+		if len(l) > 80 {
+			l = l[:77] + "..."
+		}
+		lines = append(lines, l)
+	}
+	if len(lines) > maxTrayDevices {
+		lines = lines[:maxTrayDevices]
+	}
+	return header, lines
+}
+
+// shortSerial names a device by the end of its serial.
+func shortSerial(s string) string {
+	if len(s) > 6 {
+		s = s[len(s)-6:]
+	}
+	return "D200 …" + s
+}
+
+// ask passes cmd to the daemon, or runs fallback if the daemon isn't running.
+func ask(cmd string, fallback func() error) {
+	_, err := control(cmd)
+	if err == nil {
+		return
+	}
+	if _, running := daemonStatus(); running {
+		log.Printf("%s: %v", cmd, err)
+		return
+	}
+	if err := fallback(); err != nil {
+		log.Printf("%s: %v", cmd, err)
+	}
+}
+
+func daemonStatus() (s Status, running bool) {
+	reply, err := control("status")
+	if err != nil {
+		return Status{}, false
+	}
+	json.Unmarshal([]byte(reply), &s)
+	return s, true
+}
+
+// drawIcon draws the tray icon: a deck of 3x2 keys on a body of colour body.
+func drawIcon(body uint32) []byte {
+	const size, ss = 64, 4 // pixels, samples per pixel per axis
+	bodyRGBA := color.RGBA{uint8(body >> 16), uint8(body >> 8), uint8(body), 0xff}
+	white := color.RGBA{0xff, 0xff, 0xff, 0xff}
+	type rect struct{ x0, y0, x1, y1, r float64 }
+	shapes := []rect{{2, 10, 62, 54, 9}}
+	for row := 0; row < 2; row++ {
+		for col := 0; col < 3; col++ {
+			x, y := 9+float64(col)*16, 17+float64(row)*16
+			shapes = append(shapes, rect{x, y, x + 14, y + 14, 3})
+		}
+	}
+	inside := func(s rect, x, y float64) bool {
+		cx := min(max(x, s.x0+s.r), s.x1-s.r)
+		cy := min(max(y, s.y0+s.r), s.y1-s.r)
+		return x >= s.x0 && x < s.x1 && y >= s.y0 && y < s.y1 && (x-cx)*(x-cx)+(y-cy)*(y-cy) <= s.r*s.r
+	}
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	for py := 0; py < size; py++ {
+		for px := 0; px < size; px++ {
+			var nBody, nKey int
+			for sy := 0; sy < ss; sy++ {
+				for sx := 0; sx < ss; sx++ {
+					x, y := float64(px)+(float64(sx)+0.5)/ss, float64(py)+(float64(sy)+0.5)/ss
+					switch {
+					case !inside(shapes[0], x, y):
+					case func() bool {
+						for _, k := range shapes[1:] {
+							if inside(k, x, y) {
+								return true
+							}
+						}
+						return false
+					}():
+						nKey++
+					default:
+						nBody++
+					}
+				}
+			}
+			n := nBody + nKey
+			if n == 0 {
+				continue
+			}
+			// colour: mix of body and key samples; alpha: coverage
+			mix := func(a, b uint8) uint8 { return uint8((int(a)*nBody + int(b)*nKey) / n) }
+			a := n * 255 / (ss * ss)
+			img.SetRGBA(px, py, color.RGBA{
+				uint8(int(mix(bodyRGBA.R, white.R)) * a / 255),
+				uint8(int(mix(bodyRGBA.G, white.G)) * a / 255),
+				uint8(int(mix(bodyRGBA.B, white.B)) * a / 255),
+				uint8(a),
+			})
+		}
+	}
+	var b bytes.Buffer
+	png.Encode(&b, img)
+	return b.Bytes()
+}

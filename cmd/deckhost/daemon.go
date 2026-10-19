@@ -1,0 +1,211 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"sort"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/riptidewave93/d200-deck/internal/hidraw"
+	"github.com/riptidewave93/d200-deck/proto"
+)
+
+// channelPrefix starts the config channel's report descriptor (vendor usage
+// page 0xffd2).
+var channelPrefix = []byte{0x06, 0xd2, 0xff}
+
+// Device is one D200 as the daemon sees it.
+type Device struct {
+	Path  string       `json:"path"`
+	Hello *proto.Hello `json:"hello,omitempty"` // set while connected
+	Error string       `json:"error,omitempty"` // why it isn't connected
+	busy  bool         // a session is running
+}
+
+// Status is what the daemon reports to the tray: every D200 plugged in.
+type Status struct {
+	Devices []Device `json:"devices"`
+}
+
+// Connected are the devices with a working session.
+func (s Status) Connected() []Device {
+	var c []Device
+	for _, d := range s.Devices {
+		if d.Hello != nil {
+			c = append(c, d)
+		}
+	}
+	return c
+}
+
+// daemon runs one session per plugged-in D200.
+type daemon struct {
+	mu      sync.Mutex
+	devices map[string]*Device // by hidraw path
+	find    func() []string
+	open    func(path string) (proto.Transport, error)
+}
+
+func newDaemon() *daemon {
+	return &daemon{
+		devices: map[string]*Device{},
+		find:    func() []string { return hidraw.FindAll(channelPrefix) },
+		open:    func(path string) (proto.Transport, error) { return hidraw.Open(path) },
+	}
+}
+
+func (d *daemon) getStatus() Status {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var s Status
+	for _, dev := range d.devices {
+		s.Devices = append(s.Devices, *dev)
+	}
+	sort.Slice(s.Devices, func(i, j int) bool { return s.Devices[i].Path < s.Devices[j].Path })
+	return s
+}
+
+func runDaemon() {
+	d := newDaemon()
+	ctl, err := listenControl(d)
+	if err != nil {
+		log.Fatal(err)
+	}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-stop
+		ctl.Close()
+		os.Exit(0)
+	}()
+	for {
+		d.scan()
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// scan starts a session for each plugged-in D200 that has none, and forgets
+// unplugged ones.
+func (d *daemon) scan() {
+	found := map[string]bool{}
+	for _, path := range d.find() {
+		found[path] = true
+		d.mu.Lock()
+		dev, ok := d.devices[path]
+		if !ok {
+			dev = &Device{Path: path}
+			d.devices[path] = dev
+		}
+		start := !dev.busy
+		dev.busy = true
+		d.mu.Unlock()
+		if start {
+			go d.run(path)
+		}
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for path, dev := range d.devices {
+		if !found[path] && !dev.busy {
+			delete(d.devices, path)
+		}
+	}
+}
+
+// run holds one session with the device at path.
+func (d *daemon) run(path string) {
+	err := d.session(path)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	dev := d.devices[path]
+	dev.busy = false
+	dev.Hello = nil
+	if msg := err.Error(); msg != dev.Error {
+		log.Printf("%s: %s", path, msg)
+		dev.Error = msg
+	}
+}
+
+func (d *daemon) connected(path string, hello proto.Hello) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if dev, ok := d.devices[path]; ok {
+		dev.Hello = &hello
+		dev.Error = ""
+	}
+	log.Printf("%s: connected to D200 %s (OS %s, deckd %s)", path, hello.Serial, hello.OS.Version, hello.Firmware)
+}
+
+// session talks to the device at path until it goes away.
+func (d *daemon) session(path string) error {
+	t, err := d.open(path)
+	if err != nil {
+		return err
+	}
+	c := proto.NewConn(t)
+	defer c.Close()
+	return d.serve(c, path)
+}
+
+// serve runs PC actions for the device on c until the connection fails.
+func (d *daemon) serve(c *proto.Conn, path string) error {
+	b, err := c.Do(proto.CmdHello, nil)
+	if err != nil {
+		return err
+	}
+	var hello proto.Hello
+	if err := json.Unmarshal(b, &hello); err != nil {
+		return fmt.Errorf("bad hello: %w", err)
+	}
+	if hello.Protocol != proto.Version {
+		return fmt.Errorf("device speaks protocol %d, deckhost %d; update the older one", hello.Protocol, proto.Version)
+	}
+	if _, err := c.Do(proto.CmdActionHost, nil); err != nil {
+		return err
+	}
+	d.connected(path, hello)
+
+	heartbeat := time.NewTicker(proto.ActionHostPeriod)
+	defer heartbeat.Stop()
+	results := make(chan proto.Result, 16)
+	for {
+		select {
+		case <-c.Done():
+			return fmt.Errorf("disconnected: %w", c.Err())
+		case <-heartbeat.C:
+			if _, err := c.Do(proto.CmdActionHost, nil); err != nil {
+				return err
+			}
+		case ev := <-c.Events():
+			if ev.Code != proto.EventAction {
+				continue
+			}
+			var a proto.ActionEvent
+			if err := json.Unmarshal(ev.Payload, &a); err != nil {
+				log.Printf("bad action event: %v", err)
+				continue
+			}
+			go func() {
+				r := proto.Result{ID: a.ID}
+				if err := run(a.Action); err != nil {
+					log.Printf("key %d: %v", a.Key, err)
+					r.Error = err.Error()
+				}
+				select {
+				case results <- r:
+				case <-c.Done():
+				}
+			}()
+		case r := <-results:
+			b, _ := json.Marshal(r)
+			if _, err := c.Do(proto.CmdResult, b); err != nil {
+				return err
+			}
+		}
+	}
+}

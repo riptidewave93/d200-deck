@@ -27,8 +27,14 @@ const (
 	MaxDelayMS = 60000 // one macro delay
 )
 
-// RepoURL is the project's source repository.
-const RepoURL = "https://github.com/riptidewave93/d200-deck"
+// Project URLs.
+const (
+	RepoURL = "https://github.com/riptidewave93/d200-deck"
+	// ConfigureURL is the configuration website (not built yet).
+	ConfigureURL = "https://riptidewave93.github.io/d200-configure/"
+	// UpdateURL is the device's update page, served over USB Ethernet.
+	UpdateURL = "http://172.31.254.1/update"
+)
 
 // Config is the whole key setup: named pages of buttons, starting at Home.
 type Config struct {

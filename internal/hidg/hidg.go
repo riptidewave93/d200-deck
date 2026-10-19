@@ -79,14 +79,24 @@ func Open(path string) (*Device, error) {
 const sendTimeout = 50 * time.Millisecond
 
 func (d *Device) send(report ...byte) error {
+	return write(d.f, report, "USB host not reading HID reports")
+}
+
+// write writes b, giving up after sendTimeout if the host doesn't take it.
+// Go's poller waits on a busy gadget (the deadline ends that wait); a file it
+// can't poll returns EAGAIN instead.
+func write(f *os.File, b []byte, busy string) error {
 	deadline := time.Now().Add(sendTimeout)
+	f.SetWriteDeadline(deadline)
 	for {
-		_, err := d.f.Write(report)
-		if !errors.Is(err, syscall.EAGAIN) {
+		_, err := f.Write(b)
+		switch {
+		case errors.Is(err, os.ErrDeadlineExceeded):
+			return errors.New(busy)
+		case !errors.Is(err, syscall.EAGAIN):
 			return err
-		}
-		if time.Now().After(deadline) {
-			return errors.New("USB host not reading HID reports")
+		case time.Now().After(deadline):
+			return errors.New(busy)
 		}
 		time.Sleep(time.Millisecond)
 	}

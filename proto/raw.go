@@ -12,11 +12,19 @@
 //
 // One request is in flight at a time: the device keeps only the latest
 // unread output report.
+//
+// The device also sends events on its own: input reports with seq EventSeq
+// and an event code in place of the status. Requests never use EventSeq.
+// Reports are reassembled per seq, so events and replies may interleave.
 package proto
 
 import (
 	"encoding/binary"
 	"errors"
+	"time"
+
+	"github.com/riptidewave93/d200-deck/deck"
+	"github.com/riptidewave93/d200-deck/internal/osrelease"
 )
 
 // Report sizes; they match the raw HID report descriptor.
@@ -26,15 +34,37 @@ const (
 
 	MaxRequest = RawOutSize - 4
 	MaxReply   = RawInSize - 4
+
+	// MaxMessage bounds a reassembled reply or event.
+	MaxMessage = 64 << 10
 )
 
 // Version is the protocol version reported by CmdHello.
-const Version = 1
+const Version = 2
 
 // Commands.
 const (
 	CmdHello    = 0x01 // reply: Hello as JSON
 	CmdIdentify = 0x03 // payload: key number; flashes the key
+	CmdResult   = 0x04 // payload: Result as JSON
+	// CmdActionHost says the sender runs PC actions. The action host sends
+	// it every ActionHostPeriod; the device sends EventAction only while it
+	// has heard one within ActionHostTimeout.
+	CmdActionHost = 0x05
+)
+
+// Action host heartbeat timing.
+const (
+	ActionHostPeriod  = 2 * time.Second
+	ActionHostTimeout = 5 * time.Second
+)
+
+// EventSeq is the seq of events.
+const EventSeq = 0
+
+// Events.
+const (
+	EventAction = 0x01 // payload: ActionEvent as JSON
 )
 
 // Reply statuses.
@@ -49,10 +79,25 @@ const FlagMore = 0x01
 
 // Hello describes the device.
 type Hello struct {
-	Protocol int    `json:"protocol"`
-	Firmware string `json:"firmware"`
-	Serial   string `json:"serial"`
-	Keys     int    `json:"keys"`
+	Protocol int            `json:"protocol"`
+	Firmware string         `json:"firmware"` // deckd version
+	OS       osrelease.Info `json:"os"`
+	Serial   string         `json:"serial"`
+	Keys     int            `json:"keys"`
+}
+
+// ActionEvent asks the action host to run a PC action. The host answers
+// with CmdResult and the same ID.
+type ActionEvent struct {
+	ID     uint32      `json:"id"`
+	Key    int         `json:"key"`
+	Action deck.Action `json:"action"`
+}
+
+// Result says how a PC action went; Error is empty on success.
+type Result struct {
+	ID    uint32 `json:"id"`
+	Error string `json:"error,omitempty"`
 }
 
 // Request is a decoded request.

@@ -4,38 +4,37 @@ package hidraw
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 // Device is an open hidraw node.
-type Device struct {
-	f       *os.File
-	timeout time.Duration
-}
+type Device struct{ f *os.File }
 
-// Find returns the /dev path of the first hidraw node whose report descriptor
+// sysHidraw is where the kernel lists hidraw nodes.
+var sysHidraw = "/sys/class/hidraw"
+
+// FindAll returns the /dev paths of the hidraw nodes whose report descriptor
 // starts with prefix (e.g. the config channel's vendor usage page).
-func Find(prefix []byte) (string, error) {
-	nodes, _ := filepath.Glob("/sys/class/hidraw/hidraw*")
+func FindAll(prefix []byte) []string {
+	var paths []string
+	nodes, _ := filepath.Glob(sysHidraw + "/hidraw*")
 	for _, n := range nodes {
 		d, err := os.ReadFile(filepath.Join(n, "device", "report_descriptor"))
 		if err == nil && bytes.HasPrefix(d, prefix) {
-			return "/dev/" + filepath.Base(n), nil
+			paths = append(paths, "/dev/"+filepath.Base(n))
 		}
 	}
-	return "", errors.New("no D200 config channel found")
+	return paths
 }
 
-// Open opens a hidraw node; reads time out after timeout.
-func Open(path string, timeout time.Duration) (*Device, error) {
+// Open opens a hidraw node.
+func Open(path string) (*Device, error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return nil, err
 	}
-	return &Device{f: f, timeout: timeout}, nil
+	return &Device{f: f}, nil
 }
 
 // WriteReport sends an output report. The device has no report IDs, so
@@ -45,11 +44,8 @@ func (d *Device) WriteReport(b []byte) error {
 	return err
 }
 
-// ReadReport receives one input report.
-func (d *Device) ReadReport(b []byte) (int, error) {
-	d.f.SetReadDeadline(time.Now().Add(d.timeout))
-	return d.f.Read(b)
-}
+// ReadReport waits for one input report.
+func (d *Device) ReadReport(b []byte) (int, error) { return d.f.Read(b) }
 
-// Close closes the node.
+// Close closes the node, which also ends a waiting ReadReport.
 func (d *Device) Close() error { return d.f.Close() }
