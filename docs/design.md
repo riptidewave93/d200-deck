@@ -58,11 +58,11 @@ other settings. An app it doesn't know, or an unknown op, is an error result.
   `back`) and `icons.Embed` adds the ones a config needs, app keys' built-in looks included.
   Saving a config without them fails; a config already on the device shows such keys without
   the icon.
-- **Custom** (`image`): PNG or JPEG files kept in the config itself (`images`, base64 by ID), so
+- **Custom** (`image`): PNG, JPEG or GIF files kept in the config itself (`images`, base64 by ID), so
   saving the config saves them too and an OS update can't separate them
   ([limits](config.md#limits)). The device decodes and scales an image the first time it's shown
   (under 0.1 s for a 512 px PNG on the D200) and keeps the result until the config changes, up to
-  4 MiB.
+  4 MiB. A GIF animates: deckd redraws just its key when the next frame is due.
 - A button shows an icon, a label, or both; `color` and `background` (`#rrggbb`) are optional.
 - **Fonts** (`font`): the Go font family is built in (`deckd fonts`); custom TrueType/OpenType
   fonts live in the config like images (`fonts`). A custom font is parsed on

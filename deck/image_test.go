@@ -64,7 +64,6 @@ func TestImages(t *testing.T) {
 	bad := map[string]string{
 		"not base64":   "%%%",
 		"not an image": base64.StdEncoding.EncodeToString([]byte("hello")),
-		"gif":          testImage(t, "gif", 8, 8),
 		"too wide":     testImage(t, "png", MaxImageSide+1, 8),
 		"too big":      base64.StdEncoding.EncodeToString(make([]byte, MaxImageBytes+1)),
 		"too big b64":  strings.Repeat("A", 4*MaxImageBytes),

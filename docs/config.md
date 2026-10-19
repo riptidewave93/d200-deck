@@ -30,7 +30,7 @@ keeps it at `/data/deckd/config.json`; read and replace it over USB with the
     "back": {"d": "...", "viewBox": "0 -960 960 960"},
     "refresh": {"d": "...", "viewBox": "0 -960 960 960"}
   },
-  "images": {"logo": "<base64 PNG or JPEG>"},
+  "images": {"logo": "<base64 PNG, JPEG or GIF>"},
   "fonts": {"brand": "<base64 TTF or OTF>"}
 }
 ```
@@ -40,8 +40,8 @@ keeps it at `/data/deckd/config.json`; read and replace it over USB with the
 | `version` | `1` |
 | `home` | the page shown at start |
 | `pages` | pages by name; each has `keys`, buttons by key number. Keys without one are blank. |
-| `icons` | the icons keys use, by name: `d` (SVG path data, filled nonzero, drawn in the key's `color`) and `viewBox`, or `png` (base64, drawn as it is, e.g. an emoji) |
-| `images` | custom images by ID, base64; one alone fills the key |
+| `icons` | the icons keys use, by name: `d` (SVG path data, filled nonzero, drawn in the key's `color`) and `viewBox`, or `png` (base64 PNG or GIF, drawn as it is, e.g. an emoji) |
+| `images` | custom images by ID, base64 PNG, JPEG or GIF; one alone fills the key. GIFs animate. |
 | `fonts` | custom fonts by ID, base64 |
 
 ## Keys
@@ -111,5 +111,6 @@ so on.
 | Config file | 2 MiB, images and fonts included |
 | Image | 256 KiB and 512x512 px; keys are 196 px, so size them to that |
 | Font | 512 KiB |
-| Icons | 256; a path up to 16 KiB, a PNG up to 24 KiB and 128x128 px |
+| Icons | 256; a path up to 16 KiB, a PNG or GIF up to 24 KiB and 128x128 px |
+| GIF | 100 frames and 4 M pixels in all (frames x width x height); frames show for 50 ms at least. Past 2 M pixels of animations on screen, the rest show their first frame. |
 | One PC action | 8 KiB as JSON |

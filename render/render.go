@@ -7,6 +7,7 @@ import (
 	"log"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/gfx"
@@ -58,6 +59,14 @@ const Foreground = 0xe8e8e8
 type Renderer struct {
 	// Extra are icons for screens the device draws itself, not configs.
 	Extra map[string]deck.Icon
+	// Now is the time animated GIFs are drawn at; nil is time.Now. They
+	// start when the config is set.
+	Now func() time.Time
+
+	start      time.Time
+	next       time.Time // when the key drawn last changes, if it's animated
+	anims      map[imageKey]*gfx.Animation
+	animPixels int
 
 	cfg       *deck.Config
 	masks     map[imageKey]*image.Alpha // path icons, drawn
@@ -68,8 +77,12 @@ type Renderer struct {
 }
 
 // maxCachedPixels bounds the scaled images kept (4 bytes each): a few pages
-// of full-key images.
-const maxCachedPixels = 1 << 20
+// of full-key images. maxAnimPixels bounds animations' frames; past it, a
+// GIF shows its first frame.
+const (
+	maxCachedPixels = 1 << 20
+	maxAnimPixels   = 2 << 20
+)
 
 type imageKey struct {
 	id   string
@@ -77,7 +90,7 @@ type imageKey struct {
 }
 
 // New returns a renderer for cfg's buttons.
-func New(cfg *deck.Config) *Renderer { return &Renderer{cfg: cfg} }
+func New(cfg *deck.Config) *Renderer { return &Renderer{cfg: cfg, start: time.Now()} }
 
 // SetConfig switches to cfg, dropping what's cached if it's a different one.
 func (r *Renderer) SetConfig(cfg *deck.Config) {
@@ -85,6 +98,9 @@ func (r *Renderer) SetConfig(cfg *deck.Config) {
 		return
 	}
 	r.cfg = cfg
+	r.start = r.now()
+	clear(r.anims)
+	r.animPixels = 0
 	clear(r.masks)
 	clear(r.fonts)
 	clear(r.images)
@@ -107,6 +123,7 @@ func (r *Renderer) Key(i int, b deck.Button, on bool) *image.RGBA {
 // bad custom font or image, it marks them broken and draws b without them,
 // or leaves the key blank if that panics too.
 func (r *Renderer) Draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok bool, s State) {
+	r.next = time.Time{}
 	if try(func() { r.draw(c, area, b, ok, s) }) == nil {
 		return
 	}
@@ -115,6 +132,17 @@ func (r *Renderer) Draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok b
 	if try(func() { r.draw(c, area, b, ok, s) }) != nil {
 		c.Fill(area, Colours[Idle])
 	}
+}
+
+// Next is when the key Draw drew last changes, if it shows an animated GIF;
+// zero if it doesn't.
+func (r *Renderer) Next() time.Time { return r.next }
+
+func (r *Renderer) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
 }
 
 // try runs f, returning (and logging) what it panicked with, if anything.
@@ -283,9 +311,17 @@ func (r *Renderer) image(id string, w, h int) *image.RGBA {
 }
 
 // picture is base64 image data, cached as id, scaled to fit w x h; nil if
-// it's broken.
+// it's broken. An animated GIF gives the frame for now.
 func (r *Renderer) picture(id, data string, w, h int) *image.RGBA {
 	k := imageKey{id, w, h}
+	if a := r.animation(k, data); a != nil {
+		now := r.now()
+		f, wait := a.At(now.Sub(r.start))
+		if next := now.Add(wait); r.next.IsZero() || next.Before(r.next) {
+			r.next = next
+		}
+		return f
+	}
 	if img, ok := r.images[k]; ok {
 		return img
 	}
@@ -306,6 +342,34 @@ func (r *Renderer) picture(id, data string, w, h int) *image.RGBA {
 	}
 	r.images[k] = scaled
 	return scaled
+}
+
+// animation is data's frames scaled to fit k's size if it's an animated GIF
+// and they fit in maxAnimPixels; nil otherwise.
+func (r *Renderer) animation(k imageKey, data string) *gfx.Animation {
+	if !strings.HasPrefix(data, "R0lGOD") { // "GIF8" in base64
+		return nil
+	}
+	if a, ok := r.anims[k]; ok {
+		return a
+	}
+	if r.anims == nil {
+		r.anims = map[imageKey]*gfx.Animation{}
+	}
+	var a *gfx.Animation
+	if g, err := deck.DecodeAnimation(data); err != nil {
+		log.Printf("image %q: %v", k.id, err)
+	} else if g != nil {
+		a = gfx.NewAnimation(g, k.w, k.h)
+		if r.animPixels+a.Pixels() > maxAnimPixels {
+			log.Printf("image %q: too many animated frames shown at once; showing the first", k.id)
+			a = nil
+		} else {
+			r.animPixels += a.Pixels()
+		}
+	}
+	r.anims[k] = a
+	return a
 }
 
 // font returns the named font, or the default if it's empty or broken.

@@ -2,7 +2,11 @@ package deckd
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/gif"
 	"image/png"
 	"io"
 	"net"
@@ -647,4 +651,48 @@ func TestKeyEvents(t *testing.T) {
 		t.Errorf("%+v %v", part, err)
 	}
 	close(d.keys)
+}
+
+func TestAnimatedKeys(t *testing.T) {
+	d := newTestDeckd()
+	d.cfg.Images = map[string]string{"anim": animGIF(t)}
+	d.cfg.Pages["main"].Keys[11] = deck.Button{Image: "anim"}
+	d.renderer.SetConfig(d.cfg)
+	d.drawPage()
+	if d.frameAt[11].IsZero() || !d.frameAt[0].IsZero() {
+		t.Fatalf("frames at %v", d.frameAt)
+	}
+	first := keyColour(d, 11)
+	select {
+	case <-d.frames.C:
+		d.nextFrames()
+	case <-time.After(time.Second):
+		t.Fatal("no frame")
+	}
+	if keyColour(d, 11) == first {
+		t.Error("the next frame wasn't drawn")
+	}
+	d.press(0, true) // to another page: nothing animated
+	if !d.frameAt[11].IsZero() {
+		t.Error("still animating a key on another page")
+	}
+}
+
+// animGIF is a base64 GIF of two 196 px frames, red then green, 50 ms each.
+func animGIF(t *testing.T) string {
+	pal := color.Palette{color.RGBA{0xff, 0, 0, 0xff}, color.RGBA{0, 0xff, 0, 0xff}}
+	g := &gif.GIF{}
+	for i := range 2 {
+		f := image.NewPaletted(image.Rect(0, 0, 196, 196), pal)
+		for j := range f.Pix {
+			f.Pix[j] = uint8(i)
+		}
+		g.Image = append(g.Image, f)
+		g.Delay = append(g.Delay, 5)
+	}
+	var b bytes.Buffer
+	if err := gif.EncodeAll(&b, g); err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(b.Bytes())
 }

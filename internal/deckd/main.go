@@ -69,6 +69,11 @@ type deckd struct {
 	// asking is set while the device asks about a change (see ask)
 	asking atomic.Bool
 	clock  clock
+	// state is how each key was drawn last, and frameAt when it changes
+	// next, if it's animated; frames fires then
+	state   [deck.KeyCount]render.State
+	frameAt [deck.KeyCount]time.Time
+	frames  *time.Timer
 	// reply sends a reply later; nil sends it on ch
 	reply func(seq uint16, status byte, b []byte)
 	// keys queues key events for the config channel; nil sends none
@@ -86,6 +91,7 @@ func (d *deckd) show(r gfx.Rect) {
 
 func (d *deckd) drawKey(i int, state render.State) {
 	r := render.Key(i)
+	var next time.Time // when an animated key changes
 	if d.test {
 		drawTestKey(d.canvas, i, r, state != render.Idle)
 	} else if d.overlay != nil {
@@ -100,8 +106,38 @@ func (d *deckd) drawKey(i int, state render.State) {
 		st := b.Action.State()
 		b = b.Shown(st != "" && d.pc.getState(st))
 		d.renderer.Draw(d.canvas, r, b, ok, state)
+		next = d.renderer.Next()
 	}
 	d.show(r)
+	d.state[i], d.frameAt[i] = state, next
+	d.scheduleFrames()
+}
+
+// scheduleFrames sets frames to fire when the next animated key changes.
+func (d *deckd) scheduleFrames() {
+	var soonest time.Time
+	for _, t := range d.frameAt {
+		if !t.IsZero() && (soonest.IsZero() || t.Before(soonest)) {
+			soonest = t
+		}
+	}
+	if d.frames == nil {
+		d.frames = time.NewTimer(time.Hour)
+	}
+	d.frames.Stop()
+	if !soonest.IsZero() {
+		d.frames.Reset(max(time.Until(soonest), time.Millisecond))
+	}
+}
+
+// nextFrames redraws the animated keys due a new frame.
+func (d *deckd) nextFrames() {
+	now := time.Now()
+	for i, t := range d.frameAt {
+		if !t.IsZero() && !t.After(now) {
+			d.drawKey(i, d.state[i])
+		}
+	}
 }
 
 // flashError shows key i in the error colour for a moment.
@@ -289,7 +325,7 @@ func Main(args []string) {
 	fs.Parse(args)
 
 	// The D200 has little RAM: keep the Go heap small.
-	debug.SetMemoryLimit(16 << 20)
+	debug.SetMemoryLimit(24 << 20) // animated GIFs' frames take up to 8 MiB
 
 	if !*test && *preview == "" {
 		guardConfig(*config)
@@ -364,6 +400,8 @@ func Main(args []string) {
 			log.Printf("%v, exiting", s)
 			os.Remove(startsFile) // stopped, not crashed
 			return
+		case <-d.frames.C:
+			d.nextFrames()
 		case i := <-d.redraw:
 			state := render.Idle
 			if d.held[i] != nil {

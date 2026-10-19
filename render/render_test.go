@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"testing"
+	"time"
 
 	"golang.org/x/image/font/gofont/gomono"
 
@@ -373,4 +375,48 @@ func must(ic deck.Icon, ok bool) deck.Icon {
 		panic("no icon")
 	}
 	return ic
+}
+
+// redGreenGIF is a base64 GIF of two 196 px frames, red then green, 100 ms
+// each.
+func redGreenGIF(t *testing.T) string {
+	pal := color.Palette{color.RGBA{0xff, 0, 0, 0xff}, color.RGBA{0, 0xff, 0, 0xff}}
+	g := &gif.GIF{}
+	for i := range 2 {
+		f := image.NewPaletted(image.Rect(0, 0, 196, 196), pal)
+		for j := range f.Pix {
+			f.Pix[j] = uint8(i)
+		}
+		g.Image = append(g.Image, f)
+		g.Delay = append(g.Delay, 10)
+	}
+	var b bytes.Buffer
+	if err := gif.EncodeAll(&b, g); err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(b.Bytes())
+}
+
+func TestAnimatedGIF(t *testing.T) {
+	now := time.Now()
+	r := New(&deck.Config{Images: map[string]string{"anim": redGreenGIF(t)}})
+	r.Now = func() time.Time { return now }
+	r.SetConfig(r.cfg) // same config: the start stays
+	r.start = now
+	draw := func() *gfx.Canvas {
+		c := gfx.NewCanvas(Width, Height)
+		r.Draw(c, Key(0), deck.Button{Image: "anim"}, true, Idle)
+		return c
+	}
+	if c := draw(); count(c, Key(0), 0xff0000) != 196*196 || !r.Next().Equal(now.Add(100*time.Millisecond)) {
+		t.Errorf("first frame: next %v", r.Next().Sub(now))
+	}
+	now = now.Add(150 * time.Millisecond)
+	if c := draw(); count(c, Key(0), 0x00ff00) != 196*196 {
+		t.Error("second frame not drawn")
+	}
+	r.Draw(gfx.NewCanvas(Width, Height), Key(1), deck.Button{Label: "x"}, true, Idle)
+	if !r.Next().IsZero() {
+		t.Error("a still key is animated")
+	}
 }

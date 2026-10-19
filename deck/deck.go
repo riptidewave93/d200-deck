@@ -56,7 +56,7 @@ type Config struct {
 	Version int             `json:"version"`
 	Home    string          `json:"home"`
 	Pages   map[string]Page `json:"pages"`
-	// Images are custom icons by ID: PNG or JPEG files, base64-encoded.
+	// Images are custom icons by ID: PNG, JPEG or GIF files, base64-encoded.
 	Images map[string]string `json:"images,omitempty"`
 	// Fonts are custom fonts by ID: TrueType or OpenType files, base64-encoded.
 	Fonts map[string]string `json:"fonts,omitempty"`
