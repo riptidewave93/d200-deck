@@ -23,9 +23,13 @@ type overlay struct {
 	keys  map[int]deck.Button
 	drawn map[int]func(*gfx.Canvas, gfx.Rect) // keys drawn by hand
 	press func(key int)                       // nil: presses do nothing
+	shown time.Time
 }
 
 func (d *deckd) setOverlay(o *overlay) {
+	if o != nil {
+		o.shown = time.Now()
+	}
 	d.overlay = o
 	d.drawPage()
 }
@@ -73,9 +77,14 @@ func confirmScreen(c ota.ConfirmRequest, answer func(bool)) *overlay {
 			}
 		},
 	}
-	if c.Older {
+	// amber: look before installing
+	if c.Older || !c.Signed {
+		lines := []line{{c.Version, 30}, {c.Flavour, 30}, {build, 30}}
+		if c.Older {
+			lines = append(lines, line{"NOT NEWER", 30})
+		}
 		delete(o.keys, 7)
-		o.drawn[7] = text("go-bold", amberRGB, 0, line{c.Version, 30}, line{c.Flavour, 30}, line{build, 30}, line{"NOT NEWER", 30})
+		o.drawn[7] = text("go-bold", amberRGB, 0, lines...)
 	}
 	return o
 }

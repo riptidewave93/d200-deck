@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/proto"
@@ -36,7 +37,7 @@ func TestConfigOverChannel(t *testing.T) {
 	d.cfg, d.file.b = loadConfig(path) // missing: the default
 	d.file.path = path
 	dev := prototest.New()
-	go dev.Serve(d.handle)
+	go serve(d, dev)
 	c := proto.NewConn(dev)
 	defer c.Close()
 
@@ -91,6 +92,73 @@ func TestConfigOverChannel(t *testing.T) {
 	c.Do(proto.CmdConfigCommit, nil)
 	if _, err := c.Do(proto.CmdConfigCommit, nil); err == nil {
 		t.Error("commit without a write")
+	}
+}
+
+func TestConfigAsks(t *testing.T) {
+	d := newTestDeckd()
+	path := filepath.Join(t.TempDir(), "config.json")
+	d.cfg, d.file.b = loadConfig(path)
+	d.file.path = path
+	dev := prototest.New()
+	go serve(d, dev)
+	c := proto.NewConn(dev)
+	defer c.Close()
+
+	cfg := deck.DefaultConfig()
+	cfg.Pages["main"].Keys[12] = deck.Button{Label: "x", Action: deck.Action{Type: deck.ActionLaunch, Command: []string{"sh"}}}
+	file, _ := json.Marshal(cfg)
+	if n := newActions(d.cfg, cfg); n != 1 {
+		t.Fatalf("%d new actions", n)
+	}
+	write := func(key int) error {
+		done := make(chan error, 1)
+		go func() { _, err := c.WriteConfig("", file); done <- err }()
+		runUI(t, d) // shows the question
+		if d.overlay == nil || d.overlay.keys[2].Label != "Save keys?" {
+			t.Fatal("not asked")
+		}
+		d.press(key, true)
+		runUI(t, d) // clears it
+		err := <-done
+		if err == nil {
+			runUI(t, d) // shows the config
+		}
+		return err
+	}
+	if err := write(10); err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Errorf("cancel: %v", err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("saved when cancelled")
+	}
+	if err := write(13); err != nil {
+		t.Fatal(err)
+	}
+	if d.overlay != nil || d.cfg.Pages["main"].Keys[12].Label != "x" {
+		t.Error("not shown")
+	}
+	// the same actions again: no question
+	cfg.Home = "browser"
+	file, _ = json.Marshal(cfg)
+	if _, err := c.WriteConfig("", file); err != nil {
+		t.Fatal(err)
+	}
+	runUI(t, d)
+	if d.cfg.Home != "browser" {
+		t.Error("not saved")
+	}
+}
+
+func TestNewScreenIgnoresPresses(t *testing.T) {
+	d := newTestDeckd()
+	pressDelay = time.Hour
+	t.Cleanup(func() { pressDelay = 0 })
+	pressed := false
+	d.setOverlay(askScreen("t", "d", "OK", func(bool) { pressed = true }))
+	d.press(13, true)
+	if pressed {
+		t.Error("answered at once")
 	}
 }
 

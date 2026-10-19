@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,9 +81,15 @@ func (d *deckd) serveChannel(path string) {
 				last = ""
 			}
 			req, err := proto.DecodeRequest(buf[:n])
+			if err == nil && req.Seq == proto.EventSeq {
+				continue // its reply would look like an event
+			}
 			status, reply := byte(proto.StatusBadRequest), []byte(nil)
 			if err == nil {
 				status, reply = d.handle(req)
+			}
+			if status == statusLater {
+				continue
 			}
 			if err := d.ch.send(req.Seq, status, reply); err != nil {
 				logErr(err)
@@ -97,7 +105,7 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 	case proto.CmdHello:
 		info, _ := osrelease.Read(osrelease.Path)
 		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: Version, OS: info, Serial: readSerial(),
-			Keys: deck.KeyCount, IPv4: usbIPv4()})
+			Keys: deck.KeyCount, Model: model(), IPv4: usbIPv4()})
 		return proto.StatusOK, b
 	case proto.CmdIdentify:
 		if len(req.Payload) != 1 || int(req.Payload[0]) >= deck.KeyCount {
@@ -121,11 +129,11 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 		d.pc.setState(s)
 		return proto.StatusOK, nil
 	case proto.CmdConfigInfo, proto.CmdConfigRead, proto.CmdConfigWrite, proto.CmdConfigData, proto.CmdConfigCommit:
-		return d.configRequest(req.Cmd, req.Payload)
+		return d.configRequest(req)
 	case proto.CmdHost:
 		return okJSON(d.pc.hostInfo())
 	case proto.CmdSettings:
-		return d.settings(req.Payload)
+		return d.settings(req.Seq, req.Payload)
 	case proto.CmdResult:
 		var r proto.Result
 		if json.Unmarshal(req.Payload, &r) != nil {
@@ -135,6 +143,15 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 		return proto.StatusOK, nil
 	}
 	return proto.StatusUnknownCmd, nil
+}
+
+// compatiblePath lists the device's compatible strings, NUL-separated.
+var compatiblePath = "/proc/device-tree/compatible"
+
+func model() string {
+	b, _ := os.ReadFile(compatiblePath)
+	m, _, _ := strings.Cut(string(b), "\x00")
+	return m
 }
 
 func readSerial() string {

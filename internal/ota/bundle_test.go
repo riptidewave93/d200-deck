@@ -188,3 +188,14 @@ func TestReceiveSigned(t *testing.T) {
 		}
 	}
 }
+
+func TestValidVersion(t *testing.T) {
+	for v, ok := range map[string]bool{
+		"v1.2.0": true, "a82a8a8-dirty": true, "1.0+rc_1": true,
+		"": false, "v1\n2": false, "v 1": false, strings.Repeat("1", 33): false,
+	} {
+		if validVersion(v) != ok {
+			t.Errorf("%q: %v", v, !ok)
+		}
+	}
+}

@@ -51,7 +51,7 @@ func TestSettings(t *testing.T) {
 
 	get := func(payload string) bool {
 		t.Helper()
-		status, reply := d.settings([]byte(payload))
+		status, reply := d.settings(1, []byte(payload))
 		var s proto.Settings
 		if status != proto.StatusOK || json.Unmarshal(reply, &s) != nil || s.USBDrive == nil {
 			t.Fatalf("%q: status %d, reply %q", payload, status, reply)
@@ -76,7 +76,7 @@ func TestSettings(t *testing.T) {
 		t.Error("applied without a change")
 	case <-time.After(50 * time.Millisecond):
 	}
-	if status, _ := d.settings([]byte("{")); status != proto.StatusBadRequest {
+	if status, _ := d.settings(1, []byte("{")); status != proto.StatusBadRequest {
 		t.Errorf("bad JSON: %d", status)
 	}
 }
@@ -104,9 +104,23 @@ func TestUSBNet4(t *testing.T) {
 	})
 	os.WriteFile(usbConf, []byte("drive=0\nnet4=bad\n"), 0o644)
 	d := newTestDeckd()
+	type answer struct {
+		status byte
+		b      []byte
+	}
+	replies := make(chan answer, 1)
+	d.reply = func(_ uint16, status byte, b []byte) { replies <- answer{status, b} }
 
+	// set changes settings, pressing Change if the device asks
 	set := func(payload string) (byte, proto.Settings) {
-		status, reply := d.settings([]byte(payload))
+		status, reply := d.settings(1, []byte(payload))
+		if status == statusLater {
+			runUI(t, d)
+			d.press(13, true)
+			runUI(t, d)
+			a := <-replies
+			status, reply = a.status, a.b
+		}
 		var s proto.Settings
 		json.Unmarshal(reply, &s)
 		return status, s

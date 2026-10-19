@@ -131,6 +131,12 @@ func (c *Conn) read() {
 
 // Do sends a request and returns the reply payload.
 func (c *Conn) Do(cmd byte, payload []byte) ([]byte, error) {
+	return c.DoWait(cmd, payload, ReplyTimeout)
+}
+
+// DoWait is Do, waiting up to wait for the reply: for requests the device
+// may ask about first.
+func (c *Conn) DoWait(cmd byte, payload []byte, wait time.Duration) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.seq++
@@ -144,7 +150,7 @@ func (c *Conn) Do(cmd byte, payload []byte) ([]byte, error) {
 	if err := c.t.WriteReport(req); err != nil {
 		return nil, err
 	}
-	timeout := time.NewTimer(ReplyTimeout)
+	timeout := time.NewTimer(wait)
 	defer timeout.Stop()
 	for {
 		select {

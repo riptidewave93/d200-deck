@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // Targets are what a bundle writes, in write order.
@@ -76,8 +77,8 @@ func (m *Manifest) check() error {
 	if m.Format != 1 || m.Product != Product {
 		return fmt.Errorf("not an update for this device (format %d, product %q)", m.Format, m.Product)
 	}
-	if m.Version == "" || m.BuildID <= 0 || (m.Flavour != "release" && m.Flavour != "debug") {
-		return errors.New("manifest: missing version, build_id or flavour")
+	if !validVersion(m.Version) || m.BuildID <= 0 || (m.Flavour != "release" && m.Flavour != "debug") {
+		return errors.New("manifest: bad version, build_id or flavour")
 	}
 	if len(m.Images) != len(Targets) {
 		return fmt.Errorf("manifest: %d images, want %d", len(m.Images), len(Targets))
@@ -98,6 +99,20 @@ func (m *Manifest) check() error {
 		files = append(files, im.File)
 	}
 	return nil
+}
+
+// validVersion reports whether v is a version the device shows as it is:
+// 1-32 letters, digits and . _ + -.
+func validVersion(v string) bool {
+	if v == "" || len(v) > 32 {
+		return false
+	}
+	for _, c := range v {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && !strings.ContainsRune("._+-", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // validFile reports whether name is a plain file name.

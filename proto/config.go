@@ -55,7 +55,7 @@ func (c *Conn) WriteConfig(base string, b []byte) (ConfigInfo, error) {
 			return info, err
 		}
 	}
-	r, err := c.Do(CmdConfigCommit, nil)
+	r, err := c.DoWait(CmdConfigCommit, nil, ConfirmTimeout+ReplyTimeout)
 	if err == nil {
 		err = json.Unmarshal(r, &info)
 	}

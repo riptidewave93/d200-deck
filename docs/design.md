@@ -92,8 +92,16 @@ actions), so the config channel is security-critical.
 ## Trust
 
 `deckhost` runs what the device config says. That is safe only if the config can't be changed
-behind the user's back, so release builds disable the U-Boot console, the root shell and SSH
-(debug builds keep them).
+behind the user's back:
+
+- A config that gives keys new actions, or a new USB network, is saved only after a press on the
+  device (see [the API](api.md#the-config)). Any website allowed to use the device, or program on
+  the PC, can ask, but not without the user seeing it.
+- New screens ignore presses for a second, so a press meant for the keys doesn't answer them.
+- `deckhost` checks again that URLs are http(s), in case the device isn't ours.
+- Release builds disable the U-Boot console, the root shell and SSH (debug builds keep them).
+- Updates need a press on the device too. The confirm screen shows the bundle's version (letters,
+  digits and `._+-` only) and whether it's an official build.
 
 ## Device settings
 

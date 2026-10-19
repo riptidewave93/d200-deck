@@ -104,7 +104,9 @@ func setConf(path, key, value string) error {
 }
 
 // settings answers CmdSettings.
-func (d *deckd) settings(payload []byte) (status byte, reply []byte) {
+// settings reads or changes the settings. A new USB network can cut the PC
+// off from an address it uses, so the device asks first.
+func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte) {
 	if len(payload) > 0 {
 		var s proto.Settings
 		if json.Unmarshal(payload, &s) != nil {
@@ -120,17 +122,36 @@ func (d *deckd) settings(payload []byte) (status byte, reply []byte) {
 		if s.USBNet4 != nil && *s.USBNet4 != usbNet4(usbConf) {
 			changes = append(changes, [2]string{"net4", *s.USBNet4})
 		}
-		for _, c := range changes {
-			if err := setConf(usbConf, c[0], c[1]); err != nil {
-				log.Printf("settings: %v", err)
-				return proto.StatusFailed, []byte(err.Error())
+		if s.USBNet4 != nil && *s.USBNet4 != usbNet4(usbConf) {
+			net := *s.USBNet4
+			if net == "" {
+				net = "default"
 			}
-			log.Printf("settings: %s=%s", c[0], c[1])
+			return d.ask(seq, "USB network?", net, "Change", func() (byte, []byte) {
+				return d.change(changes)
+			})
 		}
-		if len(changes) > 0 {
-			go d.rebind()
-		}
+		return d.change(changes)
 	}
+	return currentSettings()
+}
+
+// change makes settings changes, KEY=value lines in usbConf.
+func (d *deckd) change(changes [][2]string) (byte, []byte) {
+	for _, c := range changes {
+		if err := setConf(usbConf, c[0], c[1]); err != nil {
+			log.Printf("settings: %v", err)
+			return proto.StatusFailed, []byte(err.Error())
+		}
+		log.Printf("settings: %s=%s", c[0], c[1])
+	}
+	if len(changes) > 0 {
+		go d.rebind()
+	}
+	return currentSettings()
+}
+
+func currentSettings() (byte, []byte) {
 	on, net4 := usbDrive(usbConf), usbNet4(usbConf)
 	b, _ := json.Marshal(proto.Settings{USBDrive: &on, USBNet4: &net4})
 	return proto.StatusOK, b

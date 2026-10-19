@@ -122,7 +122,7 @@ func direct(cmd byte, payload []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer c.Close()
-	return c.Do(cmd, payload)
+	return c.DoWait(cmd, payload, proto.ConfirmTimeout+proto.ReplyTimeout) // the device may ask first
 }
 
 // connect opens the first D200's config channel.

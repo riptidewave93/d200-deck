@@ -98,7 +98,8 @@ const (
 	CmdConfigData = 0x0b
 	// CmdConfigCommit checks the config written, saves and applies it, then
 	// sends EventConfigChanged. Reply: ConfigInfo. It fails (StatusFailed,
-	// with why) if the config changed since Base or isn't valid.
+	// with why) if the config changed since Base or isn't valid. If it gives
+	// keys new actions, the device asks first (see ConfirmTimeout).
 	CmdConfigCommit = 0x0c
 
 	// CmdHost reports the action host. Reply: HostInfo as JSON.
@@ -117,6 +118,11 @@ const (
 	ActionHostPeriod  = 2 * time.Second
 	ActionHostTimeout = 5 * time.Second
 )
+
+// ConfirmTimeout is how long the device waits for a press when it asks
+// about a change: a config that gives keys new actions, or a new USB
+// network. The reply comes after the press.
+const ConfirmTimeout = 60 * time.Second
 
 // EventSeq is the seq of events.
 const EventSeq = 0
@@ -154,7 +160,10 @@ type Hello struct {
 	OS       osrelease.Info `json:"os"`
 	Serial   string         `json:"serial"`
 	Keys     int            `json:"keys"`
-	IPv4     string         `json:"ipv4,omitempty"` // its address on the USB network, now
+	// Model is the kind of device, its device tree's first compatible
+	// string, e.g. ulanzi,d200; "" if unknown.
+	Model string `json:"model,omitempty"`
+	IPv4  string `json:"ipv4,omitempty"` // its address on the USB network, now
 }
 
 // ActionHost identifies an action host and what it can do. ID is random,

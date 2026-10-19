@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 )
 
@@ -34,4 +35,15 @@ func appendSockets(paths []string, base string) []string {
 	return paths
 }
 
-func dial(path string) (net.Conn, error) { return net.DialTimeout("unix", path, time.Second) }
+// dial connects to the socket at path if it's the user's own, not one
+// another user put in a shared directory such as /tmp to get the token.
+func dial(path string) (net.Conn, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Getuid() {
+		return nil, fmt.Errorf("%s: not the user's", path)
+	}
+	return net.DialTimeout("unix", path, time.Second)
+}

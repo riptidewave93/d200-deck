@@ -554,3 +554,18 @@ func TestHeartbeat(t *testing.T) {
 		t.Errorf("%+v", h)
 	}
 }
+
+func TestWebURL(t *testing.T) {
+	for u, ok := range map[string]bool{
+		"https://example.com/x": true, "http://localhost:8080": true,
+		"file:///etc/passwd": false, `\\host\share\x.exe`: false, `C:\Windows\System32\cmd.exe`: false,
+		"javascript:alert(1)": false, "https:example.com": false, "": false,
+	} {
+		if webURL(u) != ok {
+			t.Errorf("%q: %v", u, !ok)
+		}
+	}
+	if err := run(deck.Action{Type: deck.ActionOpenURL, URL: "file:///etc/passwd"}); err == nil {
+		t.Error("opened a file URL")
+	}
+}

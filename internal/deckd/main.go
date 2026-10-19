@@ -18,6 +18,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -61,8 +63,13 @@ type deckd struct {
 	overlay *overlay
 	// file is the config file shown, and upload one being written; the
 	// config channel's loop owns both
+	fileMu sync.Mutex // for file and upload, also used by ask
 	file   configFile
 	upload *upload
+	// asking is set while the device asks about a change (see ask)
+	asking atomic.Bool
+	// reply sends a reply later; nil sends it on ch
+	reply func(seq uint16, status byte, b []byte)
 	// keys queues key events for the config channel; nil sends none
 	keys chan proto.KeyEvent
 }
@@ -137,7 +144,7 @@ func (d *deckd) press(i int, down bool) {
 		return
 	}
 	if d.overlay != nil {
-		if d.overlay.press != nil {
+		if d.overlay.press != nil && time.Since(d.overlay.shown) >= pressDelay {
 			d.overlay.press(i)
 		}
 		return

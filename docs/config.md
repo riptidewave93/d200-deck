@@ -75,7 +75,7 @@ A button shows an icon, a label, or both.
 | `page` | deck | `page`: a page name. A page already open is gone back to. |
 | `back`, `home` | deck | none |
 | `open-url` | PC | `url`: http or https |
-| `launch` | PC | `command`: the program and its arguments, e.g. `["code", "~/notes"]` |
+| `launch` | PC | `command`: the program and its arguments, e.g. `["code", "--new-window"]`; no shell, so `~` and `$VARS` aren't expanded |
 | `http` | PC | `method`, `url`, `headers`, `body` |
 | `app` | PC | `app`, `op`, `args` (an object): see [App integrations](design.md#app-integrations) and [Discord](discord.md) |
 

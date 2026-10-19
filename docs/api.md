@@ -31,7 +31,7 @@ One output report per request. Numbers are little-endian.
 
 | Bytes | Field |
 |---|---|
-| 0-1 | seq: any value but 0, echoed in the reply |
+| 0-1 | seq: any value but 0 (requests with 0 are ignored), echoed in the reply |
 | 2 | command |
 | 3-4 | payload length (up to 1019) |
 | 5- | payload, zero-padded |
@@ -64,7 +64,7 @@ Payloads are JSON unless noted.
 
 | Cmd | Name | Payload | Reply |
 |---|---|---|---|
-| `0x01` | hello | none | `{"protocol": 3, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "ipv4": "198.19.148.17"}`; `ipv4` is its address on the USB network now, for the web API |
+| `0x01` | hello | none | `{"protocol": 3, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.148.17"}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API |
 | `0x03` | identify | 1 byte: key number | none; the key flashes |
 | `0x04` | result | `{"id": 7, "error": "..."}`: how a PC action went; leave out `error` if it worked | none |
 | `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | none |
@@ -109,6 +109,11 @@ To write it:
    that the config is valid, then saves it, shows it and sends config-changed. If not, it fails
    (status 3) and says why: show that to the user.
 
+If the new config gives keys new actions (anything but `page`, `back` and `home`), the deck asks
+on its screen first, and the reply comes after the press: wait up to 60 s for it, and tell the
+user to press Save on the deck. Cancel, or no press, fails the commit. So a website or program
+can't make keys run things without the user knowing.
+
 A config-write drops any write not yet committed.
 
 ### The PC helper
@@ -136,7 +141,7 @@ An app without a `status` isn't set up yet. With no helper, it's `{"connected": 
 | `usb_drive` | on | The read-only USB drive |
 | `usb_net4` | `""` | The USB network, to avoid a clash with another on the PC: an IPv4 address such as `10.77.0.4`. The deck takes the first address of the /30 holding it, the PC the second. `""` goes back to the default, picked from the serial. |
 
-Changing either re-plugs the deck: you get the reply, then usb-rebinding, then the deck goes away for
+A new `usb_net4` is asked about on the deck first, like a config (above). Changing either re-plugs the deck: you get the reply, then usb-rebinding, then the deck goes away for
 about a second (several, for a new address). Use the deck's `ipv4` from hello afterwards, not an
 address worked out from its serial.
 

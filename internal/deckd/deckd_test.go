@@ -18,10 +18,12 @@ import (
 	"github.com/riptidewave93/d200-deck/internal/hidg"
 	"github.com/riptidewave93/d200-deck/internal/ota"
 	"github.com/riptidewave93/d200-deck/proto"
+	"github.com/riptidewave93/d200-deck/proto/prototest"
 	"github.com/riptidewave93/d200-deck/render"
 )
 
 func newTestDeckd() *deckd {
+	pressDelay = 0
 	d := &deckd{cfg: deck.DefaultConfig(), canvas: gfx.NewCanvas(render.Width, render.Height),
 		redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 16)}
 	d.pages = []string{d.cfg.Home}
@@ -29,6 +31,16 @@ func newTestDeckd() *deckd {
 	d.run = newRunner("")
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	return d
+}
+
+// serve answers requests from dev as the config channel does.
+func serve(d *deckd, dev *prototest.Device) {
+	d.reply = func(seq uint16, status byte, b []byte) { dev.Send(seq, status, b) }
+	for req := range dev.Requests() {
+		if status, reply := d.handle(req); status != statusLater {
+			dev.Send(req.Seq, status, reply)
+		}
+	}
 }
 
 // keyColour is the background colour key i is drawn in.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -14,8 +15,12 @@ import (
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
-// run carries out a PC action.
+// run carries out a PC action. It checks URLs again, so a device that
+// isn't ours can't open files or other programs through them.
 func run(a deck.Action) error {
+	if (a.Type == deck.ActionOpenURL || a.Type == deck.ActionHTTP) && !webURL(a.URL) {
+		return errors.New("not an http(s) URL")
+	}
 	switch a.Type {
 	case deck.ActionOpenURL:
 		return openURL(a.URL)
@@ -25,6 +30,11 @@ func run(a deck.Action) error {
 		return sendHTTP(a)
 	}
 	return fmt.Errorf("deckhost can't run %q actions", a.Type)
+}
+
+func webURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.Opaque == ""
 }
 
 // start runs a program detached from deckhost, so it outlives the daemon.
@@ -61,12 +71,16 @@ func sendHTTP(a deck.Action) error {
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err // without the URL, which can be a secret
+		}
 		return err
 	}
 	defer resp.Body.Close()
 	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("%s %s: %s", method, a.URL, resp.Status)
+		return fmt.Errorf("%s: %s", method, resp.Status)
 	}
 	return nil
 }

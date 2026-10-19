@@ -40,8 +40,11 @@ func okJSON(v any) (byte, []byte) {
 }
 
 // configRequest answers the config commands.
-func (d *deckd) configRequest(cmd byte, p []byte) (byte, []byte) {
-	switch cmd {
+func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
+	d.fileMu.Lock()
+	defer d.fileMu.Unlock()
+	p := req.Payload
+	switch req.Cmd {
 	case proto.CmdConfigInfo:
 		return okJSON(d.file.info())
 	case proto.CmdConfigRead:
@@ -77,12 +80,15 @@ func (d *deckd) configRequest(cmd byte, p []byte) (byte, []byte) {
 		if u == nil {
 			return proto.StatusBadRequest, nil
 		}
-		return d.commit(u)
+		return d.commit(req.Seq, u)
 	}
 	return proto.StatusUnknownCmd, nil
 }
 
-func (d *deckd) commit(u *upload) (byte, []byte) {
+// commit saves and shows upload u, if it's whole, based on the config
+// there now and valid. If it gives keys new actions, the device asks first,
+// so a website or program can't make keys run things behind the user's back.
+func (d *deckd) commit(seq uint16, u *upload) (byte, []byte) {
 	sum := sha256.Sum256(u.b)
 	if len(u.b) != u.Size || hex.EncodeToString(sum[:]) != u.SHA256 {
 		return failed(fmt.Errorf("the config arrived incomplete or damaged; send it again"))
@@ -94,6 +100,26 @@ func (d *deckd) commit(u *upload) (byte, []byte) {
 	if err != nil {
 		return failed(err)
 	}
+	old, _ := deck.Parse(d.file.b)
+	if old == nil {
+		old = &deck.Config{}
+	}
+	if n := newActions(old, c); n > 0 {
+		base := d.file.info().Rev
+		return d.ask(seq, "Save keys?", plural(n, "new\nkey action", "new\nkey actions"), "Save", func() (byte, []byte) {
+			d.fileMu.Lock()
+			defer d.fileMu.Unlock()
+			if d.file.info().Rev != base {
+				return failed(fmt.Errorf("the config changed since you read it; read it again"))
+			}
+			return d.save(u, c)
+		})
+	}
+	return d.save(u, c)
+}
+
+// save writes and shows config c, from upload u.
+func (d *deckd) save(u *upload, c *deck.Config) (byte, []byte) {
 	if err := writeFile(d.file.path, u.b); err != nil {
 		log.Printf("config: %v", err)
 		return failed(err)
