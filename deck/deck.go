@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // KeyCount is the number of front keys. Keys are numbered in reading order:
@@ -17,6 +18,14 @@ const KeyCount = 14
 
 // ConfigVersion is the config format version this package reads and writes.
 const ConfigVersion = 1
+
+// Limits that keep a config's memory use and run time bounded on the device.
+const (
+	MaxLabel   = 32    // runes in a button label
+	MaxText    = 1024  // runes typed by one type-text action
+	MaxSteps   = 256   // steps in one macro
+	MaxDelayMS = 60000 // one macro delay
+)
 
 // RepoURL is the project's source repository.
 const RepoURL = "https://github.com/riptidewave93/d200-deck"
@@ -160,6 +169,9 @@ func (c *Config) Validate() error {
 			if k < 0 || k >= KeyCount {
 				return fmt.Errorf("%s: no such key", where)
 			}
+			if utf8.RuneCountInString(b.Label) > MaxLabel {
+				return fmt.Errorf("%s: label longer than %d characters", where, MaxLabel)
+			}
 			if err := c.validateAction(b.Action, false); err != nil {
 				return fmt.Errorf("%s: %w", where, err)
 			}
@@ -187,6 +199,9 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 			return err
 		}
 	case ActionText:
+		if utf8.RuneCountInString(a.Text) > MaxText {
+			return fmt.Errorf("type-text longer than %d characters", MaxText)
+		}
 		for _, r := range a.Text {
 			if _, _, ok := TypeKey(r); !ok {
 				return fmt.Errorf("type-text can't type %q", r)
@@ -195,6 +210,9 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 	case ActionMacro:
 		if inMacro {
 			return errors.New("macros can't be nested")
+		}
+		if len(a.Steps) > MaxSteps {
+			return fmt.Errorf("macro has more than %d steps", MaxSteps)
 		}
 		for i, step := range a.Steps {
 			if step.Type == ActionPage || step.Type == ActionBack || step.Type == ActionHome {
@@ -205,8 +223,8 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 			}
 		}
 	case ActionDelay:
-		if !inMacro || a.MS <= 0 {
-			return errors.New("delay needs ms and is only valid in a macro")
+		if !inMacro || a.MS <= 0 || a.MS > MaxDelayMS {
+			return fmt.Errorf("delay needs ms (1-%d) and is only valid in a macro", MaxDelayMS)
 		}
 	case ActionOpenURL:
 		if !strings.HasPrefix(a.URL, "http://") && !strings.HasPrefix(a.URL, "https://") {

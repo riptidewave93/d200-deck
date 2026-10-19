@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/hidg"
 	"github.com/riptidewave93/d200-deck/proto"
 )
@@ -51,10 +52,10 @@ func (d *deckd) serveChannel(path string) {
 func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 	switch req.Cmd {
 	case proto.CmdHello:
-		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: version, Serial: serial(), Keys: 14})
+		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: version, Serial: serial(), Keys: deck.KeyCount})
 		return proto.StatusOK, b
 	case proto.CmdIdentify:
-		if len(req.Payload) != 1 || int(req.Payload[0]) >= 14 {
+		if len(req.Payload) != 1 || int(req.Payload[0]) >= deck.KeyCount {
 			return proto.StatusBadRequest, nil
 		}
 		i := int(req.Payload[0])

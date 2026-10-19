@@ -2,6 +2,7 @@ package deck
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -31,5 +32,21 @@ func TestTypeKey(t *testing.T) {
 	}
 	if _, _, ok := TypeKey('é'); ok {
 		t.Error("typed a non-ASCII rune")
+	}
+}
+
+func TestValidateLimits(t *testing.T) {
+	bad := []Button{
+		{Label: strings.Repeat("x", MaxLabel+1)},
+		{Action: Action{Type: ActionText, Text: strings.Repeat("a", MaxText+1)}},
+		{Action: Action{Type: ActionMacro, Steps: make([]Action, MaxSteps+1)}},
+		{Action: Action{Type: ActionMacro, Steps: []Action{{Type: ActionDelay, MS: MaxDelayMS + 1}}}},
+	}
+	for i, b := range bad {
+		c := DefaultConfig()
+		c.Pages[c.Home].Keys[4] = b
+		if err := c.Validate(); err == nil {
+			t.Errorf("case %d: over the limit but valid", i)
+		}
 	}
 }

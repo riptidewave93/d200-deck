@@ -46,6 +46,9 @@ type textKey struct {
 
 var textMasks = map[textKey]*image.Alpha{}
 
+// maxTextMasks bounds the text cache; labels are short and few per page.
+const maxTextMasks = 256
+
 // DrawText draws s centred in r at px pixels per em, in col.
 func (c *Canvas) DrawText(s string, r Rect, px int, col uint32) {
 	k := textKey{s, px}
@@ -57,6 +60,9 @@ func (c *Canvas) DrawText(s string, r Rect, px int, col uint32) {
 		m = image.NewAlpha(image.Rect(0, 0, w, (fm.Ascent + fm.Descent).Ceil()))
 		d := font.Drawer{Dst: m, Src: image.Opaque, Face: f, Dot: fixed.Point26_6{Y: fm.Ascent}}
 		d.DrawString(s)
+		if len(textMasks) >= maxTextMasks {
+			clear(textMasks)
+		}
 		textMasks[k] = m
 	}
 	b := m.Bounds()

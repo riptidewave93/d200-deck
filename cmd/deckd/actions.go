@@ -32,6 +32,14 @@ func newRunner(hid *hidg.Device) *runner {
 	return r
 }
 
+// releaseAll reports every key and media key as released. Run at start and
+// on stop, so keys held when deckd died or stopped don't stay down on the PC.
+func (r *runner) releaseAll() {
+	r.combos = [deck.KeyCount]*combo{}
+	r.keyboard(0)
+	r.consumer(0)
+}
+
 func (r *runner) do(job func()) {
 	select {
 	case r.jobs <- job:

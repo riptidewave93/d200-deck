@@ -12,7 +12,9 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/signal"
 	"runtime/debug"
+	"syscall"
 	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
@@ -219,6 +221,9 @@ func main() {
 		}
 	}
 	d.run = newRunner(dev)
+	d.run.do(d.run.releaseAll)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	if !d.test {
 		go d.serveChannel(*channel)
 	}
@@ -237,6 +242,19 @@ func main() {
 			d.press(ev.Key, ev.Pressed)
 		case f := <-d.ui:
 			f()
+		case s := <-stop:
+			// behind a running macro the release may not get through; don't hang
+			done := make(chan struct{})
+			select {
+			case d.run.jobs <- func() { d.run.releaseAll(); close(done) }:
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+				}
+			default:
+			}
+			log.Printf("%v, exiting", s)
+			return
 		case i := <-d.redraw:
 			state := keyIdle
 			if d.held[i] != nil {

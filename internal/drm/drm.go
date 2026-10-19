@@ -82,6 +82,17 @@ type mapDumb struct {
 	offset      uint64
 }
 
+// addr returns the address of the first element of s for an ioctl struct
+// field. The pinner keeps it on the heap and in place until it is unpinned,
+// so the kernel never sees a moved or freed buffer.
+func addr[T any](p *runtime.Pinner, s []T) uint64 {
+	if len(s) == 0 {
+		return 0
+	}
+	p.Pin(&s[0])
+	return uint64(uintptr(unsafe.Pointer(&s[0])))
+}
+
 func ioctl(fd uintptr, req uintptr, arg unsafe.Pointer) error {
 	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, req, uintptr(arg)); e != 0 {
 		return e
@@ -127,16 +138,11 @@ func (d *Display) setup() error {
 	}
 	conns := make([]uint32, res.nConnectors)
 	crtcs := make([]uint32, res.nCrtcs)
-	res = cardRes{nConnectors: res.nConnectors, nCrtcs: res.nCrtcs}
-	if len(conns) > 0 {
-		res.connectors = uint64(uintptr(unsafe.Pointer(&conns[0])))
-	}
-	if len(crtcs) > 0 {
-		res.crtcs = uint64(uintptr(unsafe.Pointer(&crtcs[0])))
-	}
+	var pin runtime.Pinner
+	res = cardRes{nConnectors: res.nConnectors, nCrtcs: res.nCrtcs,
+		connectors: addr(&pin, conns), crtcs: addr(&pin, crtcs)}
 	err := ioctl(fd, ioctlGetRes, unsafe.Pointer(&res))
-	runtime.KeepAlive(conns)
-	runtime.KeepAlive(crtcs)
+	pin.Unpin()
 	if err != nil {
 		return fmt.Errorf("get resources: %w", err)
 	}
@@ -167,11 +173,11 @@ func (d *Display) connector(id uint32) (connector, modeInfo, error) {
 	}
 	modes := make([]modeInfo, c.nModes)
 	encs := make([]uint32, max(c.nEncoders, 1))
-	c = connector{id: id, nModes: c.nModes, modes: uint64(uintptr(unsafe.Pointer(&modes[0]))),
-		nEncoders: c.nEncoders, encoders: uint64(uintptr(unsafe.Pointer(&encs[0])))}
+	var pin runtime.Pinner
+	c = connector{id: id, nModes: c.nModes, modes: addr(&pin, modes),
+		nEncoders: c.nEncoders, encoders: addr(&pin, encs)}
 	err := ioctl(fd, ioctlGetConn, unsafe.Pointer(&c))
-	runtime.KeepAlive(modes)
-	runtime.KeepAlive(encs)
+	pin.Unpin()
 	if err != nil {
 		return c, modeInfo{}, err
 	}
@@ -237,9 +243,9 @@ func (d *Display) show(connID, crtcID uint32, mode modeInfo) error {
 	d.Width, d.Height, d.Stride = int(cd.width), int(cd.height), int(cd.pitch/4)
 	clear(d.Pixels)
 
-	conns := []uint32{connID}
+	var pin runtime.Pinner
 	sc := crtc{
-		setConnectors: uint64(uintptr(unsafe.Pointer(&conns[0]))),
+		setConnectors: addr(&pin, []uint32{connID}),
 		nConnectors:   1,
 		id:            crtcID,
 		fbID:          d.fbID,
@@ -247,7 +253,7 @@ func (d *Display) show(connID, crtcID uint32, mode modeInfo) error {
 		mode:          mode,
 	}
 	err = ioctl(fd, ioctlSetCrtc, unsafe.Pointer(&sc))
-	runtime.KeepAlive(conns)
+	pin.Unpin()
 	if err != nil {
 		return fmt.Errorf("set CRTC: %w", err)
 	}
