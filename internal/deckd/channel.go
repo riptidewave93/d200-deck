@@ -132,6 +132,15 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 		return d.configRequest(req)
 	case proto.CmdHost:
 		return okJSON(d.pc.hostInfo())
+	case proto.CmdTime:
+		var t proto.Time
+		if json.Unmarshal(req.Payload, &t) != nil || t.UnixMS <= 0 {
+			return proto.StatusBadRequest, nil
+		}
+		if err := d.clock.set(time.UnixMilli(t.UnixMS)); err != nil {
+			return failed(err)
+		}
+		return proto.StatusOK, nil
 	case proto.CmdSettings:
 		return d.settings(req.Seq, req.Payload)
 	case proto.CmdResult:

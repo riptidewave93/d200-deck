@@ -76,6 +76,7 @@ Payloads are JSON unless noted.
 | `0x0b` | config-data | binary: offset (uint32), then up to 1015 bytes | none |
 | `0x0c` | config-commit | none | `{"rev": "...", "size": 1234}` |
 | `0x0d` | host | none | the PC helper: `{"connected": true, "name": "deckhost", "version", "os", "apps": [...], "state": {...}}` |
+| `0x0e` | time | `{"unix_ms": 1760900000000}`: the time now | none; the deck has no battery-backed clock, so send it on connecting and every hour |
 
 Check `protocol` in hello: this page is version 3. New commands come without a new version; a deck
 that doesn't know one answers status 1.

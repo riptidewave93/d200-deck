@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -207,6 +208,9 @@ func TestControlGarbage(t *testing.T) {
 // fakeD200 serves hello, action-host and state like deckd and sends results
 // and states to the returned channels. beat, if set, answers each heartbeat
 // after the first.
+// timeSent is set when a fake device gets the right time.
+var timeSent atomic.Bool
+
 func fakeD200(protocol int, beat ...func(proto.ActionHost) byte) (*prototest.Device, chan proto.Result, chan proto.State) {
 	dev := prototest.New()
 	results := make(chan proto.Result, 4)
@@ -230,6 +234,12 @@ func fakeD200(protocol int, beat ...func(proto.ActionHost) byte) (*prototest.Dev
 			var r proto.Result
 			json.Unmarshal(req.Payload, &r)
 			results <- r
+			return proto.StatusOK, nil
+		case proto.CmdTime:
+			var tm proto.Time
+			if json.Unmarshal(req.Payload, &tm) == nil && time.Since(time.UnixMilli(tm.UnixMS)).Abs() < time.Minute {
+				timeSent.Store(true)
+			}
 			return proto.StatusOK, nil
 		case proto.CmdState:
 			var st proto.State
@@ -267,6 +277,7 @@ func TestDaemonRunsActions(t *testing.T) {
 	d.open = func(string) (proto.Transport, error) { return dev, nil }
 	d.scan()
 	waitFor(t, "connection", func() bool { return len(d.getStatus().Connected()) == 1 })
+	waitFor(t, "the time", timeSent.Load)
 
 	send := func(id uint32, a deck.Action) proto.Result {
 		b, _ := json.Marshal(proto.ActionEvent{ID: id, Host: d.id, Key: 13, Action: a})

@@ -158,6 +158,7 @@ func (c *Collector) Summary() string {
 	}
 	line("update", fmt.Sprintf("slot %s, ota_result %s", orNone(ota.RunningSlot(string(cmdline))), orNone(env["ota_result"])))
 	line("uptime", c.uptime())
+	line("clock", c.clock())
 	line("memory", c.memory())
 	line("temp", c.temp())
 	line("data", c.space("/data"))
@@ -172,6 +173,18 @@ func orNone(s string) string {
 		return "none"
 	}
 	return s
+}
+
+// clock is the time now and whether the PC has sent it since boot: the
+// device has no battery-backed clock.
+func (c *Collector) clock() string {
+	now := time.Now().UTC().Format("2006-01-02 15:04 UTC")
+	b, err := os.ReadFile(c.path("/run/deckd.sync"))
+	t, perr := time.Parse(time.RFC3339, strings.TrimSpace(string(b)))
+	if err != nil || perr != nil {
+		return now + ", not synced since boot"
+	}
+	return now + ", synced from the PC at " + t.UTC().Format("2006-01-02 15:04 UTC")
 }
 
 func (c *Collector) uptime() string {

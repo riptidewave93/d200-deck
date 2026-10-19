@@ -68,6 +68,7 @@ type deckd struct {
 	upload *upload
 	// asking is set while the device asks about a change (see ask)
 	asking atomic.Bool
+	clock  clock
 	// reply sends a reply later; nil sends it on ch
 	reply func(seq uint16, status byte, b []byte)
 	// keys queues key events for the config channel; nil sends none

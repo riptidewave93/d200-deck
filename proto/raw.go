@@ -104,7 +104,13 @@ const (
 
 	// CmdHost reports the action host. Reply: HostInfo as JSON.
 	CmdHost = 0x0d
+	// CmdTime (payload: Time as JSON) sets the device's clock: it has no
+	// battery-backed one. Clients send it on connecting and every TimePeriod.
+	CmdTime = 0x0e
 )
+
+// TimePeriod is how often clients send the time.
+const TimePeriod = time.Hour
 
 // Config transfer sizes.
 const (
@@ -190,6 +196,14 @@ type HostInfo struct {
 	ActionHost
 	State map[string]bool `json:"state,omitempty"`
 }
+
+// Time is the time now, in Unix milliseconds.
+type Time struct {
+	UnixMS int64 `json:"unix_ms"`
+}
+
+// Now is the time now, for CmdTime.
+func Now() Time { return Time{time.Now().UnixMilli()} }
 
 // KeyEvent is a key pressed or let go on the device.
 type KeyEvent struct {

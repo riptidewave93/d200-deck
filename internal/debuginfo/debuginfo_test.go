@@ -72,6 +72,7 @@ func TestSummary(t *testing.T) {
 		"flash:   2 bad blocks, 0 ECC failures, 8 corrected bits; UBI 0 bad (40 reserved), max erase count 4",
 		"config:  broken",
 		"USB:     configured",
+		", not synced since boot",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary lacks %q:\n%s", want, s)

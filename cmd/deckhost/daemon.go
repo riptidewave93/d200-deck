@@ -284,6 +284,14 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	sendState := true
 	heartbeat := time.NewTicker(heartbeatPeriod)
 	defer heartbeat.Stop()
+	// the device has no battery-backed clock
+	sendTime := func() {
+		b, _ := json.Marshal(proto.Now())
+		c.Do(proto.CmdTime, b) // an older deckd doesn't know it
+	}
+	sendTime()
+	clock := time.NewTicker(proto.TimePeriod)
+	defer clock.Stop()
 	missed := 0
 	results := make(chan proto.Result, 16)
 	act := func(a proto.ActionEvent) {
@@ -334,6 +342,8 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 			return fmt.Errorf("disconnected: %w", c.Err())
 		case <-stateChanged:
 			sendState = true
+		case <-clock.C:
+			sendTime()
 		case <-heartbeat.C:
 			// another client's request can displace ours: allow one miss
 			if _, err := c.Do(proto.CmdActionHost, d.heartbeat()); err == nil {
