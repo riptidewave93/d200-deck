@@ -30,6 +30,7 @@ import (
 	"github.com/riptidewave93/d200-deck/internal/screen"
 	"github.com/riptidewave93/d200-deck/internal/serial"
 	"github.com/riptidewave93/d200-deck/proto"
+	"github.com/riptidewave93/d200-deck/render"
 )
 
 // held is a pressed key: the page it was pressed on and its action, so the
@@ -51,10 +52,10 @@ type deckd struct {
 	// redraw asks the main loop to redraw a key, e.g. after an error flash
 	redraw chan int
 	// ui runs functions on the main loop, for the config channel
-	ui     chan func()
-	ch     channel
-	pc     pcActions
-	assets assetCache
+	ui       chan func()
+	ch       channel
+	pc       pcActions
+	renderer *render.Renderer
 	// overlay, if set, is shown instead of the pages (e.g. an update)
 	overlay *overlay
 	// file is the config file shown, and upload one being written; the
@@ -74,47 +75,47 @@ func (d *deckd) show(r gfx.Rect) {
 	}
 }
 
-func (d *deckd) drawKey(i int, state keyState) {
-	r := screen.Key(i)
+func (d *deckd) drawKey(i int, state render.State) {
+	r := render.Key(i)
 	if d.test {
-		drawTestKey(d.canvas, i, r, state != keyIdle)
+		drawTestKey(d.canvas, i, r, state != render.Idle)
 	} else if d.overlay != nil {
 		if draw, ok := d.overlay.drawn[i]; ok {
 			draw(d.canvas, r)
 		} else {
 			b, ok := d.overlay.keys[i]
-			drawSafely(d.canvas, r, b, ok, state, &d.assets)
+			d.renderer.Draw(d.canvas, r, b, ok, state)
 		}
 	} else {
 		b, ok := d.cfg.Pages[d.page()].Keys[i]
 		st := b.Action.State()
 		b = b.Shown(st != "" && d.pc.getState(st))
-		drawSafely(d.canvas, r, b, ok, state, &d.assets)
+		d.renderer.Draw(d.canvas, r, b, ok, state)
 	}
 	d.show(r)
 }
 
 // flashError shows key i in the error colour for a moment.
 func (d *deckd) flashError(i int) {
-	d.drawKey(i, keyError)
+	d.drawKey(i, render.Error)
 	time.AfterFunc(400*time.Millisecond, func() { d.redraw <- i })
 }
 
 // flash highlights key i for a moment, to identify it.
 func (d *deckd) flash(i int) {
-	d.drawKey(i, keyIdentify)
+	d.drawKey(i, render.Identify)
 	time.AfterFunc(time.Second, func() { d.redraw <- i })
 }
 
 func (d *deckd) drawPage() {
 	for i := range deck.KeyCount {
-		d.drawKey(i, keyIdle)
+		d.drawKey(i, render.Idle)
 	}
 }
 
 func (d *deckd) setPages(pages []string) {
 	d.pages = pages
-	d.assets.reset(d.cfg)
+	d.renderer.SetConfig(d.cfg)
 	d.drawPage()
 }
 
@@ -130,7 +131,7 @@ func (d *deckd) press(i int, down bool) {
 			d.releasePC(i, h.action, h.pcID)
 		}
 		if h.page == d.page() {
-			d.drawKey(i, keyIdle)
+			d.drawKey(i, render.Idle)
 		}
 		return
 	}
@@ -144,7 +145,7 @@ func (d *deckd) press(i int, down bool) {
 	b, ok := d.cfg.Pages[d.page()].Keys[i]
 	if d.test || !ok {
 		d.held[i] = &held{page: d.page()}
-		d.drawKey(i, keyPressed)
+		d.drawKey(i, render.Pressed)
 		return
 	}
 	a := b.Action
@@ -156,7 +157,7 @@ func (d *deckd) press(i int, down bool) {
 		}
 	}
 	d.held[i] = &held{page: d.page(), action: a}
-	d.drawKey(i, keyPressed)
+	d.drawKey(i, render.Pressed)
 
 	switch {
 	case a.Type == deck.ActionPage:
@@ -312,11 +313,11 @@ func Main(args []string) {
 		guardConfig(*config)
 	}
 	cfg, file := loadConfig(*config)
-	d := &deckd{cfg: cfg, canvas: gfx.NewCanvas(screen.Width, screen.Height),
+	d := &deckd{cfg: cfg, canvas: gfx.NewCanvas(render.Width, render.Height),
 		test: *test, redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 4),
 		file: configFile{path: *config, b: file}}
 	d.pages = []string{d.cfg.Home}
-	d.assets.reset(d.cfg)
+	d.renderer = render.New(d.cfg)
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	d.pc.changed = func() { d.ui <- d.drawPage }
 	if d.test {
@@ -337,7 +338,7 @@ func Main(args []string) {
 	}
 	defer disp.Close()
 	d.disp = disp
-	d.show(gfx.Rect{Max: image.Pt(screen.Width, screen.Height)})
+	d.show(gfx.Rect{Max: image.Pt(render.Width, render.Height)})
 	d.drawPage()
 	if !d.test {
 		writeReady(ota.ReadyFile)
@@ -377,9 +378,9 @@ func Main(args []string) {
 			os.Remove(startsFile) // stopped, not crashed
 			return
 		case i := <-d.redraw:
-			state := keyIdle
+			state := render.Idle
 			if d.held[i] != nil {
-				state = keyPressed
+				state = render.Pressed
 			}
 			d.drawKey(i, state)
 		}

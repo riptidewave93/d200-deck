@@ -98,24 +98,34 @@ type IconSVG struct {
 // IconsSVG gives every built-in icon as SVG, by name, for tools that show
 // the same icons as the device.
 func IconsSVG() map[string]IconSVG {
-	out := map[string]IconSVG{
-		"github":  {githubMark, "0.5 0.5 24 24"},
-		"discord": {discordSymbol, "-10.18 -25.5 147 147"},
-	}
-	for _, s := range symbols {
-		out[s.name] = IconSVG{s.d, "0 -960 960 960"}
-	}
-	for a, n := range aliases {
-		out[a] = out[n]
-	}
-	for name, icon := range drawn {
-		if _, ok := out[name]; !ok {
-			var b strings.Builder
-			icon(&pen{s: 1, rec: &b})
-			out[name] = IconSVG{b.String(), "0 0 100 100"}
-		}
+	out := map[string]IconSVG{}
+	for _, name := range IconNames() {
+		out[name], _ = IconSVGOf(name)
 	}
 	return out
+}
+
+// IconSVGOf is the named icon as SVG, as the device finds it (see lookup).
+func IconSVGOf(name string) (IconSVG, bool) {
+	switch name {
+	case "github":
+		return IconSVG{githubMark, "0.5 0.5 24 24"}, true
+	case "discord":
+		return IconSVG{discordSymbol, "-10.18 -25.5 147 147"}, true
+	}
+	if icon, ok := drawn[name]; ok {
+		var b strings.Builder
+		icon(&pen{s: 1, rec: &b})
+		return IconSVG{b.String(), "0 0 100 100"}, true
+	}
+	if a, ok := aliases[name]; ok {
+		name = a
+	}
+	i := sort.Search(len(symbols), func(i int) bool { return symbols[i].name >= name })
+	if i == len(symbols) || symbols[i].name != name {
+		return IconSVG{}, false
+	}
+	return IconSVG{symbols[i].d, "0 -960 960 960"}, true
 }
 
 func num(f float32) string { return strconv.FormatFloat(float64(f), 'f', -1, 32) }

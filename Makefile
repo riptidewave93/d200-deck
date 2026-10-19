@@ -21,6 +21,9 @@ DEVICE := GOOS=linux GOARCH=arm64 CGO_ENABLED=0
 PC := GOOS=linux GOARCH=amd64 CGO_ENABLED=0
 WINDOWS := GOOS=windows GOARCH=amd64 CGO_ENABLED=0
 # what deckhost builds from: checked for Windows too
+# what the configuration website runs in the browser
+WASM := GOOS=js GOARCH=wasm
+WASM_PKGS := ./render ./deck
 PC_PKGS := ./cmd/deckhost ./internal/discord ./internal/hidraw ./proto/... ./deck ./netid
 
 .PHONY: all build deckd deckhost deckhost.exe dist dist-linux dist-windows test check cover clean
@@ -73,10 +76,11 @@ test :
 cover :
 	$(RUN) go tool cover -func=$(OUT)/cover.out
 
-# Formatting, vet (Linux, and the PC packages for Windows) and a tidy go.mod
+# Formatting, vet (Linux, the PC packages for Windows, what the website runs as WebAssembly)
+# and a tidy go.mod
 check :
 	$(RUN) sh -c 'f=$$(find . -name "*.go" -not -path "./.cache/*" | xargs gofmt -l); test -z "$$f" || { echo "$$f"; exit 1; }; \
-		go vet ./... && $(WINDOWS) go vet $(PC_PKGS) && go mod tidy -diff'
+		go vet ./... && $(WINDOWS) go vet $(PC_PKGS) && $(WASM) go vet $(WASM_PKGS) && go mod tidy -diff'
 
 clean :
 	rm -rf ./$(OUT) ./.cache

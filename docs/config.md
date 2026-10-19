@@ -47,7 +47,7 @@ Numbered in reading order. On the D200 (hello says `"keys": 14`):
 10 11 12 [ 13 ]
 ```
 
-Key 13 is the wide one.
+Key 13 is the wide one. The `render` package draws keys as the deck does; it builds for WebAssembly.
 
 ## Buttons
 

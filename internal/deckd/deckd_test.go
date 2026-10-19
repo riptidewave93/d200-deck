@@ -3,7 +3,6 @@ package deckd
 import (
 	"bytes"
 	"encoding/json"
-	"image"
 	"image/png"
 	"io"
 	"net"
@@ -18,15 +17,15 @@ import (
 	"github.com/riptidewave93/d200-deck/internal/gfx"
 	"github.com/riptidewave93/d200-deck/internal/hidg"
 	"github.com/riptidewave93/d200-deck/internal/ota"
-	"github.com/riptidewave93/d200-deck/internal/screen"
 	"github.com/riptidewave93/d200-deck/proto"
+	"github.com/riptidewave93/d200-deck/render"
 )
 
 func newTestDeckd() *deckd {
-	d := &deckd{cfg: deck.DefaultConfig(), canvas: gfx.NewCanvas(screen.Width, screen.Height),
+	d := &deckd{cfg: deck.DefaultConfig(), canvas: gfx.NewCanvas(render.Width, render.Height),
 		redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 16)}
 	d.pages = []string{d.cfg.Home}
-	d.assets.reset(d.cfg)
+	d.renderer = render.New(d.cfg)
 	d.run = newRunner("")
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	return d
@@ -34,7 +33,7 @@ func newTestDeckd() *deckd {
 
 // keyColour is the background colour key i is drawn in.
 func keyColour(d *deckd, i int) uint32 {
-	r := screen.Key(i)
+	r := render.Key(i)
 	return d.canvas.Pix[(r.Min.Y+2)*d.canvas.W+r.Min.X+2]
 }
 
@@ -108,15 +107,15 @@ func TestNavigation(t *testing.T) {
 func TestPressColours(t *testing.T) {
 	d := newTestDeckd()
 	d.drawPage()
-	if got := keyColour(d, 1); got != keyColours[keyIdle] {
+	if got := keyColour(d, 1); got != render.Colours[render.Idle] {
 		t.Errorf("idle key colour %#x", got)
 	}
 	d.press(1, true)
-	if got := keyColour(d, 1); got != keyColours[keyPressed] {
+	if got := keyColour(d, 1); got != render.Colours[render.Pressed] {
 		t.Errorf("pressed key colour %#x", got)
 	}
 	d.press(1, false)
-	if got := keyColour(d, 1); got != keyColours[keyIdle] {
+	if got := keyColour(d, 1); got != render.Colours[render.Idle] {
 		t.Errorf("released key colour %#x", got)
 	}
 	d.press(12, true) // blank key
@@ -128,11 +127,11 @@ func TestPressColours(t *testing.T) {
 func TestFlash(t *testing.T) {
 	d := newTestDeckd()
 	d.flash(2)
-	if got := keyColour(d, 2); got != keyColours[keyIdentify] {
+	if got := keyColour(d, 2); got != render.Colours[render.Identify] {
 		t.Errorf("identify colour %#x", got)
 	}
 	d.flashError(3)
-	if got := keyColour(d, 3); got != keyColours[keyError] {
+	if got := keyColour(d, 3); got != render.Colours[render.Error] {
 		t.Errorf("error colour %#x", got)
 	}
 	select {
@@ -148,7 +147,7 @@ func TestFlash(t *testing.T) {
 func TestPCActionWithoutHost(t *testing.T) {
 	d := newTestDeckd()
 	d.press(13, true) // Source Repo: open-url
-	if got := keyColour(d, 13); got != keyColours[keyError] {
+	if got := keyColour(d, 13); got != render.Colours[render.Error] {
 		t.Errorf("no red flash without deckhost: %#x", got)
 	}
 }
@@ -175,7 +174,7 @@ func TestPCActionEvent(t *testing.T) {
 	// a failed result flashes the key
 	d.handle(proto.Request{Cmd: proto.CmdResult, Payload: []byte(`{"id":` + itoa(ev.ID) + `,"error":"no browser"}`)})
 	runUI(t, d)
-	if got := keyColour(d, 13); got != keyColours[keyError] {
+	if got := keyColour(d, 13); got != render.Colours[render.Error] {
 		t.Errorf("no red flash after a failed result: %#x", got)
 	}
 }
@@ -211,7 +210,7 @@ func TestPCActionSendFails(t *testing.T) {
 	d.pc.heartbeat(proto.ActionHost{ID: "h"})
 	d.press(13, true) // channel closed: the send fails
 	runUI(t, d)
-	if got := keyColour(d, 13); got != keyColours[keyError] {
+	if got := keyColour(d, 13); got != render.Colours[render.Error] {
 		t.Errorf("no red flash: %#x", got)
 	}
 }
@@ -266,7 +265,7 @@ func TestHandle(t *testing.T) {
 		t.Errorf("identify: %d", s)
 	}
 	runUI(t, d)
-	if got := keyColour(d, 4); got != keyColours[keyIdentify] {
+	if got := keyColour(d, 4); got != render.Colours[render.Identify] {
 		t.Errorf("identify colour %#x", got)
 	}
 	if s, _ := d.handle(proto.Request{Cmd: proto.CmdActionHost}); s != proto.StatusBadRequest {
@@ -341,60 +340,13 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
-func TestDrawButton(t *testing.T) {
-	icon := deck.Button{Icon: "mute"}
-	label := deck.Button{Label: "Label only"}
-	both := deck.Button{Icon: "github", Label: "Source Repo"}
-	cases := []struct {
-		name string
-		key  int
-		b    deck.Button
-	}{
-		{"icon", 0, icon}, {"label", 1, label}, {"icon and label", 2, both}, {"wide", 13, both},
-	}
-	for _, tc := range cases {
-		c := gfx.NewCanvas(screen.Width, screen.Height)
-		r := screen.Key(tc.key)
-		drawButton(c, r, tc.b, true, keyIdle, &assetCache{})
-		fg := 0
-		for y := r.Min.Y; y < r.Max.Y; y++ {
-			for x := r.Min.X; x < r.Max.X; x++ {
-				if c.Pix[y*c.W+x] == fgColour {
-					fg++
-				}
-			}
-		}
-		if fg < 50 {
-			t.Errorf("%s: %d foreground pixels", tc.name, fg)
-		}
-	}
-	c := gfx.NewCanvas(screen.Width, screen.Height)
-	c.Fill(image.Rect(0, 0, screen.Width, screen.Height), 0x123456)
-	drawButton(c, screen.Key(5), deck.Button{}, false, keyIdle, &assetCache{})
-	if c.Pix[screen.Key(5).Min.Y*c.W+screen.Key(5).Min.X] != 0 {
-		t.Error("blank key not cleared")
-	}
-}
-
-func TestFitText(t *testing.T) {
-	if px := fitText(defaultFont(), "Hi", 1000, 36); px != 36 {
-		t.Errorf("short text shrunk to %d", px)
-	}
-	long := "A label far too long for one key"
-	f, _ := gfx.BuiltinFont(gfx.DefaultFont)
-	px := fitText(f, long, 180, 36)
-	if px >= 36 || (px > 12 && f.TextWidth(long, px) > 180) {
-		t.Errorf("long text at %d px is %d wide", px, f.TextWidth(long, px))
-	}
-}
-
 func TestTestPattern(t *testing.T) {
 	d := newTestDeckd()
 	d.test = true
 	drawGrid(d.canvas)
 	d.drawPage()
 	d.press(3, true)
-	r := screen.Key(3)
+	r := render.Key(3)
 	if got := d.canvas.Pix[(r.Min.Y+40)*d.canvas.W+r.Min.X+40]; got != 0xffffff {
 		t.Errorf("pressed test key colour %#x", got)
 	}
@@ -484,7 +436,7 @@ func TestStateLook(t *testing.T) {
 	d.cfg.Pages["main"].Keys[4] = deck.Button{Icon: "mic", Action: deck.Action{Type: deck.ActionApp, App: deck.AppDiscord, Op: deck.DiscordMute}}
 	d.pc.changed = func() { d.ui <- d.drawPage }
 	d.drawPage()
-	if got := keyColour(d, 4); got != keyColours[keyIdle] {
+	if got := keyColour(d, 4); got != render.Colours[render.Idle] {
 		t.Fatalf("unmuted key colour %#x", got)
 	}
 	d.pc.heartbeat(proto.ActionHost{ID: "h"})
@@ -495,7 +447,7 @@ func TestStateLook(t *testing.T) {
 	}
 	d.pc.setState(proto.State{Host: "h", State: map[string]bool{"discord.mute": false}})
 	runUI(t, d)
-	if got := keyColour(d, 4); got != keyColours[keyIdle] {
+	if got := keyColour(d, 4); got != render.Colours[render.Idle] {
 		t.Errorf("unmuted again: %#x", got)
 	}
 }
@@ -589,7 +541,7 @@ func TestUpdateScreen(t *testing.T) {
 	}
 	c.Close()
 	runUI(t, d)
-	if d.overlay != nil || keyColour(d, 13) != keyColours[keyIdle] {
+	if d.overlay != nil || keyColour(d, 13) != render.Colours[render.Idle] {
 		t.Error("update screen still shown")
 	}
 

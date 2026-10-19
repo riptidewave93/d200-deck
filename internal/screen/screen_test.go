@@ -4,27 +4,11 @@ import (
 	"image"
 	"testing"
 
-	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/gfx"
 )
 
-func TestKeysFitAndDontOverlap(t *testing.T) {
-	canvas := image.Rect(0, 0, Width, Height)
-	for i := range deck.KeyCount {
-		r := Key(i)
-		if r.Empty() || !r.In(canvas) {
-			t.Errorf("key %d at %v is off the canvas", i, r)
-		}
-		for j := range i {
-			if r.Overlaps(Key(j)) {
-				t.Errorf("keys %d and %d overlap", i, j)
-			}
-		}
-	}
-	if Key(13).Dx() <= 2*Key(0).Dx() {
-		t.Error("the wide key isn't wide")
-	}
-}
+// the landscape canvas size
+const Width, Height = 1280, 720
 
 func TestCopyRotates(t *testing.T) {
 	c := gfx.NewCanvas(Width, Height)

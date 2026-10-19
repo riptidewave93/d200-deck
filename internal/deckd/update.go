@@ -14,6 +14,7 @@ import (
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/gfx"
 	"github.com/riptidewave93/d200-deck/internal/ota"
+	"github.com/riptidewave93/d200-deck/render"
 )
 
 // overlay is a screen shown instead of the config's pages, such as the
@@ -97,7 +98,7 @@ func progressScreen(title, step string, done, total int) *overlay {
 	}
 	var caption func(*gfx.Canvas, gfx.Rect)
 	if step != "" {
-		caption = text("go-medium", 0, fgColour, line{step, 38}, line{fmt.Sprintf("%d of %d", done+1, total), 28})
+		caption = text("go-medium", 0, render.Foreground, line{step, 38}, line{fmt.Sprintf("%d of %d", done+1, total), 28})
 	}
 	for k := range 5 {
 		o.drawn[5+k] = barTile(k, frac, nil)
@@ -138,7 +139,7 @@ func text(font string, bg, fg uint32, lines ...line) func(*gfx.Canvas, gfx.Rect)
 		f, _ := gfx.BuiltinFont(font)
 		scale, h := 1.0, 0
 		for _, l := range lines {
-			scale = min(scale, float64(fitText(f, l.text, r.Dx()-24, l.px))/float64(l.px))
+			scale = min(scale, float64(render.FitText(f, l.text, r.Dx()-24, l.px))/float64(l.px))
 		}
 		for i := range lines {
 			lines[i].px = int(float64(lines[i].px) * scale)

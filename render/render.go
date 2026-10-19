@@ -1,0 +1,303 @@
+// Package render draws the deck's keys, as the device shows them. The
+// configuration website runs it as WebAssembly for its previews.
+package render
+
+import (
+	"image"
+	"log"
+	"runtime/debug"
+	"strings"
+
+	"github.com/riptidewave93/d200-deck/deck"
+	"github.com/riptidewave93/d200-deck/internal/gfx"
+)
+
+// Screen size: the panel is mounted rotated, and drawn as landscape.
+const (
+	Width  = 1280
+	Height = 720
+)
+
+// keys are the key windows on the screen: a 5x3 grid of 196x196 windows, the
+// wide key spanning the two bottom-right cells (458x196). Positions are
+// centred on the windows by eye with deckd -test.
+var keys = func() (r [deck.KeyCount]image.Rectangle) {
+	colX := [5]int{16, 275, 534, 793, 1052}
+	rowY := [3]int{1, 262, 524}
+	const size = 196
+	for i := range 13 {
+		x, y := colX[i%5], rowY[i/5]
+		r[i] = image.Rect(x, y, x+size, y+size)
+	}
+	r[13] = image.Rect(793, 523, 1251, 719)
+	return r
+}()
+
+// Key is key i's window on the screen.
+func Key(i int) image.Rectangle { return keys[i] }
+
+// State is how a key is shown.
+type State int
+
+const (
+	Idle State = iota
+	Pressed
+	Error    // an action failed
+	Identify // flashing to be found
+)
+
+// Colours are the key backgrounds in each state (0x00RRGGBB).
+var Colours = [...]uint32{Idle: 0x1c1c1c, Pressed: 0x2f6fde, Error: 0xc62828, Identify: 0xf9a825}
+
+// Foreground is the default icon and label colour.
+const Foreground = 0xe8e8e8
+
+// Renderer draws a config's buttons. It decodes and scales the config's
+// images and fonts on first use, and keeps them (images up to
+// maxCachedPixels). It is not safe for concurrent use.
+type Renderer struct {
+	cfg       *deck.Config
+	images    map[imageKey]*image.RGBA
+	pixels    int // in images
+	badImages map[string]bool
+	fonts     map[string]*gfx.Font // nil: broken, use the default
+}
+
+// maxCachedPixels bounds the scaled images kept (4 bytes each): a few pages
+// of full-key images.
+const maxCachedPixels = 1 << 20
+
+type imageKey struct {
+	id   string
+	w, h int
+}
+
+// New returns a renderer for cfg's buttons.
+func New(cfg *deck.Config) *Renderer { return &Renderer{cfg: cfg} }
+
+// SetConfig switches to cfg, dropping what's cached if it's a different one.
+func (r *Renderer) SetConfig(cfg *deck.Config) {
+	if cfg == r.cfg {
+		return
+	}
+	r.cfg = cfg
+	clear(r.fonts)
+	clear(r.images)
+	clear(r.badImages)
+	r.pixels = 0
+}
+
+// Key draws button b on key i, as shown when its action's state is on. Keys
+// without a button are black.
+func (r *Renderer) Key(i int, b deck.Button, on bool) *image.RGBA {
+	if i < 0 || i >= len(keys) {
+		return nil
+	}
+	c := gfx.NewCanvas(keys[i].Dx(), keys[i].Dy())
+	r.Draw(c, image.Rect(0, 0, c.W, c.H), b.Shown(on), true, Idle)
+	return c.Image()
+}
+
+// Draw draws button b (black if !ok) into area of c. If that panics, say on a
+// bad custom font or image, it marks them broken and draws b without them,
+// or leaves the key blank if that panics too.
+func (r *Renderer) Draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok bool, s State) {
+	if try(func() { r.draw(c, area, b, ok, s) }) == nil {
+		return
+	}
+	r.broken(b)
+	b.Font, b.Image = "", ""
+	if try(func() { r.draw(c, area, b, ok, s) }) != nil {
+		c.Fill(area, Colours[Idle])
+	}
+}
+
+// try runs f, returning (and logging) what it panicked with, if anything.
+func try(f func()) (p any) {
+	defer func() {
+		if p = recover(); p != nil {
+			log.Printf("drawing a key: %v\n%s", p, debug.Stack())
+		}
+	}()
+	f()
+	return nil
+}
+
+func (r *Renderer) draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok bool, s State) {
+	if !ok {
+		c.Fill(area, 0)
+		return
+	}
+	bg, fg := colours(b, s)
+	c.Fill(area, bg)
+	f := r.font(b.Font)
+
+	// icon draws the icon or custom image in a size x size square centred in ir
+	icon := func(ir image.Rectangle, size int) {
+		if b.Image == "" {
+			c.DrawIcon(b.Icon, ir, size, fg)
+		} else if img := r.image(b.Image, size, size); img != nil {
+			c.DrawImage(img, ir)
+		}
+	}
+	hasIcon := b.Image != "" || gfx.HasIcon(b.Icon)
+	label := strings.ReplaceAll(b.Label, "\n", " ")
+	switch {
+	case hasIcon && label != "" && area.Dx() > area.Dy():
+		// wide key: icon then label, centred together
+		const iconSize, gap, margin = 120, 28, 24
+		px := FitText(f, label, area.Dx()-2*margin-iconSize-gap, 44)
+		w := iconSize + gap + f.TextWidth(label, px)
+		x := area.Min.X + (area.Dx()-w)/2
+		icon(image.Rect(x, area.Min.Y, x+iconSize, area.Max.Y), iconSize)
+		c.DrawText(f, label, image.Rect(x+iconSize+gap, area.Min.Y, x+w, area.Max.Y), px, fg)
+	case hasIcon && label != "":
+		icon(image.Rect(area.Min.X, area.Min.Y+12, area.Max.X, area.Max.Y-44), 100)
+		lr := image.Rect(area.Min.X+8, area.Max.Y-52, area.Max.X-8, area.Max.Y-8)
+		c.DrawText(f, label, lr, FitText(f, label, lr.Dx(), 30), fg)
+	case b.Image != "":
+		// a custom image alone fills the key
+		if img := r.image(b.Image, area.Dx(), area.Dy()); img != nil {
+			c.DrawImage(img, area)
+		}
+	case hasIcon:
+		icon(area, 120)
+	case b.Label != "":
+		drawLines(c, f, area, strings.Split(b.Label, "\n"), fg)
+	}
+}
+
+// colours are the key's background and foreground in state s.
+func colours(b deck.Button, s State) (bg, fg uint32) {
+	bg, fg = Colours[Idle], Foreground
+	if v, err := deck.ParseColor(b.Background); err == nil {
+		bg = v
+	}
+	if v, err := deck.ParseColor(b.Color); err == nil {
+		fg = v
+	}
+	switch {
+	case s == Pressed && b.Background != "":
+		bg = pressed(bg)
+	case s != Idle:
+		bg = Colours[s]
+	}
+	return bg, fg
+}
+
+// pressed is a custom background when pressed: a third of the way to white,
+// or to black for light colours.
+func pressed(c uint32) uint32 {
+	r, g, b := c>>16&0xff, c>>8&0xff, c&0xff
+	toward := uint32(255)
+	if (r*299+g*587+b*114)/1000 > 160 {
+		toward = 0
+	}
+	mix := func(v uint32) uint32 { return uint32(int(v) + (int(toward)-int(v))/3) }
+	return mix(r)<<16 | mix(g)<<8 | mix(b)
+}
+
+// drawLines draws a label of one or more lines centred in area.
+func drawLines(c *gfx.Canvas, f *gfx.Font, area image.Rectangle, lines []string, fg uint32) {
+	px := min(36, (area.Dy()-16)*4/5/len(lines))
+	for _, l := range lines {
+		px = FitText(f, l, area.Dx()-16, px)
+	}
+	lineH := px * 5 / 4
+	y := area.Min.Y + (area.Dy()-lineH*len(lines))/2
+	for _, l := range lines {
+		c.DrawText(f, l, image.Rect(area.Min.X, y, area.Max.X, y+lineH), px, fg)
+		y += lineH
+	}
+}
+
+// FitText is the largest text size up to px at which s fits in width.
+func FitText(f *gfx.Font, s string, width, px int) int {
+	for px > 12 && f.TextWidth(s, px) > width {
+		px -= 2
+	}
+	return px
+}
+
+// image is custom image id scaled to fit w x h, or nil if it's broken.
+func (r *Renderer) image(id string, w, h int) *image.RGBA {
+	if r.badImages[id] {
+		return nil
+	}
+	k := imageKey{id, w, h}
+	if img, ok := r.images[k]; ok {
+		return img
+	}
+	if r.images == nil {
+		r.images = map[imageKey]*image.RGBA{}
+	}
+	var scaled *image.RGBA
+	if img, err := deck.DecodeImage(r.cfg.Images[id]); err != nil {
+		log.Printf("image %q: %v", id, err)
+	} else {
+		scaled = gfx.Fit(img, w, h)
+		n := scaled.Bounds().Dx() * scaled.Bounds().Dy()
+		if r.pixels+n > maxCachedPixels {
+			clear(r.images)
+			r.pixels = 0
+		}
+		r.pixels += n
+	}
+	r.images[k] = scaled
+	return scaled
+}
+
+// font returns the named font, or the default if it's empty or broken.
+func (r *Renderer) font(name string) *gfx.Font {
+	if f, ok := gfx.BuiltinFont(name); ok {
+		return f
+	}
+	f, ok := r.fonts[name]
+	if !ok && name != "" {
+		b, err := deck.FontBytes(r.cfg.Fonts[name])
+		if err == nil {
+			f, err = gfx.ParseFont(b)
+		}
+		if err != nil {
+			log.Printf("font %q: %v", name, err)
+			f = nil
+		}
+		if r.fonts == nil {
+			r.fonts = map[string]*gfx.Font{}
+		}
+		r.fonts[name] = f
+	}
+	if f == nil {
+		f, _ = gfx.BuiltinFont(gfx.DefaultFont)
+	}
+	return f
+}
+
+// broken stops b's custom font and image being used again.
+func (r *Renderer) broken(b deck.Button) {
+	if _, builtin := gfx.BuiltinFont(b.Font); !builtin && b.Font != "" {
+		if r.fonts == nil {
+			r.fonts = map[string]*gfx.Font{}
+		}
+		r.fonts[b.Font] = nil
+	}
+	if b.Image != "" {
+		if r.badImages == nil {
+			r.badImages = map[string]bool{}
+		}
+		r.badImages[b.Image] = true
+	}
+}
+
+// IconNames lists every built-in icon name, aliases included, sorted.
+func IconNames() []string { return gfx.IconNames() }
+
+// HasIcon reports whether name is a built-in icon.
+func HasIcon(name string) bool { return gfx.HasIcon(name) }
+
+// IconPath is built-in icon name as SVG path data, filled nonzero, in a
+// square viewBox.
+func IconPath(name string) (d, viewBox string, ok bool) {
+	s, ok := gfx.IconSVGOf(name)
+	return s.D, s.ViewBox, ok
+}

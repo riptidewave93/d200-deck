@@ -1,4 +1,4 @@
-package deckd
+package render
 
 import (
 	"bytes"
@@ -12,7 +12,6 @@ import (
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/gfx"
-	"github.com/riptidewave93/d200-deck/internal/screen"
 )
 
 // solidPNG is a base64 PNG of w x h pixels in col.
@@ -47,15 +46,15 @@ func TestColours(t *testing.T) {
 	custom := deck.Button{Color: "#ff0000", Background: "#000080"}
 	cases := []struct {
 		b      deck.Button
-		state  keyState
+		state  State
 		bg, fg uint32
 	}{
-		{plain, keyIdle, keyColours[keyIdle], fgColour},
-		{plain, keyPressed, keyColours[keyPressed], fgColour},
-		{custom, keyIdle, 0x000080, 0xff0000},
-		{custom, keyPressed, pressed(0x000080), 0xff0000},
-		{custom, keyError, keyColours[keyError], 0xff0000},
-		{custom, keyIdentify, keyColours[keyIdentify], 0xff0000},
+		{plain, Idle, Colours[Idle], Foreground},
+		{plain, Pressed, Colours[Pressed], Foreground},
+		{custom, Idle, 0x000080, 0xff0000},
+		{custom, Pressed, pressed(0x000080), 0xff0000},
+		{custom, Error, Colours[Error], 0xff0000},
+		{custom, Identify, Colours[Identify], 0xff0000},
 	}
 	for i, tc := range cases {
 		bg, fg := colours(tc.b, tc.state)
@@ -75,23 +74,23 @@ func TestPressedShade(t *testing.T) {
 }
 
 func TestCustomColoursDrawn(t *testing.T) {
-	c := gfx.NewCanvas(screen.Width, screen.Height)
-	r := screen.Key(0)
-	drawButton(c, r, deck.Button{Icon: "mute", Color: "#ff0000", Background: "#000080"}, true, keyIdle, &assetCache{})
+	c := gfx.NewCanvas(Width, Height)
+	r := Key(0)
+	New(nil).draw(c, r, deck.Button{Icon: "mute", Color: "#ff0000", Background: "#000080"}, true, Idle)
 	if count(c, r, 0x000080) < 1000 || count(c, r, 0xff0000) < 500 {
 		t.Errorf("background %d px, icon %d px", count(c, r, 0x000080), count(c, r, 0xff0000))
 	}
 }
 
 func TestMultiLineLabel(t *testing.T) {
-	r := screen.Key(1)
-	one, three := gfx.NewCanvas(screen.Width, screen.Height), gfx.NewCanvas(screen.Width, screen.Height)
-	drawButton(one, r, deck.Button{Label: "Hello"}, true, keyIdle, &assetCache{})
-	drawButton(three, r, deck.Button{Label: "Hello\nthere\nfriend"}, true, keyIdle, &assetCache{})
+	r := Key(1)
+	one, three := gfx.NewCanvas(Width, Height), gfx.NewCanvas(Width, Height)
+	New(nil).draw(one, r, deck.Button{Label: "Hello"}, true, Idle)
+	New(nil).draw(three, r, deck.Button{Label: "Hello\nthere\nfriend"}, true, Idle)
 	rows := func(c *gfx.Canvas) int {
 		n := 0
 		for y := r.Min.Y; y < r.Max.Y; y++ {
-			if count(c, image.Rect(r.Min.X, y, r.Max.X, y+1), fgColour) > 0 {
+			if count(c, image.Rect(r.Min.X, y, r.Max.X, y+1), Foreground) > 0 {
 				n++
 			}
 		}
@@ -101,8 +100,8 @@ func TestMultiLineLabel(t *testing.T) {
 		t.Errorf("three lines use %d rows, one line %d", rows(three), rows(one))
 	}
 	// with an icon, the lines join into one
-	c := gfx.NewCanvas(screen.Width, screen.Height)
-	drawButton(c, r, deck.Button{Icon: "mute", Label: "a\nb"}, true, keyIdle, &assetCache{})
+	c := gfx.NewCanvas(Width, Height)
+	New(nil).draw(c, r, deck.Button{Icon: "mute", Label: "a\nb"}, true, Idle)
 }
 
 func TestImageButtons(t *testing.T) {
@@ -111,8 +110,7 @@ func TestImageButtons(t *testing.T) {
 		"red":    solidPNG(t, 64, 64, color.NRGBA{0xff, 0, 0, 0xff}),
 		"broken": "AAAA",
 	}
-	ic := &assetCache{}
-	ic.reset(cfg)
+	ic := New(cfg)
 
 	cases := []struct {
 		name string
@@ -128,20 +126,20 @@ func TestImageButtons(t *testing.T) {
 		{"broken image", 2, deck.Button{Image: "broken"}, 0, 0},
 	}
 	for _, tc := range cases {
-		c := gfx.NewCanvas(screen.Width, screen.Height)
-		drawButton(c, screen.Key(tc.key), tc.b, true, keyIdle, ic)
-		if n := count(c, screen.Key(tc.key), 0xff0000); n < tc.min || n > tc.max {
+		c := gfx.NewCanvas(Width, Height)
+		ic.draw(c, Key(tc.key), tc.b, true, Idle)
+		if n := count(c, Key(tc.key), 0xff0000); n < tc.min || n > tc.max {
 			t.Errorf("%s: %d red pixels", tc.name, n)
 		}
 	}
 	if len(ic.images) != 5 {
 		t.Errorf("%d cached images", len(ic.images))
 	}
-	ic.reset(cfg)
+	ic.SetConfig(cfg)
 	if len(ic.images) != 5 {
 		t.Error("reset with the same config dropped images")
 	}
-	ic.reset(&deck.Config{})
+	ic.SetConfig(&deck.Config{})
 	if len(ic.images) != 0 || ic.pixels != 0 {
 		t.Error("new config kept images")
 	}
@@ -149,8 +147,7 @@ func TestImageButtons(t *testing.T) {
 
 func TestImageCacheBounded(t *testing.T) {
 	cfg := &deck.Config{Images: map[string]string{"red": solidPNG(t, 8, 8, color.NRGBA{0xff, 0, 0, 0xff})}}
-	var ic assetCache
-	ic.reset(cfg)
+	ic := New(cfg)
 	for size := 100; size < 400; size++ {
 		if ic.image("red", size, size) == nil {
 			t.Fatal("no image")
@@ -158,20 +155,6 @@ func TestImageCacheBounded(t *testing.T) {
 		if ic.pixels > maxCachedPixels {
 			t.Fatalf("%d pixels cached", ic.pixels)
 		}
-	}
-}
-
-func TestPageChangeKeepsImages(t *testing.T) {
-	d := newTestDeckd()
-	d.cfg.Images = map[string]string{"red": solidPNG(t, 8, 8, color.NRGBA{0xff, 0, 0, 0xff})}
-	d.cfg.Pages["main"].Keys[11] = deck.Button{Image: "red"}
-	d.drawPage()
-	if len(d.assets.images) == 0 {
-		t.Fatal("image not cached")
-	}
-	d.press(0, true) // to the browser page
-	if len(d.assets.images) == 0 {
-		t.Error("page change dropped the cached images")
 	}
 }
 
@@ -186,8 +169,7 @@ func TestFonts(t *testing.T) {
 		"mine":   base64.StdEncoding.EncodeToString(gomono.TTF),
 		"broken": "AAAA",
 	}
-	ac := &assetCache{}
-	ac.reset(cfg)
+	ac := New(cfg)
 	if ac.font("") != defaultFont() || ac.font("go-medium") != defaultFont() {
 		t.Error("default font not used")
 	}
@@ -201,22 +183,21 @@ func TestFonts(t *testing.T) {
 	if ac.font("broken") != defaultFont() || ac.font("missing") != defaultFont() {
 		t.Error("bad font didn't fall back to the default")
 	}
-	ac.reset(cfg) // same config: fonts kept
+	ac.SetConfig(cfg) // same config: fonts kept
 	if ac.font("mine") != mine {
 		t.Error("fonts dropped on a page change")
 	}
-	ac.reset(deck.DefaultConfig())
+	ac.SetConfig(deck.DefaultConfig())
 	if len(ac.fonts) != 0 {
 		t.Error("fonts kept across configs")
 	}
 
 	// a different font draws a different label
-	r := screen.Key(1)
+	r := Key(1)
 	draw := func(font string) []uint32 {
-		c := gfx.NewCanvas(screen.Width, screen.Height)
-		ac := &assetCache{}
-		ac.reset(cfg)
-		drawButton(c, r, deck.Button{Label: "Wide label", Font: font}, true, keyIdle, ac)
+		c := gfx.NewCanvas(Width, Height)
+		ac := New(cfg)
+		ac.draw(c, r, deck.Button{Label: "Wide label", Font: font}, true, Idle)
 		return c.Pix
 	}
 	if bytes.Equal(u32bytes(draw("")), u32bytes(draw("go-mono"))) {
@@ -237,27 +218,26 @@ func u32bytes(p []uint32) []byte {
 
 func TestDrawSafely(t *testing.T) {
 	cfg := &deck.Config{Images: map[string]string{"red": solidPNG(t, 8, 8, color.NRGBA{0xff, 0, 0, 0xff})}}
-	var ic assetCache
-	ic.reset(cfg)
+	ic := New(cfg)
 	ic.fonts = map[string]*gfx.Font{"bad": {}} // an unparsable font panics when drawn
 	b := deck.Button{Label: "Hi", Font: "bad", Image: "red"}
-	r := screen.Key(0)
-	c := gfx.NewCanvas(screen.Width, screen.Height)
-	drawSafely(c, r, b, true, keyIdle, &ic)
+	r := Key(0)
+	c := gfx.NewCanvas(Width, Height)
+	ic.Draw(c, r, b, true, Idle)
 	if f, ok := ic.fonts["bad"]; !ok || f != nil {
 		t.Error("font not marked broken")
 	}
 	if !ic.badImages["red"] || ic.image("red", 10, 10) != nil {
 		t.Error("image not marked broken")
 	}
-	if count(c, r, fgColour) == 0 {
+	if count(c, r, Foreground) == 0 {
 		t.Error("label not drawn with the default font")
 	}
 
 	// drawn again, the broken font is not used
-	c = gfx.NewCanvas(screen.Width, screen.Height)
-	drawSafely(c, r, b, true, keyIdle, &ic)
-	if count(c, r, fgColour) == 0 {
+	c = gfx.NewCanvas(Width, Height)
+	ic.Draw(c, r, b, true, Idle)
+	if count(c, r, Foreground) == 0 {
 		t.Error("label not drawn the second time")
 	}
 
@@ -267,5 +247,103 @@ func TestDrawSafely(t *testing.T) {
 	}
 	if try(func() { panic("boom") }) != "boom" || try(func() {}) != nil {
 		t.Error("try")
+	}
+}
+
+func TestDrawButton(t *testing.T) {
+	icon := deck.Button{Icon: "mute"}
+	label := deck.Button{Label: "Label only"}
+	both := deck.Button{Icon: "github", Label: "Source Repo"}
+	cases := []struct {
+		name string
+		key  int
+		b    deck.Button
+	}{
+		{"icon", 0, icon}, {"label", 1, label}, {"icon and label", 2, both}, {"wide", 13, both},
+	}
+	for _, tc := range cases {
+		c := gfx.NewCanvas(Width, Height)
+		r := Key(tc.key)
+		New(nil).draw(c, r, tc.b, true, Idle)
+		fg := 0
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for x := r.Min.X; x < r.Max.X; x++ {
+				if c.Pix[y*c.W+x] == Foreground {
+					fg++
+				}
+			}
+		}
+		if fg < 50 {
+			t.Errorf("%s: %d foreground pixels", tc.name, fg)
+		}
+	}
+	c := gfx.NewCanvas(Width, Height)
+	c.Fill(image.Rect(0, 0, Width, Height), 0x123456)
+	New(nil).draw(c, Key(5), deck.Button{}, false, Idle)
+	if c.Pix[Key(5).Min.Y*c.W+Key(5).Min.X] != 0 {
+		t.Error("blank key not cleared")
+	}
+}
+
+func TestFitText(t *testing.T) {
+	if px := FitText(defaultFont(), "Hi", 1000, 36); px != 36 {
+		t.Errorf("short text shrunk to %d", px)
+	}
+	long := "A label far too long for one key"
+	f, _ := gfx.BuiltinFont(gfx.DefaultFont)
+	px := FitText(f, long, 180, 36)
+	if px >= 36 || (px > 12 && f.TextWidth(long, px) > 180) {
+		t.Errorf("long text at %d px is %d wide", px, f.TextWidth(long, px))
+	}
+}
+
+func TestKey(t *testing.T) {
+	r := New(deck.DefaultConfig())
+	if img := r.Key(0, deck.Button{Label: "Hi"}, false); img.Bounds() != image.Rect(0, 0, 196, 196) {
+		t.Errorf("key 0 is %v", img.Bounds())
+	}
+	mute := deck.Button{Action: deck.Action{Type: deck.ActionApp, App: deck.AppDiscord, Op: "mute"}}
+	off, on := r.Key(13, mute, false), r.Key(13, mute, true)
+	if off.Bounds() != image.Rect(0, 0, 458, 196) {
+		t.Errorf("key 13 is %v", off.Bounds())
+	}
+	if bytes.Equal(off.Pix, on.Pix) {
+		t.Error("on looks like off")
+	}
+	if r.Key(14, mute, false) != nil || r.Key(-1, mute, false) != nil {
+		t.Error("drew a key that isn't there")
+	}
+}
+
+func TestKeysFitAndDontOverlap(t *testing.T) {
+	canvas := image.Rect(0, 0, Width, Height)
+	for i := range deck.KeyCount {
+		r := Key(i)
+		if r.Empty() || !r.In(canvas) {
+			t.Errorf("key %d at %v is off the canvas", i, r)
+		}
+		for j := range i {
+			if r.Overlaps(Key(j)) {
+				t.Errorf("keys %d and %d overlap", i, j)
+			}
+		}
+	}
+	if Key(13).Dx() <= 2*Key(0).Dx() {
+		t.Error("the wide key isn't wide")
+	}
+}
+
+func TestIcons(t *testing.T) {
+	names := IconNames()
+	if len(names) < 1000 || !HasIcon("mute") || HasIcon("no-such-icon") {
+		t.Fatalf("%d icons", len(names))
+	}
+	for _, name := range []string{"mute", "github", "launch", "volume_up"} {
+		if d, vb, ok := IconPath(name); !ok || d == "" || vb == "" {
+			t.Errorf("%s: %q %q %v", name, d, vb, ok)
+		}
+	}
+	if _, _, ok := IconPath("no-such-icon"); ok {
+		t.Error("found a missing icon")
 	}
 }
