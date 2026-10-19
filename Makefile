@@ -23,14 +23,15 @@ WINDOWS := GOOS=windows GOARCH=amd64 CGO_ENABLED=0
 # what deckhost builds from: checked for Windows too
 PC_PKGS := ./cmd/deckhost ./internal/discord ./internal/hidraw ./proto/... ./deck ./netid
 
-.PHONY: all build deckd deck-update deckhost deckhost.exe dist dist-linux dist-windows test check cover clean
+.PHONY: all build deckd deckhost deckhost.exe dist dist-linux dist-windows test check cover clean
 
 all : check test build
 
-# Device programs (arm64) and the PC program (Linux and Windows amd64) into ./build
-build : deckd deck-update deckhost deckhost.exe
+# The device program (arm64: the keys and the update page) and the PC program (Linux and
+# Windows amd64) into ./build
+build : deckd deckhost deckhost.exe
 
-deckd deck-update :
+deckd :
 	$(RUN) env $(DEVICE) go build -trimpath -ldflags '$(LDFLAGS)' -o $(OUT)/$@ ./cmd/$@
 
 deckhost :

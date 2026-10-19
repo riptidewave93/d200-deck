@@ -1,4 +1,4 @@
-package main
+package deckd
 
 import (
 	"encoding/json"
@@ -14,8 +14,8 @@ import (
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
-// version is set at build time.
-var version = "dev"
+// Version is deckd's version, set by its main.
+var Version = "dev"
 
 // channel is the config channel gadget, shared by the request loop and
 // events. send writes a whole message under the lock, so the reports of two
@@ -96,7 +96,7 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 	switch req.Cmd {
 	case proto.CmdHello:
 		info, _ := osrelease.Read(osrelease.Path)
-		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: version, OS: info, Serial: readSerial(), Keys: deck.KeyCount})
+		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: Version, OS: info, Serial: readSerial(), Keys: deck.KeyCount})
 		return proto.StatusOK, b
 	case proto.CmdIdentify:
 		if len(req.Payload) != 1 || int(req.Payload[0]) >= deck.KeyCount {

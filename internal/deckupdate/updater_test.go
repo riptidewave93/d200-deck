@@ -1,4 +1,4 @@
-package main
+package deckupdate
 
 import (
 	"archive/tar"

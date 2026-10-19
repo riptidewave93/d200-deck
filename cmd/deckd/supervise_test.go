@@ -1,0 +1,92 @@
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestHelperProcess is the child the tests run: it appends a line to
+// DECKD_TEST_LOG, then exits or, with DECKD_TEST_STAY, waits to be stopped.
+func TestHelperProcess(t *testing.T) {
+	path := os.Getenv("DECKD_TEST_LOG")
+	if path == "" {
+		return
+	}
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f.WriteString("start\n")
+	f.Close()
+	if os.Getenv("DECKD_TEST_STAY") != "" {
+		time.Sleep(time.Minute)
+	}
+	os.Exit(1)
+}
+
+func helper(t *testing.T, stay bool) (func() *exec.Cmd, func() int) {
+	path := filepath.Join(t.TempDir(), "log")
+	return func() *exec.Cmd {
+			c := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+			c.Env = append(os.Environ(), "DECKD_TEST_LOG="+path)
+			if stay {
+				c.Env = append(c.Env, "DECKD_TEST_STAY=1")
+			}
+			return c
+		}, func() int {
+			b, _ := os.ReadFile(path)
+			return strings.Count(string(b), "start")
+		}
+}
+
+func fastRestarts(t *testing.T) {
+	old := []time.Duration{firstDelay, maxDelay, stable, stopWait}
+	firstDelay, maxDelay, stable, stopWait = time.Millisecond, 4*time.Millisecond, time.Hour, time.Second
+	t.Cleanup(func() { firstDelay, maxDelay, stable, stopWait = old[0], old[1], old[2], old[3] })
+}
+
+func TestKeepRestarts(t *testing.T) {
+	fastRestarts(t)
+	cmd, starts := helper(t, false)
+	quit := make(chan struct{})
+	done := make(chan struct{})
+	go func() { keep("crasher", cmd, quit); close(done) }()
+	for deadline := time.Now().Add(10 * time.Second); starts() < 3; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d starts", starts())
+		}
+	}
+	close(quit)
+	<-done
+}
+
+func TestKeepStops(t *testing.T) {
+	fastRestarts(t)
+	cmd, starts := helper(t, true)
+	quit := make(chan struct{})
+	done := make(chan struct{})
+	go func() { keep("stayer", cmd, quit); close(done) }()
+	for deadline := time.Now().Add(10 * time.Second); starts() < 1; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("never started")
+		}
+	}
+	close(quit)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("not stopped")
+	}
+	if n := starts(); n != 1 {
+		t.Errorf("%d starts", n)
+	}
+}
+
+func TestPrograms(t *testing.T) {
+	for _, name := range []string{"keys", "update"} {
+		if programs[name] == nil {
+			t.Errorf("no %s", name)
+		}
+	}
+}

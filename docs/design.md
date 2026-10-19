@@ -6,16 +6,17 @@ One Go module, two programs that share code:
 
 | Program | Runs on | Job |
 |---|---|---|
-| `deckd` | the D200 | draws pages, reads keys, runs HID actions, forwards PC actions |
-| `deck-update` | the D200 | web page on port 80 for installing OS updates, separate from `deckd` so a broken `deckd` can still be updated |
+| `deckd keys` | the D200 | draws pages, reads keys, runs HID actions, forwards PC actions |
+| `deckd update` | the D200 | web page on port 80 for installing OS updates (`internal/ota`), a separate process from the keys so a crash there doesn't stop it |
 | `deckhost` | the PC (Linux, Windows; macOS later) | runs the actions HID can't do, pushes config and images to the device |
 
 ```
 deck/          config model + validation (shared)
 proto/         device <-> PC messages (shared)
-cmd/deckd/     device daemon
+cmd/deckd/     device program: runs the keys (internal/deckd) and the update page
+               (internal/deckupdate) as child processes and restarts them; init restarts deckd
 cmd/deckhost/  PC daemon
-internal/      device-only (drm, gfx, input, hidg, screen) and PC-only packages
+internal/      device-only (deckd, deckupdate, ota, drm, gfx, input, hidg, screen) and PC-only packages
 ```
 
 ## Where an action runs
@@ -151,14 +152,13 @@ Kept in their own file and messages, so pushing pages can't change USB settings 
 - `bcdDevice` is the descriptor-layout version: bump it when always-on interfaces or OS
   descriptors change, not for the drive toggle. The firmware version goes through the API.
 - Keep the MS OS descriptors (vendor code 0xcd), the serial-derived MACs and the USB serial.
+- USB networking is per device: its /30 in 198.18.0.0/15 and `d200-<serial>.local` come from its
+  serial. The image's boot scripts do it; `netid` must stay byte-for-byte the same derivation
+  (vectors in `netid/testdata`).
 - Get our own VID:PID (e.g. pid.codes) before release; 1d6b:0104 is the kernel's shared test ID.
 - Endpoints: keyboard HID, config channel, NCM and the drive use 5 of 6 IN endpoints; HID input
   reports stay at 64 bytes or less.
 
 ## Open items
 
-- Per-device USB networking: each deck derives its own /30 in 198.18.0.0/15 and the name
-  `d200-<serial>.local` from its serial (`netid`, vectors in `netid/testdata`). The image
-  implements it in its boot scripts with stock mDNS; until then every deck is 172.31.254.1.
 - Unicode text and per-app actions need `deckhost` (OS input injection; awkward on Wayland).
-- Config lives in the root filesystem, so an OS update may reset it.

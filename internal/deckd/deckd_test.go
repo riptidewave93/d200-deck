@@ -1,4 +1,4 @@
-package main
+package deckd
 
 import (
 	"bytes"
@@ -624,5 +624,26 @@ func TestUpdateScreen(t *testing.T) {
 	writeReady(ready)
 	if b, _ := os.ReadFile(ready); string(b) != strconv.Itoa(os.Getpid()) {
 		t.Errorf("ready file %q", b)
+	}
+}
+
+func TestCommand(t *testing.T) {
+	out, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = out
+	t.Cleanup(func() { os.Stdout = old })
+	for _, name := range []string{"hid-descriptor", "raw-descriptor", "icons", "fonts", "default-config"} {
+		if !Command(name) {
+			t.Errorf("%s isn't a command", name)
+		}
+	}
+	if Command("keys") || Command("nope") {
+		t.Error("not a command, but ran")
+	}
+	if fi, _ := out.Stat(); fi.Size() < 1000 {
+		t.Errorf("only %d bytes printed", fi.Size())
 	}
 }

@@ -1,7 +1,7 @@
-// deck-update serves the D200's update page over USB Ethernet and installs
+// Package deckupdate is deck-update: it serves the D200's update page over USB Ethernet and installs
 // update bundles uploaded to it, once confirmed with a key press on the
 // D200 (see internal/ota).
-package main
+package deckupdate
 
 import (
 	_ "embed"
@@ -26,8 +26,8 @@ import (
 	"github.com/riptidewave93/d200-deck/netid"
 )
 
-// version is set at build time.
-var version = "dev"
+// Version is deck-update's version, set by its main.
+var Version = "dev"
 
 //go:embed update.html
 var page string
@@ -35,13 +35,15 @@ var page string
 // osRelease is where the OS version is read from.
 var osRelease = osrelease.Path
 
-func main() {
-	addr := flag.String("addr", ":80", "listen address")
-	dir := flag.String("dir", "/data/update", "where update bundles are received")
-	state := flag.String("state", "/data/deck-update/state.json", "what deck-update keeps across reboots")
-	flag.Parse()
+// Main runs deck-update with the given flags.
+func Main(args []string) {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	addr := fs.String("addr", ":80", "listen address")
+	dir := fs.String("dir", "/data/update", "where update bundles are received")
+	state := fs.String("state", "/data/deckd/update.json", "what the update page keeps across reboots")
+	fs.Parse(args)
 	debug.SetMemoryLimit(12 << 20)
-	log.Printf("deck-update %s", version)
+	log.Printf("deckd %s", Version)
 
 	srv := &http.Server{
 		Addr:              *addr,
