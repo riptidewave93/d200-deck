@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/hidraw"
 	"github.com/riptidewave93/d200-deck/netid"
 	"github.com/riptidewave93/d200-deck/proto"
@@ -33,7 +34,8 @@ type Device struct {
 
 // Status is what the daemon reports to the tray: every D200 plugged in.
 type Status struct {
-	Devices []Device `json:"devices"`
+	Devices []Device    `json:"devices"`
+	Apps    []AppStatus `json:"apps,omitempty"` // the app integrations that are set up
 }
 
 // Connected are the devices with a working session.
@@ -79,23 +81,84 @@ type daemon struct {
 	lock    *os.File           // the single-instance lock, held while running
 	find    func() []string
 	open    func(path string) (proto.Transport, error)
+	apps    map[string]app // by name, as in app actions
+	// state is what the decks show (e.g. discord.mute); each session is
+	// told on its channel when it changes
+	state    map[string]bool
+	watchers map[chan struct{}]bool
 }
 
 func newDaemon() *daemon {
 	var id [8]byte
 	rand.Read(id[:])
-	return &daemon{
-		id:      hex.EncodeToString(id[:]),
-		devices: map[string]*Device{},
-		find:    func() []string { return hidraw.FindAll(proto.RawDescriptor) },
-		open:    func(path string) (proto.Transport, error) { return hidraw.Open(path) },
+	d := &daemon{
+		id:       hex.EncodeToString(id[:]),
+		devices:  map[string]*Device{},
+		find:     func() []string { return hidraw.FindAll(proto.RawDescriptor) },
+		open:     func(path string) (proto.Transport, error) { return hidraw.Open(path) },
+		watchers: map[chan struct{}]bool{},
+	}
+	d.apps = map[string]app{deck.AppDiscord: newDiscordLink(discordLogin, d.setState)}
+	return d
+}
+
+// setState merges s into the decks' state and tells the sessions if it
+// changed.
+func (d *daemon) setState(s map[string]bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	changed := false
+	for k, v := range s {
+		if old, ok := d.state[k]; !ok || old != v {
+			if d.state == nil {
+				d.state = map[string]bool{}
+			}
+			d.state[k] = v
+			changed = true
+		}
+	}
+	if changed {
+		for ch := range d.watchers {
+			select {
+			case ch <- struct{}{}:
+			default:
+			}
+		}
 	}
 }
 
-func (d *daemon) getStatus() Status {
+// watchState returns a channel told about state changes, and a function to
+// stop it.
+func (d *daemon) watchState() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	d.mu.Lock()
+	d.watchers[ch] = true
+	d.mu.Unlock()
+	return ch, func() {
+		d.mu.Lock()
+		delete(d.watchers, ch)
+		d.mu.Unlock()
+	}
+}
+
+func (d *daemon) stateMessage() []byte {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	b, _ := json.Marshal(proto.State{Host: d.id, State: d.state})
+	return b
+}
+
+func (d *daemon) getStatus() Status {
 	var s Status
+	// before taking d.mu: apps hold their own lock while setting state
+	for _, a := range d.apps {
+		if st := a.statusText(); st != "" {
+			s.Apps = append(s.Apps, AppStatus{a.title(), st})
+		}
+	}
+	sort.Slice(s.Apps, func(i, j int) bool { return s.Apps[i].Title < s.Apps[j].Title })
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	for _, dev := range d.devices {
 		s.Devices = append(s.Devices, *dev)
 	}
@@ -111,6 +174,9 @@ func runDaemon() {
 		log.Fatal(err)
 	}
 	log.Printf("deckhost %s", version)
+	for _, a := range d.apps {
+		go a.run(nil)
+	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -206,18 +272,67 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	}
 	d.connected(path, hello)
 
+	// the deck takes state only from its action host: send it after each
+	// heartbeat (deckd may have restarted and lost it) and when it changes
+	stateChanged, unwatch := d.watchState()
+	defer unwatch()
+	sendState := true
 	heartbeat := time.NewTicker(heartbeatPeriod)
 	defer heartbeat.Stop()
 	missed := 0
 	results := make(chan proto.Result, 16)
+	act := func(a proto.ActionEvent) {
+		err := d.runAction(a.Action, a.Release)
+		if err != nil {
+			log.Printf("key %d: %v", a.Key, err)
+		}
+		if a.Release {
+			return // the press has the result
+		}
+		r := proto.Result{ID: a.ID}
+		if err != nil {
+			r.Error = shorten(err.Error(), maxResultError)
+		}
+		select {
+		case results <- r:
+		case <-c.Done():
+		}
+	}
+	// each app's keys go in order, so e.g. a quick push-to-talk tap ends
+	// muted
+	queues := map[string]chan proto.ActionEvent{}
+	queue := func(name string) chan proto.ActionEvent {
+		q, ok := queues[name]
+		if !ok {
+			q = make(chan proto.ActionEvent, 16)
+			queues[name] = q
+			go func() {
+				for {
+					select {
+					case a := <-q:
+						act(a)
+					case <-c.Done():
+						return
+					}
+				}
+			}()
+		}
+		return q
+	}
 	for {
+		if sendState {
+			_, err := c.Do(proto.CmdState, d.stateMessage())
+			sendState = err != nil
+		}
 		select {
 		case <-c.Done():
 			return fmt.Errorf("disconnected: %w", c.Err())
+		case <-stateChanged:
+			sendState = true
 		case <-heartbeat.C:
 			// another client's request can displace ours: allow one miss
 			if _, err := c.Do(proto.CmdActionHost, beat); err == nil {
-				missed = 0
+				missed, sendState = 0, true
 			} else if missed++; missed > 1 {
 				return err
 			}
@@ -230,20 +345,18 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 				log.Printf("bad action event: %v", err)
 				continue
 			}
-			if a.Host != d.id || a.Release {
-				continue // another deckhost's, or a release (none of ours need it yet)
-			}
-			go func() {
-				r := proto.Result{ID: a.ID}
-				if err := run(a.Action); err != nil {
-					log.Printf("key %d: %v", a.Key, err)
-					r.Error = shorten(err.Error(), maxResultError)
-				}
+			switch {
+			case a.Host != d.id:
+				// another deckhost's
+			case a.Action.Type == deck.ActionApp:
 				select {
-				case results <- r:
-				case <-c.Done():
+				case queue(a.Action.App) <- a:
+				default:
+					log.Printf("key %d: too many %s keys at once", a.Key, a.Action.App)
 				}
-			}()
+			case !a.Release: // none of the others need the release
+				go act(a)
+			}
 		case r := <-results:
 			b, _ := json.Marshal(r)
 			if _, err := c.Do(proto.CmdResult, b); err != nil {

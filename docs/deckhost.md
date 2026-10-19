@@ -5,7 +5,7 @@ The PC side of the D200, for Linux and Windows (the OS-specific parts are in
 
 | Part | Does |
 |---|---|
-| `deckhost daemon` | Runs the buttons USB HID can't: `open-url`, `launch`, `http`. A systemd user service on Linux; started by the tray on Windows |
+| `deckhost daemon` | Runs the buttons USB HID can't: `open-url`, `launch`, `http`, and `app` integrations ([Discord](discord.md)). A systemd user service on Linux; started by the tray on Windows |
 | `deckhost tray` | Tray icon: blue when the D200 is connected, grey when not. Started at login |
 
 ## Install
@@ -13,6 +13,9 @@ The PC side of the D200, for Linux and Windows (the OS-specific parts are in
 See [install.md](install.md).
 
 ## Tray menu
+
+Below its header the menu lists the connected D200s and, once it's [set up](discord.md#setup),
+how the Discord link is.
 
 | Item | Does |
 |---|---|
@@ -35,3 +38,11 @@ connected, `update` needs the end of the device's serial.
 - Launched programs (and the browser) run in their own session and, through `systemd-run --user
   --scope`, their own systemd scope, so they keep running when the daemon restarts or stops.
 - `deckhost` runs whatever the device config says; see [design.md](design.md#trust).
+
+## Window focus on GNOME (Wayland)
+
+GNOME doesn't let a background program bring another app's window to the front. When a key opens
+an app that's already running (Discord's Open key, or an `open-url` key with the browser open), the
+app gets the request but GNOME shows a "… is ready" notification instead of switching to it. Click
+the notification, or install a GNOME extension that lets apps take focus, such as
+"Grand Theft Focus" (search for it on [extensions.gnome.org](https://extensions.gnome.org/)).

@@ -74,6 +74,13 @@ func (p *pcActions) setState(s proto.State) {
 	p.notify()
 }
 
+// ready reports whether the action host can run a now.
+func (p *pcActions) ready(a deck.Action) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.aliveLocked() && (a.Ready() == "" || p.state[a.Ready()])
+}
+
 // getState is the value of state name; false without an action host.
 func (p *pcActions) getState(name string) bool {
 	p.mu.Lock()
@@ -136,7 +143,7 @@ func (d *deckd) sendPC(i int, a deck.Action) uint32 {
 		return 0
 	}
 	id := d.pc.start(i)
-	ev, _ := json.Marshal(proto.ActionEvent{ID: id, Host: host, Key: i, Action: a})
+	ev, _ := json.Marshal(proto.ActionEvent{ID: id, Host: host, Key: i, Action: a.ForPC()})
 	go func() {
 		if err := d.ch.send(proto.EventSeq, proto.EventAction, ev); err != nil {
 			if _, ok := d.pc.finish(id); ok {
@@ -154,7 +161,7 @@ func (d *deckd) releasePC(i int, a deck.Action, id uint32) {
 	if id == 0 || !ok {
 		return
 	}
-	ev, _ := json.Marshal(proto.ActionEvent{ID: id, Host: host, Key: i, Release: true, Action: a})
+	ev, _ := json.Marshal(proto.ActionEvent{ID: id, Host: host, Key: i, Release: true, Action: a.ForPC()})
 	go func() {
 		if err := d.ch.send(proto.EventSeq, proto.EventAction, ev); err != nil {
 			log.Printf("key %d release: %v", i, err)

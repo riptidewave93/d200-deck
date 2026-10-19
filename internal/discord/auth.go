@@ -97,6 +97,15 @@ type VoiceSettings struct {
 	Mode struct {
 		Type string `json:"type"` // VOICE_ACTIVITY or PUSH_TO_TALK
 	} `json:"mode"`
+	Input struct {
+		Volume float64 `json:"volume"` // 0-100
+	} `json:"input"`
+	Output struct {
+		Volume float64 `json:"volume"` // 0-200
+	} `json:"output"`
+	NoiseSuppression     bool `json:"noise_suppression"`
+	EchoCancellation     bool `json:"echo_cancellation"`
+	AutomaticGainControl bool `json:"automatic_gain_control"`
 }
 
 // VoiceSettings returns the user's voice settings.

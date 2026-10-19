@@ -38,3 +38,7 @@ as admin.
 
 The daemon logs to `%LOCALAPPDATA%\deckhost\deckhost.log`; settings (such as the Discord app)
 are in `%APPDATA%\deckhost` and stay when you uninstall.
+
+## Discord
+
+Discord keys need a one-time setup on each PC: see [discord.md](discord.md#setup).

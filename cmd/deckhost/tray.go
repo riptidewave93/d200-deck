@@ -31,7 +31,7 @@ func trayReady() {
 	status := systray.AddMenuItem("D200: checking…", "")
 	status.Disable()
 	var lines []*systray.MenuItem
-	for range maxTrayDevices {
+	for range maxTrayDevices + maxTrayApps {
 		l := systray.AddMenuItem("", "")
 		l.Disable()
 		l.Hide()
@@ -141,6 +141,9 @@ func notRunning() error { return errors.New("deckhost isn't running") }
 // maxTrayDevices is how many devices the menu lists.
 const maxTrayDevices = 8
 
+// maxTrayApps is how many app integrations it lists.
+const maxTrayApps = 4
+
 // describe is the menu's status header and one line per device.
 func describe(s Status, running bool) (header string, lines []string) {
 	if !running {
@@ -174,6 +177,12 @@ func describe(s Status, running bool) (header string, lines []string) {
 	}
 	if len(lines) > maxTrayDevices {
 		lines = lines[:maxTrayDevices]
+	}
+	for i, a := range s.Apps {
+		if i == maxTrayApps {
+			break
+		}
+		lines = append(lines, a.Title+": "+shorten(a.Status, 70))
 	}
 	return header, lines
 }

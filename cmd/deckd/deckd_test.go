@@ -471,3 +471,63 @@ func TestPCState(t *testing.T) {
 		t.Error("state of a dead host")
 	}
 }
+
+func TestStateLook(t *testing.T) {
+	d := newTestDeckd()
+	d.cfg.Pages["main"].Keys[4] = deck.Button{Icon: "mic", Action: deck.Action{Type: deck.ActionApp, App: deck.AppDiscord, Op: deck.DiscordMute}}
+	d.pc.changed = func() { d.ui <- d.drawPage }
+	d.drawPage()
+	if got := keyColour(d, 4); got != keyColours[keyIdle] {
+		t.Fatalf("unmuted key colour %#x", got)
+	}
+	d.pc.heartbeat("h")
+	d.pc.setState(proto.State{Host: "h", State: map[string]bool{"discord.mute": true}})
+	runUI(t, d)
+	if got := keyColour(d, 4); got != 0xc62828 {
+		t.Errorf("muted key colour %#x, want the on look's red", got)
+	}
+	d.pc.setState(proto.State{Host: "h", State: map[string]bool{"discord.mute": false}})
+	runUI(t, d)
+	if got := keyColour(d, 4); got != keyColours[keyIdle] {
+		t.Errorf("unmuted again: %#x", got)
+	}
+}
+
+func TestDiscordFallback(t *testing.T) {
+	d := newTestDeckd()
+	d.run.stop(time.Second)
+	run, _, reports := testRunner(t)
+	d.run = run
+	d.cfg.Pages["main"].Keys[4] = deck.Button{Action: deck.Action{Type: deck.ActionApp, App: deck.AppDiscord, Op: deck.DiscordMute}}
+	keybind := func() { // Discord's, held while the key is
+		t.Helper()
+		d.press(4, true)
+		expect(t, reports(), kbd(0x03, 0x10))
+		d.press(4, false)
+		expect(t, reports(), kbd(0))
+	}
+
+	keybind() // no deckhost
+	d.pc.heartbeat("h")
+	d.pc.setState(proto.State{Host: "h", State: map[string]bool{"discord.ready": false}})
+	keybind() // deckhost without Discord
+
+	// Discord ready: the PC does it, without the fallback
+	p, r := fifo(t)
+	raw, err := hidg.OpenRaw(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.ch.set(raw)
+	defer d.ch.set(nil)
+	d.pc.setState(proto.State{Host: "h", State: map[string]bool{"discord.ready": true}})
+	d.press(4, true)
+	if ev := readEvent(t, r); ev.Action.Op != deck.DiscordMute || ev.Action.Fallback != nil {
+		t.Errorf("event %+v", ev)
+	}
+	d.press(4, false)
+	if ev := readEvent(t, r); !ev.Release {
+		t.Errorf("release %+v", ev)
+	}
+	expect(t, reports())
+}

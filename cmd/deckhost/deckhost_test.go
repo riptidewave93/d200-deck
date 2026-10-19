@@ -204,11 +204,13 @@ func TestControlGarbage(t *testing.T) {
 	}
 }
 
-// fakeD200 serves hello and action-host like deckd and sends results to the
-// returned channel. beat, if set, answers each heartbeat after the first.
-func fakeD200(protocol int, beat ...func(proto.ActionHost) byte) (*prototest.Device, chan proto.Result) {
+// fakeD200 serves hello, action-host and state like deckd and sends results
+// and states to the returned channels. beat, if set, answers each heartbeat
+// after the first.
+func fakeD200(protocol int, beat ...func(proto.ActionHost) byte) (*prototest.Device, chan proto.Result, chan proto.State) {
 	dev := prototest.New()
 	results := make(chan proto.Result, 4)
+	states := make(chan proto.State, 16)
 	beats := 0
 	go dev.Serve(func(req proto.Request) (byte, []byte) {
 		switch req.Cmd {
@@ -229,10 +231,18 @@ func fakeD200(protocol int, beat ...func(proto.ActionHost) byte) (*prototest.Dev
 			json.Unmarshal(req.Payload, &r)
 			results <- r
 			return proto.StatusOK, nil
+		case proto.CmdState:
+			var st proto.State
+			json.Unmarshal(req.Payload, &st)
+			select {
+			case states <- st:
+			default:
+			}
+			return proto.StatusOK, nil
 		}
 		return proto.StatusUnknownCmd, nil
 	})
-	return dev, results
+	return dev, results, states
 }
 
 func waitFor(t *testing.T, what string, ok func() bool) {
@@ -250,7 +260,7 @@ func TestDaemonRunsActions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits++ }))
 	defer srv.Close()
 
-	dev, results := fakeD200(proto.Version)
+	dev, results, _ := fakeD200(proto.Version)
 	d := newDaemon()
 	paths := []string{"/dev/hidraw4"}
 	d.find = func() []string { return paths }
@@ -306,9 +316,9 @@ func TestDaemonRunsActions(t *testing.T) {
 func TestDaemonSeveralDevices(t *testing.T) {
 	devs := map[string]*prototest.Device{}
 	for _, p := range []string{"/dev/hidraw1", "/dev/hidraw2"} {
-		devs[p], _ = fakeD200(proto.Version)
+		devs[p], _, _ = fakeD200(proto.Version)
 	}
-	old, _ := fakeD200(1)
+	old, _, _ := fakeD200(1)
 	devs["/dev/hidraw3"] = old
 	d := newDaemon()
 	d.find = func() []string { return []string{"/dev/hidraw1", "/dev/hidraw2", "/dev/hidraw3"} }
@@ -367,6 +377,7 @@ func TestDescribe(t *testing.T) {
 		}}, true, "2 D200s connected", []string{
 			"D200 …5566aa: OS v1 (debug)", "D200 …abcdef: OS v2 (debug)", "hidraw3: device speaks protocol 1",
 		}},
+		{Status{Apps: []AppStatus{{"Discord", "not running"}}}, true, "D200 not connected", []string{"Discord: not running"}},
 	}
 	for _, tc := range cases {
 		header, lines := describe(tc.s, tc.running)
@@ -473,7 +484,7 @@ func TestHeartbeatMisses(t *testing.T) {
 	t.Cleanup(func() { heartbeatPeriod = old })
 	run := func(answers ...byte) *daemon {
 		n := 0
-		dev, _ := fakeD200(proto.Version, func(proto.ActionHost) byte {
+		dev, _, _ := fakeD200(proto.Version, func(proto.ActionHost) byte {
 			n++
 			return answers[(n-1)%len(answers)]
 		})
@@ -504,5 +515,29 @@ func TestIcoFromPNG(t *testing.T) {
 	ico := icoFromPNG(p)
 	if len(ico) != 22+len(p) || ico[2] != 1 || ico[4] != 1 || ico[6] != 64 || ico[7] != 64 || ico[18] != 22 || !bytes.Equal(ico[22:], p) {
 		t.Errorf("ico header % x", ico[:22])
+	}
+}
+
+func TestStateResent(t *testing.T) {
+	// a restarted deckd has forgotten the state: each heartbeat resends it
+	old := heartbeatPeriod
+	heartbeatPeriod = 5 * time.Millisecond
+	t.Cleanup(func() { heartbeatPeriod = old })
+	dev, _, states := fakeD200(proto.Version)
+	defer dev.Close()
+	d := newDaemon()
+	d.setState(map[string]bool{"app.on": true})
+	d.find = func() []string { return []string{"/dev/hidraw1"} }
+	d.open = func(string) (proto.Transport, error) { return dev, nil }
+	d.scan()
+	for range 3 {
+		select {
+		case s := <-states:
+			if !s.State["app.on"] {
+				t.Fatalf("state %+v", s)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("state not resent")
+		}
 	}
 }

@@ -29,6 +29,8 @@ func TestValidateActions(t *testing.T) {
 		{Type: ActionOpenURL, URL: "http://example.com"},
 		{Type: ActionLaunch, Command: []string{"obs"}},
 		{Type: ActionHTTP, URL: "https://example.com/hook"},
+		{Type: ActionApp, App: AppDiscord, Op: DiscordPushToTalk, Fallback: &Action{Type: ActionKey, Keys: []string{"ctrl", "f14"}}},
+		{Type: ActionOpenURL, URL: "https://x", Fallback: &Action{Type: ActionMacro, Steps: []Action{{Type: ActionText, Text: "x"}}}},
 	}
 	for _, a := range good {
 		if err := withKey(Button{Action: a}).Validate(); err != nil {
@@ -53,6 +55,10 @@ func TestValidateActions(t *testing.T) {
 		{Type: ActionOpenURL, URL: "file:///etc/passwd"},
 		{Type: ActionLaunch},
 		{Type: ActionHTTP, URL: "ftp://x"},
+		{Type: ActionKey, Keys: []string{"a"}, Fallback: &Action{Type: ActionKey, Keys: []string{"b"}}},
+		{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: &Action{Type: ActionOpenURL, URL: "https://x"}},
+		{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: &Action{Type: ActionPage, Page: "main"}},
+		{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: &Action{Type: ActionKey}},
 	}
 	for _, a := range bad {
 		if err := withKey(Button{Action: a}).Validate(); err == nil {

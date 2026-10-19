@@ -69,6 +69,8 @@ func (d *deckd) drawKey(i int, state keyState) {
 		drawTestKey(d.canvas, i, r, state != keyIdle)
 	} else {
 		b, ok := d.cfg.Pages[d.page()].Keys[i]
+		st := b.Action.State()
+		b = b.Shown(st != "" && d.pc.getState(st))
 		drawSafely(d.canvas, r, b, ok, state, &d.assets)
 	}
 	d.show(r)
@@ -122,6 +124,13 @@ func (d *deckd) press(i int, down bool) {
 		return
 	}
 	a := b.Action
+	if a.Type.OnPC() && !d.pc.ready(a) {
+		// e.g. Discord's keybind while deckhost can't reach Discord; the
+		// release goes the same way as the press
+		if f := a.FallbackAction(); f != nil {
+			a = *f
+		}
+	}
 	d.held[i] = &held{page: d.page(), action: a}
 	d.drawKey(i, keyPressed)
 
@@ -196,6 +205,9 @@ func checkIcons(c *deck.Config) error {
 		for k, b := range p.Keys {
 			if b.Icon != "" && !gfx.HasIcon(b.Icon) {
 				return fmt.Errorf("page %q key %d: unknown icon %q", name, k, b.Icon)
+			}
+			if b.On != nil && b.On.Icon != "" && !gfx.HasIcon(b.On.Icon) {
+				return fmt.Errorf("page %q key %d: unknown on icon %q", name, k, b.On.Icon)
 			}
 		}
 	}

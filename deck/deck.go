@@ -83,6 +83,50 @@ type Button struct {
 	Color      string `json:"color,omitempty"`
 	Background string `json:"background,omitempty"`
 	Action     Action `json:"action"`
+	// On is how the button looks while its action's state (Action.State) is
+	// on, e.g. while Discord is muted: the fields it sets replace the
+	// button's. Without it, some actions have a built-in on look.
+	On *Look `json:"on,omitempty"`
+}
+
+// Look is how a button appears; the fields mean what they do in Button.
+type Look struct {
+	Icon       string `json:"icon,omitempty"`
+	Image      string `json:"image,omitempty"`
+	Label      string `json:"label,omitempty"`
+	Font       string `json:"font,omitempty"`
+	Color      string `json:"color,omitempty"`
+	Background string `json:"background,omitempty"`
+}
+
+func (b Button) look() Look { return Look{b.Icon, b.Image, b.Label, b.Font, b.Color, b.Background} }
+
+// lit is the button while its action's state is on.
+func (b Button) lit() Button {
+	on := b.On
+	if on == nil {
+		on = appOps[b.Action.appOp()].on
+		if on == nil {
+			return b
+		}
+	}
+	if on.Icon != "" {
+		b.Icon, b.Image = on.Icon, ""
+	}
+	if on.Image != "" {
+		b.Image, b.Icon = on.Image, ""
+	}
+	for _, f := range []struct {
+		to   *string
+		from string
+	}{
+		{&b.Label, on.Label}, {&b.Font, on.Font}, {&b.Color, on.Color}, {&b.Background, on.Background},
+	} {
+		if f.from != "" {
+			*f.to = f.from
+		}
+	}
+	return b
 }
 
 // ActionType says what pressing a key does.
@@ -119,11 +163,19 @@ const (
 	ActionLaunch ActionType = "launch"
 	// ActionHTTP sends an HTTP request, e.g. to a webhook.
 	ActionHTTP ActionType = "http"
+	// ActionApp runs Op of an app integration on the PC (see apps.go).
+	ActionApp ActionType = "app"
 )
 
 // OnPC reports whether the action runs on the PC rather than the device.
 func (t ActionType) OnPC() bool {
-	return t == ActionOpenURL || t == ActionLaunch || t == ActionHTTP
+	return t == ActionOpenURL || t == ActionLaunch || t == ActionHTTP || t == ActionApp
+}
+
+// ForPC is the action as sent to the PC, without the fallback.
+func (a Action) ForPC() Action {
+	a.Fallback = nil
+	return a
 }
 
 // Action is what pressing a key does; the fields used depend on Type.
@@ -141,6 +193,12 @@ type Action struct {
 	Method  string            `json:"method,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
 	Body    string            `json:"body,omitempty"`
+	App     string            `json:"app,omitempty"`
+	Op      string            `json:"op,omitempty"`
+	Args    json.RawMessage   `json:"args,omitempty"`
+	// Fallback, on a PC action, runs on the device instead while the PC
+	// can't run the action (see FallbackAction).
+	Fallback *Action `json:"fallback,omitempty"`
 }
 
 // Usage is a HID consumer control usage (USB HID usage tables, page 0x0C).
@@ -264,24 +322,12 @@ func (c *Config) Validate() error {
 			if k < 0 || k >= KeyCount {
 				return fmt.Errorf("%s: no such key", where)
 			}
-			if utf8.RuneCountInString(b.Label) > MaxLabel {
-				return fmt.Errorf("%s: label longer than %d characters", where, MaxLabel)
+			if err := c.validateLook(b.look()); err != nil {
+				return fmt.Errorf("%s: %w", where, err)
 			}
-			if strings.Count(b.Label, "\n") >= MaxLabelLines {
-				return fmt.Errorf("%s: label has more than %d lines", where, MaxLabelLines)
-			}
-			if b.Icon != "" && b.Image != "" {
-				return fmt.Errorf("%s: icon and image are both set", where)
-			}
-			if _, ok := c.Fonts[b.Font]; b.Font != "" && !ok && !slices.Contains(BuiltinFonts, b.Font) {
-				return fmt.Errorf("%s: font %q does not exist", where, b.Font)
-			}
-			if _, ok := c.Images[b.Image]; b.Image != "" && !ok {
-				return fmt.Errorf("%s: image %q does not exist", where, b.Image)
-			}
-			for _, col := range []string{b.Color, b.Background} {
-				if _, err := ParseColor(col); col != "" && err != nil {
-					return fmt.Errorf("%s: %w", where, err)
+			if b.On != nil {
+				if err := c.validateLook(*b.On); err != nil {
+					return fmt.Errorf("%s: on: %w", where, err)
 				}
 			}
 			if err := c.validateAction(b.Action, false); err != nil {
@@ -292,9 +338,46 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+func (c *Config) validateLook(l Look) error {
+	if utf8.RuneCountInString(l.Label) > MaxLabel {
+		return fmt.Errorf("label longer than %d characters", MaxLabel)
+	}
+	if strings.Count(l.Label, "\n") >= MaxLabelLines {
+		return fmt.Errorf("label has more than %d lines", MaxLabelLines)
+	}
+	if l.Icon != "" && l.Image != "" {
+		return errors.New("icon and image are both set")
+	}
+	if _, ok := c.Fonts[l.Font]; l.Font != "" && !ok && !slices.Contains(BuiltinFonts, l.Font) {
+		return fmt.Errorf("font %q does not exist", l.Font)
+	}
+	if _, ok := c.Images[l.Image]; l.Image != "" && !ok {
+		return fmt.Errorf("image %q does not exist", l.Image)
+	}
+	for _, col := range []string{l.Color, l.Background} {
+		if _, err := ParseColor(col); col != "" && err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Config) validateAction(a Action, inMacro bool) error {
+	if f := a.Fallback; f != nil {
+		if !a.Type.OnPC() {
+			return errors.New("only PC actions have a fallback")
+		}
+		switch f.Type {
+		case ActionKey, ActionConsumer, ActionSystem, ActionText, ActionMacro:
+		default:
+			return fmt.Errorf("fallback: %q can't be one; it must run on the device", f.Type)
+		}
+		if err := c.validateAction(*f, false); err != nil {
+			return fmt.Errorf("fallback: %w", err)
+		}
+	}
 	if a.Type.OnPC() {
-		if b, _ := json.Marshal(a); len(b) > MaxPCAction {
+		if b, _ := json.Marshal(a.ForPC()); len(b) > MaxPCAction {
 			return fmt.Errorf("%s action is over %d bytes", a.Type, MaxPCAction)
 		}
 	}
@@ -359,6 +442,16 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 		if !strings.HasPrefix(a.URL, "http://") && !strings.HasPrefix(a.URL, "https://") {
 			return errors.New("http needs an http(s) url")
 		}
+	case ActionApp:
+		if !isName(a.App) || !isName(a.Op) || a.Op == "ready" {
+			return errors.New("app needs an app and an op: up to 32 lowercase letters, digits and -")
+		}
+		if len(a.Args) > 0 {
+			var args map[string]any
+			if json.Unmarshal(a.Args, &args) != nil {
+				return errors.New("app args must be an object")
+			}
+		}
 	default:
 		return fmt.Errorf("unknown action type %q", a.Type)
 	}
@@ -403,6 +496,10 @@ func DefaultConfig() *Config {
 	}
 	back := Button{Icon: "back", Label: "Back", Action: Action{Type: ActionBack}}
 	repo := Button{Icon: "github", Label: "Source Repo", Action: Action{Type: ActionOpenURL, URL: RepoURL}}
+	discord := func(icon, label string, a Action) Button {
+		return Button{Icon: icon, Label: label, Color: white, Background: DiscordBlurple, Action: a}
+	}
+	discordOp := func(op string) Action { return Action{Type: ActionApp, App: AppDiscord, Op: op} }
 	return &Config{
 		Version: ConfigVersion,
 		Home:    "main",
@@ -412,8 +509,8 @@ func DefaultConfig() *Config {
 				1:  media("prev", UsagePrevTrack),
 				2:  media("play-pause", UsagePlayPause),
 				3:  media("next", UsageNextTrack),
-				4:  {Icon: "sleep", Action: Action{Type: ActionSystem, System: SystemSleep}},
-				5:  folder("headphones", "Discord", "discord"),
+				4:  folder("power_settings_new", "Power", "power"),
+				5:  {Icon: "discord", Label: "Discord", Background: DiscordBlurple, Action: Action{Type: ActionPage, Page: "discord"}},
 				6:  media("volume-down", UsageVolumeDn),
 				7:  media("mute", UsageMute),
 				8:  media("volume-up", UsageVolumeUp),
@@ -421,20 +518,29 @@ func DefaultConfig() *Config {
 				13: repo,
 			}},
 			"browser": {Keys: map[int]Button{
-				0:  back,
-				1:  key("browser-back", "Back", "alt", "left"),
-				2:  key("reload", "Reload", "ctrl", "r"),
-				3:  key("browser-forward", "Forward", "alt", "right"),
-				6:  key("open-external", "New Tab", "ctrl", "t"),
-				13: repo,
+				0: back,
+				1: key("browser-back", "Back", "alt", "left"),
+				2: key("reload", "Reload", "ctrl", "r"),
+				3: key("browser-forward", "Forward", "alt", "right"),
+				6: key("open-external", "New Tab", "ctrl", "t"),
 			}},
-			// Mute and deafen are Discord's default keybinds; disconnect has
-			// none, so bind Ctrl+Shift+F13 to it in Discord.
+			// Mute and deafen use Discord's default keybinds until deckhost
+			// is connected to Discord. Leave has no keybind by default: bind
+			// Ctrl+Shift+F13 to Disconnect in Discord for it.
 			"discord": {Keys: map[int]Button{
 				0: back,
-				1: key("mic-off", "Mute", "ctrl", "shift", "m"),
-				2: key("headphones-off", "Deafen", "ctrl", "shift", "d"),
-				3: key("hang-up", "Leave", "ctrl", "shift", "f13"),
+				1: discord("mic", "Mute", discordOp(DiscordMute)),
+				2: discord("headphones", "Deafen", discordOp(DiscordDeafen)),
+				3: discord("hang-up", "Leave", Action{Type: ActionApp, App: AppDiscord, Op: DiscordLeaveVoice,
+					Fallback: &Action{Type: ActionKey, Keys: []string{"ctrl", "shift", "f13"}}}),
+				4: discord("discord", "Open", discordOp(DiscordOpen)),
+				6: discord("graphic_eq", "Voice", discordOp(DiscordVoiceMode)),
+				7: discord("noise_control_off", "Noise", discordOp(DiscordNoiseSuppression)),
+			}},
+			"power": {Keys: map[int]Button{
+				0: back,
+				1: {Icon: "sleep", Label: "Sleep", Action: Action{Type: ActionSystem, System: SystemSleep}},
+				2: {Icon: "power_settings_new", Label: "Power Off", Action: Action{Type: ActionSystem, System: SystemPowerDown}},
 			}},
 			"macros": {Keys: map[int]Button{
 				0: back,

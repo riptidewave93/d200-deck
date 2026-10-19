@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -21,6 +22,9 @@ func configDir() (string, error) {
 	return filepath.Join(dir, "deckhost"), nil
 }
 
+// errNotSetUp means the user hasn't given deckhost a Discord app.
+var errNotSetUp = errors.New("not set up (see docs/discord.md)")
+
 // discordLogin connects to Discord and logs in as the user's app, asking
 // the user to allow it the first time. The token is kept for next time.
 func discordLogin() (*discord.Conn, error) {
@@ -29,8 +33,10 @@ func discordLogin() (*discord.Conn, error) {
 		return nil, err
 	}
 	var app discord.App
-	if err := readJSON(filepath.Join(dir, "discord.json"), &app); err != nil {
-		return nil, fmt.Errorf("no Discord app set up: %w", err)
+	if err := readJSON(filepath.Join(dir, "discord.json"), &app); errors.Is(err, fs.ErrNotExist) {
+		return nil, errNotSetUp
+	} else if err != nil {
+		return nil, fmt.Errorf("discord.json: %w", err)
 	}
 	if app.ClientID == "" || app.ClientSecret == "" {
 		return nil, errors.New("discord.json needs client_id and client_secret")

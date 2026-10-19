@@ -51,7 +51,7 @@ func TestIconNames(t *testing.T) {
 	if len(names) != len(drawn)+len(aliases)+len(symbols) {
 		t.Errorf("%d names", len(names))
 	}
-	for _, n := range []string{"play-pause", "github", "back", "sleep", "volume_up", "home", "10k"} {
+	for _, n := range []string{"play-pause", "github", "discord", "back", "sleep", "volume_up", "home", "10k"} {
 		if !HasIcon(n) {
 			t.Errorf("%s missing", n)
 		}
@@ -90,5 +90,22 @@ func TestIconCacheBounded(t *testing.T) {
 	}
 	if len(iconMasks) > maxIconMasks {
 		t.Errorf("icon cache holds %d masks", len(iconMasks))
+	}
+}
+
+func TestDiscordSymbol(t *testing.T) {
+	// drawn 147 px square, one pixel per SVG unit, offset by (10.18, 25.5)
+	c := NewCanvas(147, 147)
+	c.DrawIcon("discord", image.Rect(0, 0, 147, 147), 147, 0xffffff)
+	at := func(x, y float64) uint32 { return c.Pix[int(y+25.5)*147+int(x+10.18)] }
+	for _, p := range []Pt{{42, 53}, {84, 53}, {63, 98}, {5, 5}} { // eyes, under the chin, a corner
+		if at(p.X, p.Y) != 0 {
+			t.Errorf("%v filled", p)
+		}
+	}
+	for _, p := range []Pt{{63, 30}, {63, 70}, {20, 60}} {
+		if at(p.X, p.Y) != 0xffffff {
+			t.Errorf("%v empty", p)
+		}
 	}
 }

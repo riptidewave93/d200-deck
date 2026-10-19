@@ -33,17 +33,35 @@ PC with nothing installed. Only what HID can't do goes to `deckhost`.
 | `open-url` | PC | `url` | open a page in the default browser |
 | `launch` | PC | `command` (argv), optional per-OS overrides | start an app or script |
 | `http` | PC | `method`, `url`, `headers`, `body` | Discord webhook, Home Assistant |
+| `app` | PC | `app`, `op`, optional `args` (an object): see [App integrations](#app-integrations) | Discord mute ([discord.md](discord.md)) |
 
 `hid-key` with F13–F24 combos is a good way to drive apps: nothing else uses those keys, so
 users bind them to global shortcuts in Discord, OBS, etc.
 
-If `deckhost` isn't connected, a PC action flashes its key red instead of silently doing nothing.
+A PC action can set a `fallback`: an action the device runs instead while `deckhost` isn't
+connected (for an `app` action, while the host can't reach that app). Without one, the key flashes red
+instead of silently doing nothing.
 
-**Discord:** mute (Ctrl+Shift+M) and deafen (Ctrl+Shift+D) are default Discord keybinds and work
-while Discord is in the background, so they are `hid-key` buttons. Disconnect has no default
-keybind; the user binds one (e.g. Ctrl+Shift+F13). Discord's local RPC API could also show the
-mute state on the key, but its voice-control scope needs Discord's approval or a user-created
-Discord app, so it's an optional later `deckhost` feature.
+**Discord:** Discord keys go through Discord's local API and show whether you're muted, but need
+a Discord app set up ([discord.md](discord.md)). Until then mute and deafen fall back to
+Discord's default shortcuts, Ctrl+Shift+M and Ctrl+Shift+D.
+
+## App integrations
+
+Apps such as Discord are integrated in `deckhost`, not the device, so a new one needs only a new
+`deckhost`. The device knows just the action's shape and these conventions:
+
+| | |
+|---|---|
+| Action | `{"type": "app", "app": "<app>", "op": "<op>", "args": {…}}`; names are lowercase letters, digits and `-` |
+| `<app>.ready` | State the host sets while it can run the app's actions (e.g. logged in to it). Until then the device runs the key's `fallback`, if it has one, or flashes the key red |
+| `<app>.<op>` | State that, while on, shows the key's `on` look (e.g. `discord.mute`) |
+| Built-ins | Optional built-in looks, on looks and fallback keybinds per app op (`deck/apps.go`) |
+
+In `deckhost`, an integration implements `app` (`cmd/deckhost/apps.go`): it keeps itself
+connected, runs ops (each app's in order), sets its state and reports a status line for the tray.
+Its settings, such as the user's own app registration, go in `<app>.json` next to deckhost's
+other settings. An app it doesn't know, or an unknown op, is an error result.
 
 ## Icons and fonts
 
@@ -100,7 +118,7 @@ they connected).
 | `image.put` / `image.list` | client -> device | | upload / list custom images |
 | `key` | device -> clients | | live key events for the web app |
 | `usb.rebinding` | device -> clients | | the USB gadget is about to re-plug; reconnect |
-| `state` (0x06) | PC -> device | done | named on/off state (e.g. `discord.mute`) from the current action host; forgotten when it goes away. Keys showing it come next |
+| `state` (0x06) | PC -> device | done | named on/off state (e.g. `discord.mute`) from the current action host; forgotten when it goes away. A key whose action has that state shows its `on` look; `<app>.ready` says that app's keys can go to the host |
 
 Whatever can write the config can make `deckhost` run commands on the PC (via `launch`/`http`
 actions), so the config channel is security-critical.
