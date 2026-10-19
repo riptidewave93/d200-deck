@@ -18,28 +18,41 @@ See [docs/design.md](docs/design.md).
 
 `deckd` reads `/etc/deckd/config.json`, or uses a built-in default if it is missing or invalid.
 `deckd default-config` prints the default as a starting point. A config is a set of named
-pages; each key on a page has an `icon`, a `label` and an `action`:
+pages of buttons:
 
 ```json
 {
   "version": 1,
   "home": "main",
+  "images": { "logo": "<base64 PNG or JPEG>" },
+  "fonts": { "brand": "<base64 TTF or OTF>" },
   "pages": {
     "main": {
       "keys": {
-        "0": { "icon": "globe", "label": "Browser", "action": { "type": "page", "page": "browser" } },
-        "2": { "icon": "play-pause", "action": { "type": "hid-consumer", "usage": "play-pause" } }
+        "0": { "icon": "public", "label": "Browser", "action": { "type": "page", "page": "browser" } },
+        "1": { "image": "logo", "action": { "type": "open-url", "url": "https://example.com" } },
+        "2": { "icon": "play-pause", "action": { "type": "hid-consumer", "usage": "play-pause" } },
+        "3": { "label": "BRB", "font": "go-mono-bold", "background": "#c62828", "color": "#ffffff", "action": { "type": "type-text", "text": "brb" } }
       }
     },
     "browser": {
       "keys": {
         "0": { "icon": "back", "label": "Back", "action": { "type": "back" } },
-        "2": { "icon": "reload", "label": "Reload", "action": { "type": "hid-key", "keys": ["ctrl", "r"] } }
+        "2": { "icon": "refresh", "label": "Reload", "action": { "type": "hid-key", "keys": ["ctrl", "r"] } }
       }
     }
   }
 }
 ```
+
+| Button field | |
+|---|---|
+| `icon` | A built-in icon: any [Material Symbol](https://fonts.google.com/icons) name, e.g. `volume_up`; `deckd icons` lists them all |
+| `image` | A custom icon from `images` instead (PNG or JPEG, base64; up to 256 KiB and 512x512 px) |
+| `label` | Text; up to 3 lines (`\n`) on a key without an icon |
+| `font` | The label's font: a built-in one (`deckd fonts`: the Go family, e.g. `go-bold`, `go-mono`; default `go-medium`) or a custom one from `fonts` (TrueType/OpenType, base64, up to 512 KiB) |
+| `color`, `background` | `#rrggbb`; the defaults are light grey on dark grey |
+| `action` | What the key does |
 
 Keys are numbered in reading order: 0-4 top row, 5-9 middle row, 10-12 bottom row, 13 the wide
 key. Action types are listed in [docs/design.md](docs/design.md#where-an-action-runs).

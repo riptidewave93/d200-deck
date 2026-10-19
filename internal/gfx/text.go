@@ -2,44 +2,109 @@ package gfx
 
 import (
 	"image"
+	"sort"
 	"sync"
 
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gobolditalic"
+	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/gomedium"
+	"golang.org/x/image/font/gofont/gomediumitalic"
+	"golang.org/x/image/font/gofont/gomono"
+	"golang.org/x/image/font/gofont/gomonobold"
+	"golang.org/x/image/font/gofont/gomonobolditalic"
+	"golang.org/x/image/font/gofont/gomonoitalic"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/gofont/gosmallcaps"
+	"golang.org/x/image/font/gofont/gosmallcapsitalic"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
 
-var (
-	fontOnce sync.Once
-	fontData *opentype.Font
-	faces    = map[int]font.Face{}
-)
+// Font is a typeface. It is parsed on first use, and its faces are made per
+// pixel size and kept.
+type Font struct {
+	data  []byte
+	once  sync.Once
+	f     *opentype.Font
+	err   error
+	faces map[int]font.Face
+}
 
-func face(px int) font.Face {
-	fontOnce.Do(func() {
-		var err error
-		if fontData, err = opentype.Parse(gomedium.TTF); err != nil {
-			panic(err)
-		}
-	})
-	if f, ok := faces[px]; ok {
-		return f
+// DefaultFont is the built-in font labels use unless a button picks another.
+const DefaultFont = "go-medium"
+
+var builtinFonts = map[string]*Font{
+	"go-regular":          {data: goregular.TTF},
+	"go-medium":           {data: gomedium.TTF},
+	"go-bold":             {data: gobold.TTF},
+	"go-italic":           {data: goitalic.TTF},
+	"go-medium-italic":    {data: gomediumitalic.TTF},
+	"go-bold-italic":      {data: gobolditalic.TTF},
+	"go-mono":             {data: gomono.TTF},
+	"go-mono-bold":        {data: gomonobold.TTF},
+	"go-mono-italic":      {data: gomonoitalic.TTF},
+	"go-mono-bold-italic": {data: gomonobolditalic.TTF},
+	"go-smallcaps":        {data: gosmallcaps.TTF},
+	"go-smallcaps-italic": {data: gosmallcapsitalic.TTF},
+}
+
+// BuiltinFont returns the built-in font called name.
+func BuiltinFont(name string) (*Font, bool) {
+	f, ok := builtinFonts[name]
+	return f, ok
+}
+
+// FontNames lists the built-in fonts, sorted.
+func FontNames() []string {
+	names := make([]string, 0, len(builtinFonts))
+	for n := range builtinFonts {
+		names = append(names, n)
 	}
-	f, err := opentype.NewFace(fontData, &opentype.FaceOptions{Size: float64(px), DPI: 72, Hinting: font.HintingFull})
+	sort.Strings(names)
+	return names
+}
+
+// ParseFont reads a TrueType or OpenType font.
+func ParseFont(data []byte) (*Font, error) {
+	f := &Font{data: data}
+	return f, f.load()
+}
+
+func (f *Font) load() error {
+	f.once.Do(func() { f.f, f.err = opentype.Parse(f.data) })
+	return f.err
+}
+
+// maxFaces bounds the faces kept per font; labels use a few sizes.
+const maxFaces = 32
+
+func (f *Font) face(px int) font.Face {
+	if err := f.load(); err != nil {
+		panic(err) // built-in fonts parse; ParseFont checked the others
+	}
+	if fc, ok := f.faces[px]; ok {
+		return fc
+	}
+	fc, err := opentype.NewFace(f.f, &opentype.FaceOptions{Size: float64(px), DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
 		panic(err)
 	}
-	faces[px] = f
-	return f
+	if f.faces == nil || len(f.faces) >= maxFaces {
+		f.faces = map[int]font.Face{}
+	}
+	f.faces[px] = fc
+	return fc
 }
 
 // TextWidth is the width of s in pixels at px pixels per em.
-func TextWidth(s string, px int) int {
-	return font.MeasureString(face(px), s).Ceil()
+func (f *Font) TextWidth(s string, px int) int {
+	return font.MeasureString(f.face(px), s).Ceil()
 }
 
 type textKey struct {
+	f  *Font
 	s  string
 	px int
 }
@@ -49,16 +114,16 @@ var textMasks = map[textKey]*image.Alpha{}
 // maxTextMasks bounds the text cache; labels are short and few per page.
 const maxTextMasks = 256
 
-// DrawText draws s centred in r at px pixels per em, in col.
-func (c *Canvas) DrawText(s string, r Rect, px int, col uint32) {
-	k := textKey{s, px}
+// DrawText draws s in font f centred in r at px pixels per em, in col.
+func (c *Canvas) DrawText(f *Font, s string, r Rect, px int, col uint32) {
+	k := textKey{f, s, px}
 	m, ok := textMasks[k]
 	if !ok {
-		f := face(px)
-		fm := f.Metrics()
-		w := font.MeasureString(f, s).Ceil()
+		fc := f.face(px)
+		fm := fc.Metrics()
+		w := font.MeasureString(fc, s).Ceil()
 		m = image.NewAlpha(image.Rect(0, 0, w, (fm.Ascent + fm.Descent).Ceil()))
-		d := font.Drawer{Dst: m, Src: image.Opaque, Face: f, Dot: fixed.Point26_6{Y: fm.Ascent}}
+		d := font.Drawer{Dst: m, Src: image.Opaque, Face: fc, Dot: fixed.Point26_6{Y: fm.Ascent}}
 		d.DrawString(s)
 		if len(textMasks) >= maxTextMasks {
 			clear(textMasks)

@@ -22,6 +22,7 @@ func newTestDeckd() *deckd {
 	d := &deckd{cfg: deck.DefaultConfig(), canvas: gfx.NewCanvas(screen.Width, screen.Height),
 		redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 16)}
 	d.pages = []string{d.cfg.Home}
+	d.assets.reset(d.cfg)
 	d.run = newRunner(nil)
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	return d
@@ -318,7 +319,7 @@ func TestDrawButton(t *testing.T) {
 	for _, tc := range cases {
 		c := gfx.NewCanvas(screen.Width, screen.Height)
 		r := screen.Key(tc.key)
-		drawButton(c, r, tc.b, true, keyIdle)
+		drawButton(c, r, tc.b, true, keyIdle, &assetCache{})
 		fg := 0
 		for y := r.Min.Y; y < r.Max.Y; y++ {
 			for x := r.Min.X; x < r.Max.X; x++ {
@@ -333,20 +334,21 @@ func TestDrawButton(t *testing.T) {
 	}
 	c := gfx.NewCanvas(screen.Width, screen.Height)
 	c.Fill(image.Rect(0, 0, screen.Width, screen.Height), 0x123456)
-	drawButton(c, screen.Key(5), deck.Button{}, false, keyIdle)
+	drawButton(c, screen.Key(5), deck.Button{}, false, keyIdle, &assetCache{})
 	if c.Pix[screen.Key(5).Min.Y*c.W+screen.Key(5).Min.X] != 0 {
 		t.Error("blank key not cleared")
 	}
 }
 
 func TestFitText(t *testing.T) {
-	if px := fitText("Hi", 1000, 36); px != 36 {
+	if px := fitText(defaultFont(), "Hi", 1000, 36); px != 36 {
 		t.Errorf("short text shrunk to %d", px)
 	}
 	long := "A label far too long for one key"
-	px := fitText(long, 180, 36)
-	if px >= 36 || (px > 12 && gfx.TextWidth(long, px) > 180) {
-		t.Errorf("long text at %d px is %d wide", px, gfx.TextWidth(long, px))
+	f, _ := gfx.BuiltinFont(gfx.DefaultFont)
+	px := fitText(f, long, 180, 36)
+	if px >= 36 || (px > 12 && f.TextWidth(long, px) > 180) {
+		t.Errorf("long text at %d px is %d wide", px, f.TextWidth(long, px))
 	}
 }
 
@@ -375,5 +377,28 @@ func TestSavePNG(t *testing.T) {
 	}
 	if savePNG(filepath.Join(t.TempDir(), "no", "dir.png"), c) == nil {
 		t.Error("saved into a missing directory")
+	}
+}
+
+func TestGuardConfig(t *testing.T) {
+	dir := t.TempDir()
+	old := startsFile
+	startsFile = filepath.Join(dir, "starts")
+	t.Cleanup(func() { startsFile = old })
+	cfg := filepath.Join(dir, "config.json")
+	os.WriteFile(cfg, []byte("{}"), 0o644)
+
+	for range maxQuickStarts {
+		guardConfig(cfg)
+		if _, err := os.Stat(cfg); err != nil {
+			t.Fatal("config moved too soon")
+		}
+	}
+	guardConfig(cfg)
+	if _, err := os.Stat(cfg + ".bad"); err != nil {
+		t.Error("config not moved aside after repeated crashes")
+	}
+	if b, _ := os.ReadFile(startsFile); string(b) != "1" {
+		t.Errorf("count %q after moving the config", b)
 	}
 }

@@ -3,6 +3,7 @@ package gfx
 import (
 	"image"
 	"math"
+	"sort"
 
 	"golang.org/x/image/vector"
 )
@@ -10,8 +11,8 @@ import (
 // Icon draws itself in a 100 x 100 unit box mapped onto a square area.
 type Icon func(p *pen)
 
-// Icons are the built-in icons, by name.
-var Icons = map[string]Icon{
+// drawn are the icons drawn here rather than taken from Material Symbols.
+var drawn = map[string]Icon{
 	"play-pause":  playPause,
 	"next":        next,
 	"prev":        mirror(next),
@@ -19,6 +20,68 @@ var Icons = map[string]Icon{
 	"volume-up":   withSpeaker(plus),
 	"volume-down": withSpeaker(minus),
 	"github":      svgIcon(githubMark, 0.5, 0.5, 24),
+}
+
+// aliases are older names for Material Symbols, kept so configs using them
+// still work.
+var aliases = map[string]string{
+	"back":            "undo",
+	"browser-back":    "arrow_back",
+	"browser-forward": "arrow_forward",
+	"globe":           "public",
+	"hang-up":         "call_end",
+	"headphones-off":  "headset_off",
+	"launch":          "rocket_launch",
+	"mic-off":         "mic_off",
+	"open-external":   "open_in_new",
+	"reload":          "refresh",
+	"sleep":           "bedtime",
+}
+
+type symbol struct{ name, d string }
+
+// lookup finds an icon by name: drawn icons, aliases, then Material Symbols
+// by their own names (e.g. "volume_up").
+func lookup(name string) (Icon, bool) {
+	if icon, ok := drawn[name]; ok {
+		return icon, true
+	}
+	if a, ok := aliases[name]; ok {
+		name = a
+	}
+	i := sort.Search(len(symbols), func(i int) bool { return symbols[i].name >= name })
+	if i == len(symbols) || symbols[i].name != name {
+		return nil, false
+	}
+	return svgIcon(symbols[i].d, 0, -960, 960), true
+}
+
+// HasIcon reports whether name is a built-in icon.
+func HasIcon(name string) bool {
+	if _, ok := drawn[name]; ok {
+		return true
+	}
+	if _, ok := aliases[name]; ok {
+		return true
+	}
+	i := sort.Search(len(symbols), func(i int) bool { return symbols[i].name >= name })
+	return i < len(symbols) && symbols[i].name == name
+}
+
+// IconNames lists every built-in icon name, sorted.
+func IconNames() []string {
+	names := make([]string, 0, len(drawn)+len(aliases)+len(symbols))
+	for n := range drawn {
+		names = append(names, n)
+	}
+	for n := range aliases {
+		names = append(names, n)
+	}
+	for _, s := range symbols {
+		names = append(names, s.name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // githubMark is the GitHub mark, from Primer Octicons (mark-github-24, MIT).
@@ -68,17 +131,23 @@ type iconKey struct {
 
 var iconMasks = map[iconKey]*image.Alpha{}
 
+// maxIconMasks bounds the icon cache; a page shows at most a few dozen.
+const maxIconMasks = 128
+
 // DrawIcon draws the named icon centred in r, size pixels square, in col.
 func (c *Canvas) DrawIcon(name string, r Rect, size int, col uint32) {
 	k := iconKey{name, size}
 	m, ok := iconMasks[k]
 	if !ok {
-		icon, ok := Icons[name]
+		icon, ok := lookup(name)
 		if !ok {
 			return
 		}
 		m = image.NewAlpha(image.Rect(0, 0, size, size))
 		icon(&pen{m: m, s: float64(size) / 100})
+		if len(iconMasks) >= maxIconMasks {
+			clear(iconMasks)
+		}
 		iconMasks[k] = m
 	}
 	c.DrawMask(m, image.Pt(r.Min.X+(r.Dx()-size)/2, r.Min.Y+(r.Dy()-size)/2), col)

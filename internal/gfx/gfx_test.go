@@ -67,7 +67,14 @@ func TestImage(t *testing.T) {
 
 func TestIconsDraw(t *testing.T) {
 	r := image.Rect(0, 0, 120, 120)
-	for name := range Icons {
+	names := []string{"undo", "volume_up", "rocket_launch"}
+	for n := range drawn {
+		names = append(names, n)
+	}
+	for n := range aliases {
+		names = append(names, n)
+	}
+	for _, name := range names {
 		c := NewCanvas(120, 120)
 		c.DrawIcon(name, r, 100, 0xffffff)
 		n := lit(c, r, 0)
@@ -105,24 +112,26 @@ func TestMirror(t *testing.T) {
 }
 
 func TestText(t *testing.T) {
-	if TextWidth("Wide label", 30) <= TextWidth("W", 30) {
+	f, _ := BuiltinFont(DefaultFont)
+	if f.TextWidth("Wide label", 30) <= f.TextWidth("W", 30) {
 		t.Error("longer text isn't wider")
 	}
-	if TextWidth("Label", 40) <= TextWidth("Label", 20) {
+	if f.TextWidth("Label", 40) <= f.TextWidth("Label", 20) {
 		t.Error("bigger text isn't wider")
 	}
 	r := image.Rect(0, 0, 200, 60)
 	c := NewCanvas(200, 60)
-	c.DrawText("Hello", r, 30, 0xffffff)
+	c.DrawText(f, "Hello", r, 30, 0xffffff)
 	if lit(c, r, 0) == 0 {
 		t.Error("text drew nothing")
 	}
 }
 
 func TestTextCacheBounded(t *testing.T) {
+	f, _ := BuiltinFont(DefaultFont)
 	c := NewCanvas(100, 40)
 	for i := range maxTextMasks + 10 {
-		c.DrawText(string(rune('A'+i%26))+string(rune('a'+i/26)), image.Rect(0, 0, 100, 40), 20, 0xffffff)
+		c.DrawText(f, string(rune('A'+i%26))+string(rune('a'+i/26)), image.Rect(0, 0, 100, 40), 20, 0xffffff)
 	}
 	if len(textMasks) > maxTextMasks {
 		t.Errorf("text cache holds %d masks", len(textMasks))

@@ -28,7 +28,7 @@ PC with nothing installed. Only what HID can't do goes to `deckhost`.
 | `hid-consumer` | device | `usage` | play/pause, volume |
 | `hid-key` | device | `keys` (e.g. `["ctrl","shift","m"]`), held while the key is held | browser back (`alt+left`), reload (`ctrl+r`), Discord mute/deafen keybinds, push-to-talk |
 | `type-text` | device | `text` (ASCII, US layout) | canned text |
-| `macro` | device; PC steps forwarded | `steps`: actions and `{"type":"delay","ms":N}` | key sequences |
+| `macro` | device (no PC steps yet) | `steps`: actions and `{"type":"delay","ms":N}` | key sequences; press again to stop it |
 | `page` / `back` / `home` | device | `page` | folders |
 | `open-url` | PC | `url` | open a page in the default browser |
 | `launch` | PC | `command` (argv), optional per-OS overrides | start an app or script |
@@ -45,13 +45,21 @@ keybind; the user binds one (e.g. Ctrl+Shift+F13). Discord's local RPC API could
 mute state on the key, but its voice-control scope needs Discord's approval or a user-created
 Discord app, so it's an optional later `deckhost` feature.
 
-## Icons
+## Icons and fonts
 
-- Built-in vector icons, by name (`icon`).
-- Custom images (`image`): PNGs uploaded by `deckhost`, stored on the device by SHA-256
-  (`/etc/deckd/images/<sha256>.png`) and referenced by hash. Pushing a config uploads the
-  missing images first, then the config. The device decodes and scales an image once and caches it
-  for the current page only.
+- **Built-in** (`icon`): all of Material Symbols (Rounded, filled; ~3,900, by their own names such
+  as `volume_up`, see [fonts.google.com/icons](https://fonts.google.com/icons)), a few drawn ones
+  (`play-pause`, `next`, `prev`, `mute`, `volume-up`, `volume-down`, `github`) and older aliases
+  (`back`, `globe`, ...). `deckd icons` lists every name. Paths are parsed only when drawn.
+- **Custom** (`image`): PNG or JPEG files kept in the config itself (`images`, base64 by ID), so
+  saving the config saves them too and an OS update can't separate them. Limits: 256 KiB and
+  512x512 px per image, 2 MiB per config. Size them to the keys (196 px) before upload. The device
+  decodes and scales an image the first time it's shown (under 0.1 s for a 512 px PNG on the D200) and
+  keeps the result until the config changes, up to 4 MiB.
+- A button shows an icon, a label, or both; `color` and `background` (`#rrggbb`) are optional.
+- **Fonts** (`font`): the Go font family is built in (`deckd fonts`); custom TrueType/OpenType
+  fonts live in the config like images (`fonts`, up to 512 KiB each). A custom font is parsed on
+  first use and kept while the config is loaded.
 
 ## Device <-> PC link
 
@@ -105,6 +113,13 @@ Kept in their own file and messages, so pushing pages can't change USB settings 
 - `usb.drive` (default on): the read-only USB drive. `S30usb-gadget` takes its function list from
   `deckd usb-functions`. A change unbinds the gadget, removes or adds the drive and rebinds: the PC
   sees a 1-3 s re-plug, `usb0` keeps its address, and `/dev/hidg0` is re-created (deckd reopens it).
+
+## Recovery
+
+- A key that panics while drawing (a bad custom font or image, say) is drawn again without its
+  custom font and image, and they aren't used again until the config changes. deckd keeps running.
+- If deckd dies 3 times in a row within 30 s of starting, the next start moves the config to
+  `config.json.bad` and uses the default config. The count is in `/run`, so it resets at boot.
 
 ## USB identity rules
 

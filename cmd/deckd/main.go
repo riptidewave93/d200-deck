@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,9 +45,10 @@ type deckd struct {
 	// redraw asks the main loop to redraw a key, e.g. after an error flash
 	redraw chan int
 	// ui runs functions on the main loop, for the config channel
-	ui chan func()
-	ch channel
-	pc pcActions
+	ui     chan func()
+	ch     channel
+	pc     pcActions
+	assets assetCache
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -63,7 +66,7 @@ func (d *deckd) drawKey(i int, state keyState) {
 		drawTestKey(d.canvas, i, r, state != keyIdle)
 	} else {
 		b, ok := d.cfg.Pages[d.page()].Keys[i]
-		drawButton(d.canvas, r, b, ok, state)
+		drawSafely(d.canvas, r, b, ok, state, &d.assets)
 	}
 	d.show(r)
 }
@@ -88,6 +91,7 @@ func (d *deckd) drawPage() {
 
 func (d *deckd) setPages(pages []string) {
 	d.pages = pages
+	d.assets.reset(d.cfg)
 	d.drawPage()
 }
 
@@ -131,6 +135,32 @@ func (d *deckd) press(i int, down bool) {
 	}
 }
 
+// startsFile counts deckd's recent starts. /run is emptied at boot.
+var startsFile = "/run/deckd.starts"
+
+const (
+	maxQuickStarts = 3 // starts in a row that didn't last stableAfter
+	stableAfter    = 30 * time.Second
+)
+
+// guardConfig counts this start. If deckd keeps dying soon after starting,
+// the config may be what kills it: it's moved to path.bad, so deckd starts
+// with the default config and can still be reached to fix it.
+func guardConfig(path string) {
+	b, _ := os.ReadFile(startsFile)
+	n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+	if n >= maxQuickStarts {
+		if err := os.Rename(path, path+".bad"); err == nil {
+			log.Printf("deckd keeps crashing: moved %s to %s.bad", path, path)
+		}
+		n = 0
+	}
+	if err := os.WriteFile(startsFile, []byte(strconv.Itoa(n+1)), 0o644); err != nil {
+		log.Print(err)
+	}
+	time.AfterFunc(stableAfter, func() { os.Remove(startsFile) })
+}
+
 // loadConfig reads the config file, falling back to the default config when
 // it is missing or broken.
 func loadConfig(path string) *deck.Config {
@@ -152,7 +182,7 @@ func loadConfig(path string) *deck.Config {
 func checkIcons(c *deck.Config) error {
 	for name, p := range c.Pages {
 		for k, b := range p.Keys {
-			if _, ok := gfx.Icons[b.Icon]; b.Icon != "" && !ok {
+			if b.Icon != "" && !gfx.HasIcon(b.Icon) {
 				return fmt.Errorf("page %q key %d: unknown icon %q", name, k, b.Icon)
 			}
 		}
@@ -168,6 +198,16 @@ func main() {
 			return
 		case "raw-descriptor":
 			os.Stdout.Write(hidg.RawDescriptor)
+			return
+		case "icons":
+			for _, n := range gfx.IconNames() {
+				fmt.Println(n)
+			}
+			return
+		case "fonts":
+			for _, n := range gfx.FontNames() {
+				fmt.Println(n)
+			}
 			return
 		case "default-config":
 			enc := json.NewEncoder(os.Stdout)
@@ -191,9 +231,13 @@ func main() {
 	// The D200 has little RAM: keep the Go heap small.
 	debug.SetMemoryLimit(16 << 20)
 
+	if !*test && *preview == "" {
+		guardConfig(*config)
+	}
 	d := &deckd{cfg: loadConfig(*config), canvas: gfx.NewCanvas(screen.Width, screen.Height),
 		test: *test, redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 4)}
 	d.pages = []string{d.cfg.Home}
+	d.assets.reset(d.cfg)
 	d.pc.fail = func(key int) { d.ui <- func() { d.flashError(key) } }
 	if d.test {
 		drawGrid(d.canvas)
@@ -256,6 +300,7 @@ func main() {
 			default:
 			}
 			log.Printf("%v, exiting", s)
+			os.Remove(startsFile) // stopped, not crashed
 			return
 		case i := <-d.redraw:
 			state := keyIdle

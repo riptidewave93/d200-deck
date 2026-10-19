@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -21,11 +23,24 @@ const ConfigVersion = 1
 
 // Limits that keep a config's memory use and run time bounded on the device.
 const (
-	MaxLabel   = 32    // runes in a button label
-	MaxText    = 1024  // runes typed by one type-text action
-	MaxSteps   = 256   // steps in one macro
-	MaxDelayMS = 60000 // one macro delay
+	MaxLabel      = 32    // runes in a button label
+	MaxLabelLines = 3     // lines in a label
+	MaxText       = 1024  // runes typed by one type-text action
+	MaxSteps      = 256   // steps in one macro
+	MaxDelayMS    = 60000 // one macro delay
+
+	MaxConfigBytes = 2 << 20   // the whole config file, images included
+	MaxImageBytes  = 256 << 10 // one image file, before base64
+	MaxImageSide   = 512       // pixels; the keys are 196 px
+	MaxFontBytes   = 512 << 10 // one font file, before base64
 )
+
+// BuiltinFonts are the fonts deckd has built in. The default is go-medium.
+var BuiltinFonts = []string{
+	"go-bold", "go-bold-italic", "go-italic", "go-medium", "go-medium-italic", "go-mono",
+	"go-mono-bold", "go-mono-bold-italic", "go-mono-italic", "go-regular", "go-smallcaps",
+	"go-smallcaps-italic",
+}
 
 // Project URLs.
 const (
@@ -41,6 +56,10 @@ type Config struct {
 	Version int             `json:"version"`
 	Home    string          `json:"home"`
 	Pages   map[string]Page `json:"pages"`
+	// Images are custom icons by ID: PNG or JPEG files, base64-encoded.
+	Images map[string]string `json:"images,omitempty"`
+	// Fonts are custom fonts by ID: TrueType or OpenType files, base64-encoded.
+	Fonts map[string]string `json:"fonts,omitempty"`
 }
 
 // Page assigns buttons to keys; keys without a button are blank.
@@ -48,12 +67,23 @@ type Page struct {
 	Keys map[int]Button `json:"keys"`
 }
 
-// Button is what a key shows and does.
+// Button is what a key shows and does. It shows an icon (built-in or
+// custom), a label, or both.
 type Button struct {
 	// Icon names a built-in icon.
-	Icon   string `json:"icon,omitempty"`
-	Label  string `json:"label,omitempty"`
-	Action Action `json:"action"`
+	Icon string `json:"icon,omitempty"`
+	// Image names a custom icon in Config.Images, instead of Icon.
+	Image string `json:"image,omitempty"`
+	// Label may have up to MaxLabelLines lines on a key without an icon.
+	Label string `json:"label,omitempty"`
+	// Font is the label's font: one of BuiltinFonts or an ID in
+	// Config.Fonts; empty means the default.
+	Font string `json:"font,omitempty"`
+	// Color is the icon and label colour and Background the key's, as
+	// "#rrggbb"; empty means the default.
+	Color      string `json:"color,omitempty"`
+	Background string `json:"background,omitempty"`
+	Action     Action `json:"action"`
 }
 
 // ActionType says what pressing a key does.
@@ -213,6 +243,22 @@ func (c *Config) Validate() error {
 	if _, ok := c.Pages[c.Home]; !ok {
 		return fmt.Errorf("home page %q does not exist", c.Home)
 	}
+	for id, data := range c.Images {
+		if !validID(id) {
+			return fmt.Errorf("image %q: IDs are 1-64 letters, digits, '-', '_' or '.'", id)
+		}
+		if _, err := ImageSize(data); err != nil {
+			return fmt.Errorf("image %q: %w", id, err)
+		}
+	}
+	for id, data := range c.Fonts {
+		if !validID(id) || slices.Contains(BuiltinFonts, id) {
+			return fmt.Errorf("font %q: IDs are 1-64 letters, digits, '-', '_' or '.', and not a built-in font's name", id)
+		}
+		if err := CheckFont(data); err != nil {
+			return fmt.Errorf("font %q: %w", id, err)
+		}
+	}
 	for name, p := range c.Pages {
 		for k, b := range p.Keys {
 			where := "page " + strconv.Quote(name) + " key " + strconv.Itoa(k)
@@ -221,6 +267,23 @@ func (c *Config) Validate() error {
 			}
 			if utf8.RuneCountInString(b.Label) > MaxLabel {
 				return fmt.Errorf("%s: label longer than %d characters", where, MaxLabel)
+			}
+			if strings.Count(b.Label, "\n") >= MaxLabelLines {
+				return fmt.Errorf("%s: label has more than %d lines", where, MaxLabelLines)
+			}
+			if b.Icon != "" && b.Image != "" {
+				return fmt.Errorf("%s: icon and image are both set", where)
+			}
+			if _, ok := c.Fonts[b.Font]; b.Font != "" && !ok && !slices.Contains(BuiltinFonts, b.Font) {
+				return fmt.Errorf("%s: font %q does not exist", where, b.Font)
+			}
+			if _, ok := c.Images[b.Image]; b.Image != "" && !ok {
+				return fmt.Errorf("%s: image %q does not exist", where, b.Image)
+			}
+			for _, col := range []string{b.Color, b.Background} {
+				if _, err := ParseColor(col); col != "" && err != nil {
+					return fmt.Errorf("%s: %w", where, err)
+				}
 			}
 			if err := c.validateAction(b.Action, false); err != nil {
 				return fmt.Errorf("%s: %w", where, err)
@@ -269,7 +332,7 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 			return fmt.Errorf("macro has more than %d steps", MaxSteps)
 		}
 		for i, step := range a.Steps {
-			if step.Type == ActionPage || step.Type == ActionBack || step.Type == ActionHome {
+			if step.Type == ActionPage || step.Type == ActionBack || step.Type == ActionHome || step.Type.OnPC() {
 				return fmt.Errorf("step %d: %s can't be a macro step", i, step.Type)
 			}
 			if err := c.validateAction(step, true); err != nil {
@@ -300,9 +363,17 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 
 // Load reads and validates a config file.
 func Load(path string) (*Config, error) {
-	b, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, MaxConfigBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > MaxConfigBytes {
+		return nil, fmt.Errorf("%s: larger than %d bytes", path, MaxConfigBytes)
 	}
 	var c Config
 	if err := json.Unmarshal(b, &c); err != nil {
