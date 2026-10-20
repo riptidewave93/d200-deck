@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"syscall"
 	"testing"
@@ -272,7 +273,8 @@ func TestHandle(t *testing.T) {
 	d := newTestDeckd()
 	status, b := d.handle(proto.Request{Cmd: proto.CmdHello})
 	var h proto.Hello
-	if status != proto.StatusOK || json.Unmarshal(b, &h) != nil || h.Protocol != proto.Version || h.Keys != deck.KeyCount {
+	if status != proto.StatusOK || json.Unmarshal(b, &h) != nil || h.Protocol != proto.Version || h.Keys != deck.KeyCount ||
+		h.Features == nil || !slices.Contains(h.Features.Actions, "macro") {
 		t.Errorf("hello: %d %s", status, b)
 	}
 	if s, _ := d.handle(proto.Request{Cmd: proto.CmdIdentify, Payload: []byte{deck.KeyCount}}); s != proto.StatusBadRequest {

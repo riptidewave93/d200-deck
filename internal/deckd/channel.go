@@ -101,12 +101,15 @@ func (d *deckd) serveChannel(path string) {
 	}
 }
 
+// features are what this deckd supports, for hello.
+var features = deck.Features()
+
 func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 	switch req.Cmd {
 	case proto.CmdHello:
 		info, _ := osrelease.Read(osrelease.Path)
 		b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Firmware: Version, OS: info, Serial: readSerial(),
-			Keys: deck.KeyCount, Model: model(), IPv4: usbIPv4()})
+			Keys: deck.KeyCount, Model: model(), IPv4: usbIPv4(), Features: &features})
 		return proto.StatusOK, b
 	case proto.CmdIdentify:
 		if len(req.Payload) == 0 {

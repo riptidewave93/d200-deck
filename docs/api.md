@@ -71,7 +71,7 @@ Payloads are JSON unless noted.
 
 | Cmd | Name | Payload | Reply |
 |---|---|---|---|
-| `0x01` | hello | none | `{"protocol": 3, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.23.5"}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API |
+| `0x01` | hello | none | `{"protocol": 4, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.23.5", "features": {...}}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API, and `features` what its software supports ([below](#features)) |
 | `0x03` | identify | 1 byte: key number; or none | none; the key flashes, or with no payload the whole screen shows white for a second, to tell decks apart (older decks answer status 2) |
 | `0x04` | result | `{"id": 7, "error": "..."}`: how a PC action went; leave out `error` if it worked | none |
 | `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | `{"looks": {"<name>": "<rev>"}}`: the host's looks the deck shows (older decks: none) |
@@ -90,6 +90,19 @@ Payloads are JSON unless noted.
 Check `protocol` in hello: this page is version 4. Protocol 3 had 64-byte input reports and no
 gzip. New commands come without a new version; a deck
 that doesn't know one answers status 1.
+
+### Features
+
+hello's `features` lists what the deck's software supports, from `deck.Features()`, so a tool can
+offer only that. A deck without it has the first release's.
+
+| Field | |
+|---|---|
+| `actions` | action types |
+| `fields` | config fields as `<type>.<field>`, e.g. `button.on`, `action.fallback` |
+| `keys`, `modifiers`, `usages`, `systems`, `fonts` | the names `hid-key`, `hid-consumer`, `hid-system` and `font` take |
+| `apps`, `args` | ops and args by app, for the apps the deck knows; other apps are their host's |
+| `limits` | the [limits](config.md#limits) it checks, e.g. `"label": 32` |
 
 ### Events
 
@@ -120,7 +133,9 @@ To write it:
 2. config-data for each part of the gzip stream, in order, from offset 0.
 3. config-commit. The deck checks the file arrived whole, that the config is still `base`, and
    that the config is valid, then saves it, shows it and sends config-changed. If not, it fails
-   (status 3) and says why: show that to the user.
+   (status 3) and says why: show that to the user. A field or app arg the deck doesn't know fails
+   too (`pages.main.keys.3.font2: unknown field`), so nothing is saved that it would ignore; the
+   config it already has, though, it shows even with fields it doesn't know.
 
 If the new config gives keys new actions (anything but `page`, `back` and `home`), the deck asks
 on its screen first, and the reply comes after the press: wait up to 60 s for it, and tell the

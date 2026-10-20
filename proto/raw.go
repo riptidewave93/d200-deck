@@ -233,6 +233,9 @@ type Hello struct {
 	// string, e.g. ulanzi,d200; "" if unknown.
 	Model string `json:"model,omitempty"`
 	IPv4  string `json:"ipv4,omitempty"` // its address on the USB network, now
+	// Features are what its software supports; a device without them has
+	// the first release's.
+	Features *deck.FeatureSet `json:"features,omitempty"`
 }
 
 // ActionHost identifies an action host and what it can do. ID is random,

@@ -209,6 +209,10 @@ func TestUnknownApp(t *testing.T) {
 	if err := d.runAction(deck.Action{Type: deck.ActionApp, App: "zoom", Op: "mute"}, false); err == nil || !strings.Contains(err.Error(), `no "zoom" app`) {
 		t.Errorf("unknown app: %v", err)
 	}
+	a := deck.Action{Type: deck.ActionApp, App: deck.AppDiscord, Op: "mute", Args: []byte(`{"volume": 3}`)}
+	if err := d.runAction(a, false); err == nil || !strings.Contains(err.Error(), `unknown arg "volume"`) {
+		t.Errorf("unknown arg: %v", err)
+	}
 	l := newDiscordLink(nil, nil)
 	if err := l.do("dance", nil, false); err == nil || !strings.Contains(err.Error(), `no "dance" op`) {
 		t.Errorf("unknown op: %v", err)

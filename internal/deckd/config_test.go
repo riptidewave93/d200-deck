@@ -82,6 +82,7 @@ func TestConfigOverChannel(t *testing.T) {
 		{"", `{"version": 1, "home": "nowhere", "pages": {}}`, "nowhere"},
 		{"", "not json", "invalid character"},
 		{"", `{"version": 1, "home": "m", "pages": {"m": {"keys": {"0": {"icon": "mic"}}}}}`, "icons not in the config"},
+		{"", `{"version": 1, "home": "m", "pages": {"m": {"keys": {"0": {"label": "x", "font2": "y"}}}}}`, "pages.m.keys.0.font2: unknown field"},
 	} {
 		if _, err := c.WriteConfig(bad.base, []byte(bad.file)); err == nil || !strings.Contains(err.Error(), bad.want) {
 			t.Errorf("%.20q: %v, want %q", bad.file, err, bad.want)
@@ -222,5 +223,17 @@ func TestHostInfo(t *testing.T) {
 	h := host()
 	if !h.Connected || h.Name != "deckhost" || len(h.Apps) != 1 || h.Apps[0].Ops[0] != "mute" || !h.State["discord.ready"] {
 		t.Errorf("%+v", h)
+	}
+}
+
+// A saved config with fields this deckd doesn't know, e.g. after an OS
+// downgrade, is still shown and kept as it is.
+func TestLoadNewerConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	b := []byte(`{"version": 1, "home": "m", "pages": {"m": {"keys": {"0": {"label": "x", "font2": "y"}}}}, "later": 1}` + "\n")
+	os.WriteFile(path, b, 0o644)
+	c, file := loadConfig(path)
+	if c.Home != "m" || !bytes.Equal(file, b) {
+		t.Errorf("loaded home %q, file %q", c.Home, file)
 	}
 }

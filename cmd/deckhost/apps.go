@@ -42,5 +42,8 @@ func (d *daemon) runAction(a deck.Action, release bool) error {
 	if !ok {
 		return fmt.Errorf("deckhost has no %q app; is it up to date?", a.App)
 	}
+	if err := a.CheckArgs(); err != nil {
+		return fmt.Errorf("%w; is deckhost up to date?", err)
+	}
 	return ap.do(a.Op, a.Args, release)
 }
