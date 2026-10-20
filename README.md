@@ -17,6 +17,9 @@ your PC.
 - A sleep screen while the PC sleeps, dimmed or off
 - OS updates from a page in your browser, confirmed on the keys
 
+macOS isn't supported yet: the default shortcuts are for Windows and Linux, and deckhost runs on
+Linux and Windows.
+
 ## Using it
 
 1. Put the D200 OS on the device: see [d200-buildroot](https://github.com/riptidewave93/d200-buildroot).
