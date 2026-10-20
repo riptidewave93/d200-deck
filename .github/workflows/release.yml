@@ -40,7 +40,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
-        run: gh release upload "$TAG" build/dist/*
+        # SHA256SUMS goes last: deckhost waits for it before telling users.
+        run: |
+          shopt -s extglob
+          cd build/dist
+          gh release upload "$TAG" !(SHA256SUMS)
+          gh release upload "$TAG" SHA256SUMS
 
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.tag }}
