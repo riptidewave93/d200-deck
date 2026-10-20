@@ -123,6 +123,7 @@ func TestKeepRestartsHung(t *testing.T) {
 func TestStuckPart(t *testing.T) {
 	seen := make([]atomic.Int64, 2)
 	now(&seen[0])
+	seen[1].Store(-int64(2 * hungAfter)) // last seen before deckd started
 	if got := stuckPart([]string{"keys", "update"}, seen); got != "update" {
 		t.Errorf("stuck: %q", got)
 	}
@@ -137,5 +138,18 @@ func TestPrograms(t *testing.T) {
 		if programs[name] == nil {
 			t.Errorf("no %s", name)
 		}
+	}
+}
+
+// Beats are timed on the monotonic clock, as time since deckd started, so
+// setting the wall clock doesn't make a part look hung.
+func TestBeatClock(t *testing.T) {
+	var beat atomic.Int64
+	now(&beat)
+	if d := time.Duration(beat.Load()); d < 0 || d > time.Hour {
+		t.Errorf("beat stored as %v: not time since start", d)
+	}
+	if s := since(&beat); s < 0 || s > time.Second {
+		t.Errorf("since a beat just now: %v", s)
 	}
 }

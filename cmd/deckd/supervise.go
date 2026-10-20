@@ -86,9 +86,14 @@ func stuckPart(names []string, seen []atomic.Int64) string {
 	return ""
 }
 
-func since(t *atomic.Int64) time.Duration { return time.Duration(time.Now().UnixNano() - t.Load()) }
+// epoch is when deckd started. Times are kept as time since then, which
+// Go measures on the monotonic clock, so setting the clock (deckd keys does,
+// from the PC) doesn't look like a hang.
+var epoch = time.Now()
 
-func now(t *atomic.Int64) { t.Store(time.Now().UnixNano()) }
+func since(t *atomic.Int64) time.Duration { return time.Since(epoch) - time.Duration(t.Load()) }
+
+func now(t *atomic.Int64) { t.Store(int64(time.Since(epoch))) }
 
 // keep runs the command cmd makes, again whenever it exits or hangs, until
 // quit is closed; then it stops it. It notes in seen each time it runs.
