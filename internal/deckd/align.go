@@ -20,7 +20,7 @@ const patternBand = 4
 
 // overscan is how far the outer keys may move off the screen: the drawn
 // keys are a little larger than the windows they show through.
-const overscan = 8
+const overscan = 2
 
 // offsetMin and offsetMax are the offset's range: the space the key windows
 // leave at the screen's edges, plus overscan.

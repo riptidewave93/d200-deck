@@ -100,7 +100,7 @@ func TestScreenOffset(t *testing.T) {
 		t.Errorf("not clamped: %+v", *s.ScreenOffset)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if b, _ := os.ReadFile(file); string(b) != "37 -9\n" {
+	if b, _ := os.ReadFile(file); string(b) != "31 -3\n" {
 		t.Errorf("saved %q", b)
 	}
 	var again screenOffset
