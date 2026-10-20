@@ -1,0 +1,31 @@
+name: Test
+
+# On pull requests and pushes to main: format, vet, unit tests, and the
+# website's packages built and tested with TinyGo.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check
+        run: make check
+
+      - name: Test
+        run: make test
+
+      - name: Test with TinyGo
+        run: make tinygo
