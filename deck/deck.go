@@ -568,12 +568,22 @@ func DefaultConfig() *Config {
 				11: folder("obs", "OBS", "obs"),
 				13: repo,
 			}},
+			// Shortcuts Chrome, Edge and Firefox share on Windows and Linux
 			"browser": {Keys: map[int]Button{
-				0: back,
-				1: key("browser-back", "Back", "alt", "left"),
-				2: key("reload", "Reload", "ctrl", "r"),
-				3: key("browser-forward", "Forward", "alt", "right"),
-				6: key("open-external", "New Tab", "ctrl", "t"),
+				0:  {Icon: "back", Label: "Main", Action: Action{Type: ActionBack}}, // "Back" is the browser's
+				1:  key("browser-back", "Back", "alt", "left"),
+				2:  key("reload", "Reload", "ctrl", "r"),
+				3:  key("browser-forward", "Forward", "alt", "right"),
+				4:  key("link", "Address", "ctrl", "l"),
+				5:  key("chevron_left", "Prev Tab", "ctrl", "shift", "tab"),
+				6:  key("add", "New Tab", "ctrl", "t"),
+				7:  key("close", "Close Tab", "ctrl", "w"),
+				8:  key("history", "Reopen", "ctrl", "shift", "t"),
+				9:  key("chevron_right", "Next Tab", "ctrl", "tab"),
+				10: key("search", "Find", "ctrl", "f"),
+				11: key("zoom_out", "Zoom Out", "ctrl", "minus"),
+				12: key("zoom_in", "Zoom In", "ctrl", "equal"),
+				13: key("fullscreen", "Full Screen", "f11"),
 			}},
 			// Mute and deafen use Discord's default keybinds until deckhost
 			// is connected to Discord. Leave has no keybind by default: bind
