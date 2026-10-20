@@ -556,7 +556,7 @@ func DefaultConfig() *Config {
 				8:  media("volume-up", UsageVolumeUp),
 				9:  folder("power_settings_new", "Power", "power"),
 				10: folder("keyboard", "Macros", "macros"),
-				11: folder("videocam", "OBS", "obs"),
+				11: folder("obs", "OBS", "obs"),
 				13: repo,
 			}},
 			"browser": {Keys: map[int]Button{
