@@ -10,7 +10,7 @@ To update, install the new one the same way.
 
 ```bash
 sudo apt install ./deckhost_<version>_amd64.deb
-sudo dnf install ./deckhost-<version>.x86_64.rpm
+sudo dnf install ./deckhost-<version>-1.x86_64.rpm
 ```
 
 Then log out and in, or start it now from **D200 Deck** in the app launcher.

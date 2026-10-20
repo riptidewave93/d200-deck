@@ -37,34 +37,19 @@ func TestDecodeRequestErrors(t *testing.T) {
 }
 
 func TestReplySplit(t *testing.T) {
-	for _, v := range []struct {
-		encode       func(uint16, byte, []byte) [][]byte
-		size, maxLen int
-	}{
-		{EncodeReply, RawInSize, MaxReply},
-		{EncodeReplyV3, RawInSizeV3, RawInSizeV3 - 5},
-	} {
-		for _, n := range []int{0, 1, v.maxLen, v.maxLen + 1, 5*v.maxLen + 3} {
-			testReplySplit(t, v.encode, v.size, v.maxLen, n)
-		}
-	}
-}
-
-func testReplySplit(t *testing.T, encode func(uint16, byte, []byte) [][]byte, size, maxLen, n int) {
-	t.Helper()
-	{
+	for _, n := range []int{0, 1, MaxReply, MaxReply + 1, 5*MaxReply + 3} {
 		payload := make([]byte, n)
 		for i := range payload {
 			payload[i] = byte(i)
 		}
-		parts := encode(0xbeef, StatusOK, payload)
-		want := max(1, (n+maxLen-1)/maxLen)
+		parts := EncodeReply(0xbeef, StatusOK, payload)
+		want := max(1, (n+MaxReply-1)/MaxReply)
 		if len(parts) != want {
 			t.Fatalf("%d bytes: %d reports, want %d", n, len(parts), want)
 		}
 		var got []byte
 		for i, b := range parts {
-			if len(b) != size {
+			if len(b) != RawInSize {
 				t.Fatalf("report is %d bytes", len(b))
 			}
 			p, err := DecodeReply(b)
@@ -100,12 +85,5 @@ func TestRawDescriptorFrozen(t *testing.T) {
 	}
 	if !bytes.Equal(RawDescriptor, want) {
 		t.Errorf("RawDescriptor = % x", RawDescriptor)
-	}
-	v3 := []byte{
-		0x06, 0xd2, 0xff, 0x09, 0x01, 0xa1, 0x01, 0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08,
-		0x09, 0x02, 0x95, 0x40, 0x81, 0x02, 0x09, 0x03, 0x96, 0x00, 0x04, 0x91, 0x02, 0xc0,
-	}
-	if !bytes.Equal(RawDescriptorV3, v3) {
-		t.Errorf("RawDescriptorV3 = % x", RawDescriptorV3)
 	}
 }

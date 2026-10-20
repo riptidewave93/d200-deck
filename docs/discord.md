@@ -63,7 +63,7 @@ unmutes you.
 
 ## Keys
 
-Add Discord keys to the deck's config:
+Add Discord keys to the device's config:
 
 ```json
 "0": { "action": { "type": "app", "app": "discord", "op": "mute" } },

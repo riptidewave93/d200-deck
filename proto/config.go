@@ -12,21 +12,22 @@ import (
 )
 
 // ReadConfig reads the device's config file and names its version. It
-// moves it gzipped if the device can (protocol 4).
+// moves it gzipped, or plain while the device is still making the gzip
+// stream after a save.
 func (c *Conn) ReadConfig() ([]byte, ConfigInfo, error) {
 	info, err := c.configInfo()
 	if err != nil {
 		return nil, info, err
 	}
-	size, readLen, flags := info.Size, MaxConfigReadV3, []byte(nil)
+	size, flags := info.Size, []byte(nil)
 	if info.GzipSize > 0 {
-		size, readLen, flags = info.GzipSize, MaxConfigRead, []byte{ConfigReadGzip}
+		size, flags = info.GzipSize, []byte{ConfigReadGzip}
 	}
 	out := make([]byte, 0, size)
 	for len(out) < size {
 		req := make([]byte, 6)
 		binary.LittleEndian.PutUint32(req, uint32(len(out)))
-		binary.LittleEndian.PutUint16(req[4:], uint16(readLen))
+		binary.LittleEndian.PutUint16(req[4:], MaxConfigRead)
 		part, err := c.Do(CmdConfigRead, append(req, flags...))
 		if err != nil {
 			return nil, info, err
@@ -48,11 +49,11 @@ func (c *Conn) ReadConfig() ([]byte, ConfigInfo, error) {
 	return out, info, nil
 }
 
-// configInfo asks for the config's version and, from protocol 4 devices,
-// its gzipped size.
+// configInfo asks for the config's version and, once the device has it, its
+// gzipped size.
 func (c *Conn) configInfo() (ConfigInfo, error) {
 	var info ConfigInfo
-	q, _ := json.Marshal(ConfigInfoRequest{Gzip: true}) // older devices ignore it
+	q, _ := json.Marshal(ConfigInfoRequest{Gzip: true})
 	b, err := c.Do(CmdConfigInfo, q)
 	if err == nil {
 		err = json.Unmarshal(b, &info)
@@ -61,19 +62,12 @@ func (c *Conn) configInfo() (ConfigInfo, error) {
 }
 
 // WriteConfig replaces the device's config with b, if it's still version
-// base ("" replaces any). It moves it gzipped if the device can.
+// base ("" replaces any). It moves it gzipped.
 func (c *Conn) WriteConfig(base string, b []byte) (ConfigInfo, error) {
-	info, err := c.configInfo()
-	if err != nil {
-		return info, err
-	}
+	var info ConfigInfo
 	sum := sha256.Sum256(b)
-	cw := ConfigWrite{Base: base, Size: len(b), SHA256: hex.EncodeToString(sum[:])}
-	data := b
-	if info.GzipSize > 0 {
-		data = Gzip(b)
-		cw.GzipSize = len(data)
-	}
+	data := Gzip(b)
+	cw := ConfigWrite{Base: base, Size: len(b), SHA256: hex.EncodeToString(sum[:]), GzipSize: len(data)}
 	w, _ := json.Marshal(cw)
 	if _, err := c.Do(CmdConfigWrite, w); err != nil {
 		return info, err

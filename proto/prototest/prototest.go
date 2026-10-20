@@ -11,7 +11,6 @@ import (
 
 // Device is the device end of an in-memory config channel.
 type Device struct {
-	V3       bool // send protocol 3 reports
 	in       chan []byte
 	requests chan proto.Request
 	closed   chan struct{}
@@ -72,14 +71,9 @@ func (d *Device) LastSeq() uint16 {
 // Requests delivers the client's requests.
 func (d *Device) Requests() <-chan proto.Request { return d.requests }
 
-// Send sends a message as input reports: 64-byte ones of protocol 3 if V3
-// is set.
+// Send sends a message as input reports.
 func (d *Device) Send(seq uint16, status byte, payload []byte) {
-	encode := proto.EncodeReply
-	if d.V3 {
-		encode = proto.EncodeReplyV3
-	}
-	for _, r := range encode(seq, status, payload) {
+	for _, r := range proto.EncodeReply(seq, status, payload) {
 		d.in <- r
 	}
 }
