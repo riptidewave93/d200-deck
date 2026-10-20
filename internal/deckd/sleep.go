@@ -89,6 +89,9 @@ func (d *deckd) setAsleep(v bool) {
 		return
 	}
 	d.asleep, d.askedWake = v, false
+	if v {
+		d.editing.keep(false, 0, nil)
+	}
 	if v && d.pattern.shown {
 		d.pattern.keep(false, nil)
 		d.pattern.shown = false // showSleep redraws the keys

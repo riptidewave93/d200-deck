@@ -98,28 +98,39 @@ func (o *screenOffset) flush() {
 
 // alignPattern is whether the alignment pattern is wanted, and its timeout.
 type alignPattern struct {
-	on    atomic.Bool
-	mu    sync.Mutex
-	end   *time.Timer
+	lease
 	shown bool // main loop only
 }
 
 // patternTimeout ends a pattern the site forgot.
 var patternTimeout = proto.PatternTimeout
 
-// keep turns the pattern on or off, and restarts its timeout; end runs when
-// it times out.
-func (a *alignPattern) keep(on bool, end func()) {
-	a.on.Store(on)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.end != nil {
-		a.end.Stop()
+// keep turns the pattern on or off; end runs when it times out.
+func (a *alignPattern) keep(on bool, end func()) { a.lease.keep(on, patternTimeout, end) }
+
+// lease is a flag a client keeps on by setting it again within a timeout,
+// so it ends if the client goes away.
+type lease struct {
+	on  atomic.Bool
+	mu  sync.Mutex
+	end *time.Timer
+}
+
+// keep turns l on or off, and restarts its timeout; ended, if set, runs
+// when it times out.
+func (l *lease) keep(on bool, timeout time.Duration, ended func()) {
+	l.on.Store(on)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.end != nil {
+		l.end.Stop()
 	}
 	if on {
-		a.end = time.AfterFunc(patternTimeout, func() {
-			a.on.Store(false)
-			end()
+		l.end = time.AfterFunc(timeout, func() {
+			l.on.Store(false)
+			if ended != nil {
+				ended()
+			}
 		})
 	}
 }

@@ -94,6 +94,9 @@ type deckd struct {
 	offset      screenOffset
 	shownOffset image.Point
 	pattern     alignPattern
+	// editing is set while an editor selects keys by pressing them: keys
+	// run nothing
+	editing lease
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -253,7 +256,7 @@ func (d *deckd) press(i int, down bool) {
 	}
 
 	b, ok := d.cfg.Pages[d.page()].Keys[i]
-	if d.test || !ok {
+	if d.test || !ok || d.editing.on.Load() {
 		d.held[i] = &held{page: d.page()}
 		d.drawKey(i, render.Pressed)
 		return

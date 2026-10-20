@@ -180,6 +180,7 @@ An app without a `status` isn't set up yet. With no helper, it's `{"connected": 
 | `screen_offset` | `{"x": 0, "y": 0}` | Moves the picture on the screen, in pixels (x right, y down), to line it up with the key windows. Values outside `screen_offset_min` to `screen_offset_max` are clamped. It applies at once and is saved a second after the last change. |
 | `screen_offset_min`, `screen_offset_max` | | Read only: the range of `screen_offset` |
 | `screen_pattern` | `false` | `true` shows a frame inside each key window, to line them up; keys do nothing meanwhile. It ends when set `false`, a minute after the last change to it or `screen_offset`, or when the PC sleeps. Not saved. |
+| `editing` | `false` | `true` while an editor selects keys by pressing them: presses only send their key events, and run no actions or page changes. It ends when set `false`, 10 s after it was last set `true` (so set it again every few seconds), or when the PC sleeps. Not saved. |
 
 A deck without a dimmable screen, or with older software, leaves out the brightness fields and
 `sleep_screen`; one without a screen, or with older software, the `screen_` fields.

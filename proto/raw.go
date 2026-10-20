@@ -361,6 +361,11 @@ type Settings struct {
 	// It ends when set false, PatternTimeout after the last change to it or
 	// ScreenOffset, or when the PC sleeps.
 	ScreenPattern *bool `json:"screen_pattern,omitempty"`
+	// Editing has key presses only send their key events, for an editor to
+	// select keys: they run no actions and don't change pages. It ends when
+	// set false, EditingTimeout after it was last set true, or when the PC
+	// sleeps.
+	Editing *bool `json:"editing,omitempty"`
 }
 
 // Offset is a move on the screen, in pixels.
@@ -371,6 +376,9 @@ type Offset struct {
 
 // PatternTimeout ends a forgotten Settings.ScreenPattern.
 const PatternTimeout = time.Minute
+
+// EditingTimeout ends a forgotten Settings.Editing: set it again sooner.
+const EditingTimeout = 10 * time.Second
 
 // Host OSes.
 const (

@@ -103,7 +103,9 @@ func setConf(path, key, value string) error {
 	return os.Rename(tmp, path)
 }
 
-// settings answers CmdSettings.
+// editingTimeout ends a forgotten editing setting.
+var editingTimeout = proto.EditingTimeout
+
 // settings reads or changes the settings. A new USB network can cut the PC
 // off from an address it uses, so the device asks first.
 func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte) {
@@ -147,6 +149,9 @@ func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte)
 		if d.scan != nil {
 			d.align(s)
 		}
+		if s.Editing != nil {
+			d.editing.keep(*s.Editing, editingTimeout, nil)
+		}
 		if s.USBNet4 != nil && *s.USBNet4 != usbNet4(usbConf) {
 			net := *s.USBNet4
 			if net == "" {
@@ -178,8 +183,8 @@ func (d *deckd) change(changes [][2]string) (byte, []byte) {
 
 func (d *deckd) currentSettings() (byte, []byte) {
 	on, net4 := usbDrive(usbConf), usbNet4(usbConf)
-	host := d.host.get()
-	s := proto.Settings{USBDrive: &on, USBNet4: &net4, HostOS: &host}
+	host, editing := d.host.get(), d.editing.on.Load()
+	s := proto.Settings{USBDrive: &on, USBNet4: &net4, HostOS: &host, Editing: &editing}
 	if d.light != nil {
 		if p, ok := d.light.get(); ok {
 			low, sleep := brightnessMin, d.sleep.get()
