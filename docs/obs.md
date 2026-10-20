@@ -52,6 +52,9 @@ Within 5 seconds the tray menu shows **OBS: connected**. For OBS on another PC o
 A key that sets no `icon`, `image` or `label` gets the built-in look. A key flashes red when the
 press didn't work, such as a scene that doesn't exist; `deckhost`'s log says why.
 
+The default config's OBS page uses OBS's default names: the scene `Scene`, and the sources
+`Mic/Aux` and `Desktop Audio`. Rename them in the config to match yours.
+
 ## Troubleshooting
 
 | Tray says | Means |

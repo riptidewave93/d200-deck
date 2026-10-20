@@ -530,6 +530,14 @@ func DefaultConfig() *Config {
 		return Button{Icon: icon, Label: label, Color: white, Background: DiscordBlurple, Action: a}
 	}
 	discordOp := func(op string) Action { return Action{Type: ActionApp, App: AppDiscord, Op: op} }
+	obsAction := func(op, id string) Action {
+		a := Action{Type: ActionApp, App: AppOBS, Op: op}
+		if id != "" {
+			a.Args, _ = json.Marshal(map[string]string{"id": id})
+		}
+		return a
+	}
+	obs := func(op, id string) Button { return Button{Action: obsAction(op, id)} }
 	c := &Config{
 		Version: ConfigVersion,
 		Home:    "main",
@@ -548,6 +556,7 @@ func DefaultConfig() *Config {
 				8:  media("volume-up", UsageVolumeUp),
 				9:  folder("power_settings_new", "Power", "power"),
 				10: folder("keyboard", "Macros", "macros"),
+				11: folder("videocam", "OBS", "obs"),
 				13: repo,
 			}},
 			"browser": {Keys: map[int]Button{
@@ -575,14 +584,45 @@ func DefaultConfig() *Config {
 				1: {Icon: "sleep", Label: "Sleep", Action: Action{Type: ActionSystem, System: SystemSleep}},
 				2: {Icon: "power_settings_new", Label: "Power Off", Action: Action{Type: ActionSystem, System: SystemPowerDown}},
 			}},
+			// Shortcuts that work on Windows and most Linux desktops, and in
+			// Zoom, Google Meet and Teams.
 			"macros": {Keys: map[int]Button{
 				0: back,
-				1: {Icon: "keyboard", Label: "Hello", Action: Action{Type: ActionText, Text: "Hello from the D200!"}},
-				2: {Icon: "terminal", Label: "Copy All", Action: Action{Type: ActionMacro, Steps: []Action{
+				1: key("lock", "Lock", "gui", "l"),
+				2: key("screenshot_monitor", "Screenshot", "printscreen"),
+				3: key("content_paste", "Paste Plain", "ctrl", "shift", "v"),
+				5: {Icon: "select_all", Label: "Copy All", Action: Action{Type: ActionMacro, Steps: []Action{
 					{Type: ActionKey, Keys: []string{"ctrl", "a"}},
 					{Type: ActionDelay, MS: 50},
 					{Type: ActionKey, Keys: []string{"ctrl", "c"}},
 				}}},
+				// in a browser: search for the selected text in a new tab
+				6: {Icon: "search", Label: "Search It", Action: Action{Type: ActionMacro, Steps: []Action{
+					{Type: ActionKey, Keys: []string{"ctrl", "c"}},
+					{Type: ActionDelay, MS: 50},
+					{Type: ActionKey, Keys: []string{"ctrl", "t"}},
+					{Type: ActionDelay, MS: 300},
+					{Type: ActionKey, Keys: []string{"ctrl", "v"}},
+					{Type: ActionKey, Keys: []string{"enter"}},
+				}}},
+				7:  {Icon: "reply", Label: "Reply", Action: Action{Type: ActionText, Text: "Thanks! I'll take a look and get back to you."}},
+				10: key("mic_off", "Zoom Mic", "alt", "a"),
+				11: key("mic_off", "Meet Mic", "ctrl", "d"),
+				12: key("mic_off", "Teams Mic", "ctrl", "shift", "m"),
+			}},
+			// OBS's default scene and audio sources: rename to match yours
+			"obs": {Keys: map[int]Button{
+				0: back,
+				1: obs(OBSStream, ""),
+				2: obs(OBSRecord, ""),
+				3: obs(OBSPauseRecord, ""),
+				4: obs(OBSVirtualCam, ""),
+				5: {Icon: "tv", Label: "Scene", Action: obsAction(OBSScene, "Scene")},
+				6: {Icon: "mic", Label: "Mic", Action: obsAction(OBSMute, "Mic/Aux")},
+				7: {Icon: "volume_up", Label: "Desktop", On: &Look{Icon: "volume_off", Background: red},
+					Action: obsAction(OBSMute, "Desktop Audio")},
+				8: obs(OBSReplayBuffer, ""),
+				9: obs(OBSSaveReplay, ""),
 			}},
 		},
 	}
