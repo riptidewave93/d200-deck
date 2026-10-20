@@ -3,6 +3,7 @@ package deckd
 import (
 	"bytes"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -197,8 +198,29 @@ func TestCancelTyping(t *testing.T) {
 		t.Error("second press didn't cancel")
 	}
 	r.cancelJob()
-	if err := r.typeText("abc"); err != nil || len(reports()) != 0 {
+	if err := r.typeText("abc"); err != errStopped || len(reports()) != 0 {
 		t.Error("cancelled typing sent reports")
+	}
+}
+
+// Stopping a macro while it types stops the whole macro, not just the typing.
+func TestStopMacroWhileTyping(t *testing.T) {
+	r, _, reports := testRunner(t)
+	typing := make(chan struct{})
+	r.jobs <- func() { close(typing) } // runs just before the macro
+	r.press(0, deck.Action{Type: deck.ActionMacro, Steps: []deck.Action{
+		{Type: deck.ActionText, Text: strings.Repeat("a", deck.MaxText)},
+		{Type: deck.ActionKey, Keys: []string{"f13"}},
+	}})
+	<-typing
+	for r.busy.Load() != 0 {
+		time.Sleep(time.Millisecond)
+	}
+	r.press(0, deck.Action{Type: deck.ActionMacro}) // pressed again: stop
+	for _, rep := range reports() {
+		if rep[0] == hidg.ReportKeyboard && rep[3] == 0x68 {
+			t.Fatal("the macro went on after it was stopped")
+		}
 	}
 }
 

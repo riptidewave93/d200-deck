@@ -274,10 +274,14 @@ func (r *runner) sleep(d time.Duration) bool {
 	}
 }
 
+// errStopped is a job's key pressed again.
+var errStopped = errors.New("stopped")
+
+// typeText types text; errStopped if the job is cancelled first.
 func (r *runner) typeText(text string) error {
 	for _, c := range text {
 		if r.cancelled() {
-			return nil
+			return errStopped
 		}
 		mods, key, _ := deck.TypeKey(c)
 		if err := r.keyboard(mods, key); err != nil {
