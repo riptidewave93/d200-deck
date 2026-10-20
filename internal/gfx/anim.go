@@ -15,7 +15,8 @@ type Animation struct {
 }
 
 // Frame delays: browsers show a GIF frame of 0 or 1 hundredths of a second
-// for 100 ms, and none faster than minDelay.
+// for 100 ms. Frames change at most every minDelay: faster frames are
+// skipped, keeping the GIF's timing.
 const (
 	minDelay   = 50 * time.Millisecond
 	shortDelay = 100 * time.Millisecond
@@ -26,27 +27,59 @@ const (
 // nearest pixel; a GIF with a frame of more than 256 colours is kept in RGBA,
 // scaled smoothly.
 func NewAnimation(g *gif.GIF, w, h int) *Animation {
-	a := &Animation{Frames: indexedFrames(g, w, h)}
-	if a.Frames == nil {
-		compose(g, func(c *image.RGBA) bool {
-			a.Frames = append(a.Frames, Fit(c, w, h))
-			return true
-		})
-	}
+	var delays []time.Duration
 	for i := range g.Image {
 		d := shortDelay
 		if i < len(g.Delay) && g.Delay[i] > 1 {
-			d = max(time.Duration(g.Delay[i])*10*time.Millisecond, minDelay)
+			d = time.Duration(g.Delay[i]) * 10 * time.Millisecond
 		}
-		a.Delays = append(a.Delays, d)
+		delays = append(delays, d)
+	}
+	keep, kept := shown(delays)
+	a := &Animation{Frames: indexedFrames(g, w, h, keep), Delays: kept}
+	if a.Frames == nil {
+		compose(g, func(i int, c *image.RGBA) bool {
+			if keep[i] {
+				a.Frames = append(a.Frames, Fit(c, w, h))
+			}
+			return true
+		})
+	}
+	for _, d := range kept {
 		a.total += d
 	}
 	return a
 }
 
-// compose calls f with each of g's frames drawn over what the frames before
+// shown picks the frames to show, so that none shows for less than minDelay:
+// each starts on time and lasts until the first frame start at least
+// minDelay later. keep marks them, and kept is how long each shows.
+func shown(delays []time.Duration) (keep []bool, kept []time.Duration) {
+	keep = make([]bool, len(delays))
+	last := 0                   // the frame shown last
+	var start, at time.Duration // when it starts, and frame i does
+	for i, d := range delays {
+		if i == 0 || at-start >= minDelay {
+			if i > 0 {
+				kept = append(kept, at-start)
+			}
+			keep[i], last, start = true, i, at
+		}
+		at += d
+	}
+	if rest := at - start; rest < minDelay && len(kept) > 0 {
+		// too short to show: the frame before shows on instead
+		keep[last] = false
+		kept[len(kept)-1] += rest
+	} else {
+		kept = append(kept, rest)
+	}
+	return keep, kept
+}
+
+// compose calls f with each of g's frames, by index, drawn over what the frames before
 // it left, as a GIF is shown, until f returns false.
-func compose(g *gif.GIF, f func(*image.RGBA) bool) {
+func compose(g *gif.GIF, f func(int, *image.RGBA) bool) {
 	canvas := image.NewRGBA(image.Rect(0, 0, g.Config.Width, g.Config.Height))
 	for i, fr := range g.Image {
 		var disposal byte
@@ -59,7 +92,7 @@ func compose(g *gif.GIF, f func(*image.RGBA) bool) {
 			copy(prev.Pix, canvas.Pix)
 		}
 		draw.Draw(canvas, fr.Bounds(), fr, fr.Bounds().Min, draw.Over)
-		if !f(canvas) {
+		if !f(i, canvas) {
 			return
 		}
 		switch disposal {
@@ -71,10 +104,11 @@ func compose(g *gif.GIF, f func(*image.RGBA) bool) {
 	}
 }
 
-// indexedFrames is g's frames scaled by nearest pixel to fit w x h, as
-// indexes into palettes: frames share one until it's full (a GIF's frames
-// can have palettes of their own). nil if a frame has more than 256 colours.
-func indexedFrames(g *gif.GIF, w, h int) []Picture {
+// indexedFrames is g's frames that keep marks, scaled by nearest pixel to
+// fit w x h, as indexes into palettes: frames share one until it's full (a
+// GIF's frames can have palettes of their own). nil if a frame has more than
+// 256 colours.
+func indexedFrames(g *gif.GIF, w, h int, keep []bool) []Picture {
 	gw, gh := g.Config.Width, g.Config.Height
 	sw, sh := FitSize(gw, gh, w, h)
 	xs := make([]int, sw)
@@ -105,7 +139,10 @@ func indexedFrames(g *gif.GIF, w, h int) []Picture {
 		return true
 	}
 	var frames []Picture
-	compose(g, func(c *image.RGBA) bool {
+	compose(g, func(i int, c *image.RGBA) bool {
+		if !keep[i] {
+			return true
+		}
 		p := &Indexed{W: sw, H: sh, Pix: make([]uint8, sw*sh)}
 		if pal == nil || !frame(c, p) {
 			pal, index = new([256]uint32), map[uint32]uint8{}

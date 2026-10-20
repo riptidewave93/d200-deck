@@ -1,6 +1,7 @@
 package gfx
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
@@ -134,5 +135,67 @@ func TestAnimationManyColours(t *testing.T) {
 	}
 	if c := colourAt(a.Frames[1], 20, 0); c != 0xff140000 { // left over from frame 1
 		t.Errorf("pixel %#x", c)
+	}
+}
+
+// solidGIF is n frames of delay hundredths of a second, frame i all colour i.
+func solidGIF(n, delay int) *gif.GIF {
+	var pal color.Palette
+	for i := range n {
+		pal = append(pal, color.RGBA{uint8(i), 0, 0, 0xff})
+	}
+	g := &gif.GIF{Config: image.Config{Width: 2, Height: 2}}
+	for i := range n {
+		f := image.NewPaletted(image.Rect(0, 0, 2, 2), pal)
+		for p := range f.Pix {
+			f.Pix[p] = uint8(i)
+		}
+		g.Image, g.Delay = append(g.Image, f), append(g.Delay, delay)
+	}
+	return g
+}
+
+// A GIF faster than minDelay skips frames but keeps its timing: each frame
+// shown is the GIF's at that moment, or was less than minDelay before.
+func TestAnimationFast(t *testing.T) {
+	a := NewAnimation(solidGIF(30, 3), 2, 2) // 30 ms frames
+	if len(a.Frames) != 15 || a.total != 900*time.Millisecond {
+		t.Fatalf("%d frames, %v long", len(a.Frames), a.total)
+	}
+	for _, d := range a.Delays {
+		if d < minDelay {
+			t.Errorf("delay %v", d)
+		}
+	}
+	for ms := 0; ms < 2000; ms += 7 {
+		at := time.Duration(ms) * time.Millisecond
+		f, _ := a.At(at)
+		start := time.Duration(colourAt(f, 0, 0)>>16&0xff) * 30 * time.Millisecond
+		// how long ago the GIF moved past the frame
+		if late := at%a.total - start - 30*time.Millisecond; at%a.total < start || late >= minDelay {
+			t.Errorf("at %v: the frame from %v", at, start)
+		}
+	}
+	// a slower GIF is unchanged
+	a = NewAnimation(solidGIF(5, 10), 2, 2)
+	if len(a.Frames) != 5 || a.total != 500*time.Millisecond || a.Delays[4] != 100*time.Millisecond {
+		t.Errorf("100 ms GIF: %d frames, %v", len(a.Frames), a.Delays)
+	}
+}
+
+func TestShownFrames(t *testing.T) {
+	ms := func(ds ...int) (out []time.Duration) {
+		for _, d := range ds {
+			out = append(out, time.Duration(d)*time.Millisecond)
+		}
+		return out
+	}
+	keep, kept := shown(ms(20, 20, 20, 100, 20))
+	// frame 4 starts 20 ms before the loop does: frame 3 shows on instead
+	if fmt.Sprint(keep) != "[true false false true false]" || fmt.Sprint(kept) != fmt.Sprint(ms(60, 120)) {
+		t.Errorf("keep %v, delays %v", keep, kept)
+	}
+	if keep, kept := shown(ms(20, 20)); fmt.Sprint(keep) != "[true false]" || fmt.Sprint(kept) != fmt.Sprint(ms(40)) {
+		t.Errorf("too short: keep %v, delays %v", keep, kept)
 	}
 }
