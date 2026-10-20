@@ -395,7 +395,7 @@ func Main(args []string) {
 	fs.Parse(args)
 
 	// The D200 has little RAM: keep the Go heap small.
-	debug.SetMemoryLimit(24 << 20) // animated GIFs' frames take up to 8 MiB
+	debug.SetMemoryLimit(30 << 20) // animated GIFs' frames take up to 8 MiB
 
 	if !*test && *preview == "" {
 		guardConfig(*config)
