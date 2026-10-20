@@ -21,7 +21,13 @@ type Release struct {
 	Version string `json:"version"`        // its tag, e.g. v0.2.0
 	URL     string `json:"url"`            // its release page
 	File    string `json:"file,omitempty"` // an OS release's file for the device's update page
+
+	files []string // its uploaded files
 }
+
+// hostReadyFile is the file a deckhost release uploads last, once its
+// installers are there.
+const hostReadyFile = "SHA256SUMS"
 
 // How often deckhost looks for new device OS and deckhost releases, and
 // again after failing to.
@@ -33,7 +39,7 @@ const (
 var latestURL = "https://api.github.com/repos/%s/releases/latest"
 
 // latestRelease reads GitHub repo's newest published release; ok is false if
-// there's none yet.
+// there's none yet, or it has no files yet.
 func latestRelease(repo string) (rel Release, ok bool, err error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf(latestURL, repo), nil)
 	if err != nil {
@@ -54,13 +60,23 @@ func latestRelease(repo string) (rel Release, ok bool, err error) {
 		return rel, false, fmt.Errorf("GitHub: %s", resp.Status)
 	}
 	var r struct {
-		Tag string `json:"tag_name"`
-		URL string `json:"html_url"`
+		Tag    string `json:"tag_name"`
+		URL    string `json:"html_url"`
+		Assets []struct {
+			Name  string `json:"name"`
+			State string `json:"state"`
+		} `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r); err != nil {
 		return rel, false, err
 	}
-	return Release{Version: r.Tag, URL: r.URL}, r.Tag != "", nil
+	rel = Release{Version: r.Tag, URL: r.URL}
+	for _, a := range r.Assets {
+		if a.State == "uploaded" {
+			rel.files = append(rel.files, a.Name)
+		}
+	}
+	return rel, r.Tag != "" && len(rel.files) > 0, nil
 }
 
 // osUpdates looks for new device OS and deckhost releases at start and every
@@ -142,18 +158,20 @@ func (u *osUpdates) first(what string) bool {
 	return !told
 }
 
-// hostUpdate is the newest deckhost release if it's newer than this one.
+// hostUpdate is the newest deckhost release if it's newer than this one and
+// its installers are uploaded.
 func (u *osUpdates) hostUpdate() *Release {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if u.host == nil || !newerOS(u.host.Version, version) {
+	if u.host == nil || !newerOS(u.host.Version, version) || !slices.Contains(u.host.files, hostReadyFile) {
 		return nil
 	}
 	up := *u.host
 	return &up
 }
 
-// update is the newest OS release if it's newer than device h's OS.
+// update is the newest OS release if it's newer than device h's OS and its
+// file for h is uploaded.
 func (u *osUpdates) update(h proto.Hello) *Release {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -166,6 +184,9 @@ func (u *osUpdates) update(h proto.Hello) *Release {
 		flavour = "release"
 	}
 	up.File = fmt.Sprintf(deck.OSUpdateFile, up.Version, flavour)
+	if !slices.Contains(up.files, up.File) {
+		return nil // not uploaded yet
+	}
 	return &up
 }
 
