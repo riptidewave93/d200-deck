@@ -16,7 +16,7 @@ type Animation struct {
 
 // Frame delays: browsers show a GIF frame of 0 or 1 hundredths of a second
 // for 100 ms. Frames change at most every minDelay: faster frames are
-// skipped, keeping the GIF's timing.
+// skipped, keeping the GIF's timing, unless that would leave one frame.
 const (
 	minDelay   = 50 * time.Millisecond
 	shortDelay = 100 * time.Millisecond
@@ -73,6 +73,14 @@ func shown(delays []time.Duration) (keep []bool, kept []time.Duration) {
 		kept[len(kept)-1] += rest
 	} else {
 		kept = append(kept, rest)
+	}
+	if len(kept) == 1 && len(delays) > 1 {
+		// a loop too short to show in time: slower, rather than standing still
+		kept = kept[:0]
+		for i, d := range delays {
+			keep[i] = true
+			kept = append(kept, max(d, minDelay))
+		}
 	}
 	return keep, kept
 }

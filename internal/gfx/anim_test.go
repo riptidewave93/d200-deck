@@ -195,7 +195,14 @@ func TestShownFrames(t *testing.T) {
 	if fmt.Sprint(keep) != "[true false false true false]" || fmt.Sprint(kept) != fmt.Sprint(ms(60, 120)) {
 		t.Errorf("keep %v, delays %v", keep, kept)
 	}
-	if keep, kept := shown(ms(20, 20)); fmt.Sprint(keep) != "[true false]" || fmt.Sprint(kept) != fmt.Sprint(ms(40)) {
-		t.Errorf("too short: keep %v, delays %v", keep, kept)
+	// a whole loop too short to skip frames in: slower instead of still
+	if keep, kept := shown(ms(20, 20, 20, 20, 20)); fmt.Sprint(keep) != "[true true true true true]" || fmt.Sprint(kept) != fmt.Sprint(ms(50, 50, 50, 50, 50)) {
+		t.Errorf("short loop: keep %v, delays %v", keep, kept)
+	}
+	if keep, kept := shown(ms(30, 30)); fmt.Sprint(keep) != "[true true]" || fmt.Sprint(kept) != fmt.Sprint(ms(50, 50)) {
+		t.Errorf("short loop: keep %v, delays %v", keep, kept)
+	}
+	if keep, kept := shown(ms(40)); fmt.Sprint(keep) != "[true]" || fmt.Sprint(kept) != fmt.Sprint(ms(40)) {
+		t.Errorf("one frame: keep %v, delays %v", keep, kept)
 	}
 }
