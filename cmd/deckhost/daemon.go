@@ -32,7 +32,9 @@ type Device struct {
 	Path  string       `json:"path"`
 	Hello *proto.Hello `json:"hello,omitempty"` // set while connected
 	Error string       `json:"error,omitempty"` // why it isn't connected
-	busy  bool         // a session is running
+	// OSUpdate is a newer OS release than the device's, if there's one
+	OSUpdate *OSUpdate `json:"os_update,omitempty"`
+	busy     bool      // a session is running
 }
 
 // Status is what the daemon reports to the tray: every D200 plugged in.
@@ -95,6 +97,7 @@ type daemon struct {
 	known    map[string]bool
 	looks    map[string]hostLook // by action state name
 	watchers map[chan struct{}]bool
+	os       *osUpdates // nil: not looked for
 }
 
 func newDaemon() *daemon {
@@ -109,6 +112,7 @@ func newDaemon() *daemon {
 		known:    map[string]bool{},
 		looks:    map[string]hostLook{},
 		watchers: map[chan struct{}]bool{},
+		os:       newOSUpdates(notify),
 	}
 	d.apps = map[string]app{
 		deck.AppDiscord: newDiscordLink(discordLogin, d.setState),
@@ -212,7 +216,11 @@ func (d *daemon) getStatus() Status {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, dev := range d.devices {
-		s.Devices = append(s.Devices, *dev)
+		c := *dev
+		if c.Hello != nil && d.os != nil {
+			c.OSUpdate = d.os.update(*c.Hello)
+		}
+		s.Devices = append(s.Devices, c)
 	}
 	sort.Slice(s.Devices, func(i, j int) bool { return s.Devices[i].Path < s.Devices[j].Path })
 	return s
@@ -229,6 +237,7 @@ func runDaemon() {
 	for _, a := range d.apps {
 		go a.run(nil)
 	}
+	go d.os.run(d.hellos)
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -292,6 +301,22 @@ func (d *daemon) connected(path string, hello proto.Hello) {
 		dev.Error = ""
 	}
 	log.Printf("%s: connected to D200 %s (OS %s, deckd %s)", path, hello.Serial, hello.OS.Version, hello.Firmware)
+	if d.os != nil {
+		go d.os.check([]proto.Hello{hello})
+	}
+}
+
+// hellos are the connected devices' hellos.
+func (d *daemon) hellos() []proto.Hello {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var hs []proto.Hello
+	for _, dev := range d.devices {
+		if dev.Hello != nil {
+			hs = append(hs, *dev.Hello)
+		}
+	}
+	return hs
 }
 
 // session talks to the device at path until it goes away.

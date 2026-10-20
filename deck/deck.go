@@ -49,6 +49,12 @@ const (
 	RepoURL = "https://github.com/riptidewave93/d200-deck"
 	// ConfigureURL is the configuration website (not built yet).
 	ConfigureURL = "https://riptidewave93.github.io/d200-configure/"
+	// OSRepo is the device OS's GitHub repository, whose releases are
+	// tagged vMAJOR.MINOR.PATCH.
+	OSRepo = "riptidewave93/d200-buildroot"
+	// OSUpdateFile is a release's file for the device's update page, by
+	// tag and flavour (release or debug).
+	OSUpdateFile = "d200-%s-%s-update.tar"
 )
 
 // Config is the whole key setup: named pages of buttons, starting at Home.

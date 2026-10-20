@@ -31,3 +31,5 @@ func ensureDaemon() {}
 func logToFile() {}
 
 func trayIcon(png []byte) []byte { return png }
+
+func notify(title, body, url string) {}

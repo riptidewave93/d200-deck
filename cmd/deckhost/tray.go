@@ -56,6 +56,9 @@ func trayReady() {
 		}()
 	}
 	var serials []string
+	osUpdate := systray.AddMenuItem("", "Open the release page to download it")
+	osUpdate.Hide()
+	var osURL string
 	systray.AddSeparator()
 	restart := systray.AddMenuItem("Restart", "Restart deckhost")
 	exit := systray.AddMenuItem("Exit", "Stop deckhost and close this icon")
@@ -94,6 +97,18 @@ func trayReady() {
 				it.Hide()
 			}
 		}
+		osURL = ""
+		for _, d := range s.Connected() {
+			if d.OSUpdate != nil {
+				osUpdate.SetTitle("Download OS " + d.OSUpdate.Version)
+				osURL = d.OSUpdate.URL
+			}
+		}
+		if osURL != "" {
+			osUpdate.Show()
+		} else {
+			osUpdate.Hide()
+		}
 	}
 	refresh()
 
@@ -110,6 +125,10 @@ func trayReady() {
 			case i := <-picked:
 				if i < len(serials) {
 					ask("update "+serials[i], notRunning)
+				}
+			case <-osUpdate.ClickedCh:
+				if err := openURL(osURL); osURL != "" && err != nil {
+					log.Printf("release page: %v", err)
 				}
 			case <-restart.ClickedCh:
 				ask("restart", restartService)
