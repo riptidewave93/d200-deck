@@ -21,8 +21,8 @@ type FeatureSet struct {
 	Apps      map[string][]string `json:"apps"` // ops by app
 	Args      map[string][]string `json:"args"` // args by app
 	Limits    map[string]int      `json:"limits"`
-	// Settings are the settings the device takes (proto.Settings), for those
-	// its hardware has.
+	// Settings are the settings the device takes (proto.Settings); its
+	// settings reply leaves out those its hardware lacks.
 	Settings []string `json:"settings"`
 }
 

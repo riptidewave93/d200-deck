@@ -112,5 +112,5 @@ so on.
 | Image | 256 KiB and 512x512 px; keys are 196 px, so size them to that |
 | Font | 512 KiB; `fonts.Subset` cuts a TrueType font to the characters labels use |
 | Icons | 256; a path up to 16 KiB, a PNG or GIF up to 24 KiB and 128x128 px |
-| GIF | 100 frames and 4 M pixels in all (frames x width x height); frames show for 50 ms at least. A page animates up to 8 MiB of frames as drawn, a byte a pixel (4 for a GIF of more than 256 colours in all): a full-key GIF of 100 frames takes 3.8 MiB. Past that, the rest show their first frame. Devices without the `anim_bytes` limit animate 2 M pixels, 4 bytes each. |
+| GIF | 100 frames and 4 M pixels in all (frames x width x height); frames show for 50 ms at least. A page animates up to 8 MiB of frames, kept a byte a pixel at the size drawn (4 if a frame has more than 256 colours): a full-key GIF of 100 frames takes 3.8 MiB. Past that, the rest show their first frame. `render.PictureBox` and `render.AnimBytes` count it as the deck does. Decks without the `anim_bytes` limit animate 2 M pixels at 4 bytes each. |
 | One PC action | 8 KiB as JSON |

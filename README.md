@@ -12,7 +12,9 @@ your PC.
 - With `deckhost` on the PC (Linux or Windows): keys that open websites, start programs and call
   webhooks, and control [Discord](docs/discord.md), [OBS](docs/obs.md) and
   [media players](docs/media.md), showing live state such as mute or the song playing
-- A sleep screen while the PC sleeps
+- A default layout to start from: media and volume keys, the song playing, and pages of browser
+  shortcuts, Discord, OBS, macros and power keys
+- A sleep screen while the PC sleeps, dimmed or off
 - OS updates from a page in your browser, confirmed on the keys
 
 ## Using it

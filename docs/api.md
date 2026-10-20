@@ -104,7 +104,7 @@ offer only that. A deck without it has the first release's.
 | `keys`, `modifiers`, `usages`, `systems`, `fonts` | the names `hid-key`, `hid-consumer`, `hid-system` and `font` take |
 | `apps`, `args` | ops and args by app, for the apps the deck knows; other apps are their host's |
 | `limits` | the [limits](config.md#limits) it checks, e.g. `"label": 32` |
-| `settings` | the [settings](#settings) it takes, those its hardware has |
+| `settings` | the [settings](#settings) it takes; the settings reply leaves out those its hardware lacks |
 
 ### Events
 
@@ -174,10 +174,13 @@ An app without a `status` isn't set up yet. With no helper, it's `{"connected": 
 | `brightness_min` | | Read only: the lowest `brightness` |
 | `sleep_screen` | `"zzz"` | While the PC sleeps: `"zzz"`, the screen dimmed with a sleep mark, or `"off"`, the screen off |
 
-A deck without a dimmable screen, or with older software, leaves out the brightness fields and `sleep_screen`.
-A new `usb_net4` is asked about on the deck first, like a config (above). Changing a USB setting re-plugs the deck: you get the reply, then usb-rebinding, then the deck goes away for
-about a second (several, for a new address). Use the deck's `ipv4` from hello afterwards, not an
-address worked out from its serial.
+A deck without a dimmable screen, or with older software, leaves out the brightness fields and
+`sleep_screen`.
+
+A new `usb_net4` is asked about on the deck first, like a config (above). Changing a USB setting
+re-plugs the deck: you get the reply, then usb-rebinding, then the deck goes away for about a
+second (several, for a new address). Use the deck's `ipv4` from hello afterwards, not an address
+worked out from its serial.
 
 ### Running PC actions
 
