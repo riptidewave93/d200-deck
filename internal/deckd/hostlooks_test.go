@@ -10,7 +10,9 @@ import (
 	"image"
 	"image/png"
 	"testing"
+	"time"
 
+	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
@@ -103,5 +105,38 @@ func TestHostLooks(t *testing.T) {
 	}
 	if r := beat("h2"); len(r.Looks) != 0 {
 		t.Errorf("a new host has looks: %v", r.Looks)
+	}
+}
+
+func TestWithLook(t *testing.T) {
+	d := newTestDeckd()
+	l := hostLook{rev: "1", label: "Song", image: "aW1n"}
+	np := func(args string) deck.Button {
+		return deck.Button{Icon: "x", Action: deck.Action{Type: deck.ActionApp, App: deck.AppMedia, Op: deck.MediaNowPlaying, Args: json.RawMessage(args)}}
+	}
+	at := time.UnixMilli(4000500) // in the 1000th turn of 4 s, the 1333rd of 3 s
+	shows := func(b deck.Button) string {
+		if b.Image != "" {
+			return "art"
+		}
+		return b.Label
+	}
+	for _, c := range []struct {
+		b    deck.Button
+		l    hostLook
+		want string
+		next time.Time
+	}{
+		{np(``), l, "art", time.Time{}},
+		{np(``), hostLook{label: "Song"}, "Song", time.Time{}},
+		{np(`{"show": "text"}`), l, "Song", time.Time{}},
+		{np(`{"show": "both", "cycle": 4}`), l, "art", time.UnixMilli(1001 * 4000)},
+		{np(`{"show": "both", "cycle": 3}`), l, "Song", time.UnixMilli(1334 * 3000)},
+		{np(`{"show": "both"}`), hostLook{label: "Song"}, "Song", time.Time{}},
+	} {
+		b, next := d.withLook(c.b, "media.now-playing", c.l, at)
+		if shows(b) != c.want || !next.Equal(c.next) || b.Icon != "" {
+			t.Errorf("%s: %q until %v", c.b.Action.Args, shows(b), next)
+		}
 	}
 }

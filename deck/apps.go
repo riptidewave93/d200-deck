@@ -1,6 +1,11 @@
 package deck
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+)
 
 // App integrations. An app action, e.g.
 // {"type": "app", "app": "discord", "op": "mute"}, runs on the action host,
@@ -98,10 +103,59 @@ const (
 	MediaStop      = "stop"
 	MediaShuffle   = "shuffle" // toggle shuffle
 	MediaRepeat    = "repeat"  // toggle repeating the playlist
-	// MediaNowPlaying shows the song playing, its album art or title and
-	// artist, and plays or pauses it.
+	// MediaNowPlaying shows the song playing (see SongLook) and plays or
+	// pauses it.
 	MediaNowPlaying = "now-playing"
 )
+
+// What a now-playing key shows of the song, its args.show.
+const (
+	SongArt  = "art"  // its album art (the default), or its title and artist if it has none
+	SongText = "text" // its title and artist
+	SongBoth = "both" // art and text in turn, args.cycle seconds each
+)
+
+// Now-playing keys' args.cycle, in seconds.
+const (
+	DefaultSongCycle = 3
+	MaxSongCycle     = 60
+)
+
+// SongLook is what action a's key shows of a host look with both an image
+// and a label: SongArt, SongText or SongBoth, and for SongBoth how long
+// each shows. It's SongArt for actions other than now-playing.
+func (a Action) SongLook() (show string, cycle time.Duration) {
+	args, _ := a.songArgs()
+	if a.appOp() != AppMedia+"."+MediaNowPlaying || args.Show == "" {
+		args.Show = SongArt
+	}
+	if args.Cycle == 0 {
+		args.Cycle = DefaultSongCycle
+	}
+	return args.Show, time.Duration(args.Cycle) * time.Second
+}
+
+type songArgs struct {
+	Show  string `json:"show"`
+	Cycle int    `json:"cycle"`
+}
+
+func (a Action) songArgs() (songArgs, error) {
+	var args songArgs
+	if len(a.Args) == 0 {
+		return args, nil
+	}
+	if err := json.Unmarshal(a.Args, &args); err != nil {
+		return songArgs{}, errors.New("now-playing: cycle must be whole seconds")
+	}
+	if args.Show != "" && args.Show != SongArt && args.Show != SongText && args.Show != SongBoth {
+		return songArgs{}, fmt.Errorf("now-playing: show is %q, %q or %q", SongArt, SongText, SongBoth)
+	}
+	if args.Cycle != 0 && (args.Cycle < 1 || args.Cycle > MaxSongCycle) {
+		return songArgs{}, fmt.Errorf("now-playing: cycle is 1 to %d seconds", MaxSongCycle)
+	}
+	return args, nil
+}
 
 // MediaOps are the media operations; the host checks them.
 var MediaOps = []string{MediaPlayPause, MediaNext, MediaPrevious, MediaStop, MediaShuffle, MediaRepeat, MediaNowPlaying}

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/proto"
@@ -106,10 +107,18 @@ func (p *pcActions) lookRevs() map[string]string {
 }
 
 // withLook is b as the host's look l (for action state name) shows it: its
-// image filling the key, or its label.
-func (d *deckd) withLook(b deck.Button, name string, l hostLook) deck.Button {
+// image filling the key, or its label, as b's action picks
+// (deck.Action.SongLook). Showing both in turn, next is when it turns.
+func (d *deckd) withLook(b deck.Button, name string, l hostLook, now time.Time) (_ deck.Button, next time.Time) {
+	show, cycle := b.Action.SongLook()
 	b.Icon, b.Image, b.Label = "", "", l.label
-	if l.image != "" {
+	image := l.image != "" && show != deck.SongText
+	if image && show == deck.SongBoth && l.label != "" {
+		n := now.UnixMilli() / cycle.Milliseconds() // the same turn on every key
+		image = n%2 == 0
+		next = time.UnixMilli((n + 1) * cycle.Milliseconds())
+	}
+	if image {
 		id := "\x00host:" + name + ":" + l.rev // new with each version: no stale cache
 		if d.renderer.ExtraImages == nil || len(d.renderer.ExtraImages) > 2*proto.MaxHostLooks {
 			d.renderer.ExtraImages = map[string]string{}
@@ -117,5 +126,5 @@ func (d *deckd) withLook(b deck.Button, name string, l hostLook) deck.Button {
 		d.renderer.ExtraImages[id] = l.image
 		b.Image, b.Label = id, ""
 	}
-	return b
+	return b, next
 }

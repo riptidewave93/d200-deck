@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func withKey(b Button) *Config {
@@ -31,6 +32,8 @@ func TestValidateActions(t *testing.T) {
 		{Type: ActionHTTP, URL: "https://example.com/hook"},
 		{Type: ActionApp, App: AppDiscord, Op: DiscordPushToTalk, Fallback: &Action{Type: ActionKey, Keys: []string{"ctrl", "f14"}}},
 		{Type: ActionOpenURL, URL: "https://x", Fallback: &Action{Type: ActionMacro, Steps: []Action{{Type: ActionText, Text: "x"}}}},
+		{Type: ActionApp, App: AppMedia, Op: MediaNowPlaying, Args: json.RawMessage(`{"show": "both", "cycle": 60, "id": "spotify"}`)},
+		{Type: ActionApp, App: AppMedia, Op: MediaNext, Args: json.RawMessage(`{"show": "x"}`)}, // not now-playing's
 	}
 	for _, a := range good {
 		if err := withKey(Button{Action: a}).Validate(); err != nil {
@@ -59,6 +62,9 @@ func TestValidateActions(t *testing.T) {
 		{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: &Action{Type: ActionOpenURL, URL: "https://x"}},
 		{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: &Action{Type: ActionPage, Page: "main"}},
 		{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: &Action{Type: ActionKey}},
+		{Type: ActionApp, App: AppMedia, Op: MediaNowPlaying, Args: json.RawMessage(`{"show": "x"}`)},
+		{Type: ActionApp, App: AppMedia, Op: MediaNowPlaying, Args: json.RawMessage(`{"cycle": 61}`)},
+		{Type: ActionApp, App: AppMedia, Op: MediaNowPlaying, Args: json.RawMessage(`{"cycle": 1.5}`)},
 	}
 	for _, a := range bad {
 		if err := withKey(Button{Action: a}).Validate(); err == nil {
@@ -190,5 +196,26 @@ func TestOnPC(t *testing.T) {
 	}
 	if ActionKey.OnPC() {
 		t.Error("hid-key runs on the PC")
+	}
+}
+
+func TestSongLook(t *testing.T) {
+	np := func(args string) Action {
+		return Action{Type: ActionApp, App: AppMedia, Op: MediaNowPlaying, Args: json.RawMessage(args)}
+	}
+	for _, c := range []struct {
+		a     Action
+		show  string
+		cycle time.Duration
+	}{
+		{Action{}, SongArt, 3 * time.Second},
+		{np(`{}`), SongArt, 3 * time.Second},
+		{np(`{"show": "text"}`), SongText, 3 * time.Second},
+		{np(`{"show": "both", "cycle": 5}`), SongBoth, 5 * time.Second},
+		{Action{Type: ActionApp, App: AppMedia, Op: MediaNext, Args: json.RawMessage(`{"show": "text"}`)}, SongArt, 3 * time.Second},
+	} {
+		if show, cycle := c.a.SongLook(); show != c.show || cycle != c.cycle {
+			t.Errorf("%s: %s %v", c.a.Args, show, cycle)
+		}
 	}
 }

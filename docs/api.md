@@ -185,9 +185,9 @@ and what just went off, over several messages if it doesn't fit in one.
 #### Looks
 
 The action host can also set how keys with a given state name look, such as the song playing on
-a `now-playing` key: host-look with a `label` (up to 96 bytes, 3 lines), or with an image (a JPEG,
-PNG or GIF up to 64 KiB, filling the key) sent after it in host-look-data parts; a look with
-neither clears it. `rev` names the version: the deck lists the looks it shows in its reply to
+a `now-playing` key: host-look with a `label` (up to 96 bytes, 3 lines), an image (a JPEG, PNG or
+GIF up to 64 KiB, filling the key) sent after it in host-look-data parts, or both, for the key to
+pick from (a now-playing key's `args.show`); a look with neither clears it. `rev` names the version: the deck lists the looks it shows in its reply to
 action-host, so a host resends only those it's missing, such as after deckd restarts. Up to 16
 looks; the deck forgets them with the host.
 

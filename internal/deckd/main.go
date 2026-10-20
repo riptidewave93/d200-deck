@@ -112,11 +112,15 @@ func (d *deckd) drawKey(i int, state render.State) {
 		b, ok := d.cfg.Pages[d.page()].Keys[i]
 		st := b.Action.State()
 		b = b.Shown(st != "" && d.pc.getState(st))
+		var turn time.Time
 		if l, ok := d.pc.look(st); ok {
-			b = d.withLook(b, st, l)
+			b, turn = d.withLook(b, st, l, time.Now())
 		}
 		d.renderer.Draw(d.canvas, r, b, ok, state)
 		next = d.renderer.Next()
+		if !turn.IsZero() && (next.IsZero() || turn.Before(next)) {
+			next = turn
+		}
 	}
 	d.show(r)
 	d.state[i], d.frameAt[i] = state, next

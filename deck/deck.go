@@ -468,6 +468,11 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 				return errors.New("app args must be an object")
 			}
 		}
+		if a.appOp() == AppMedia+"."+MediaNowPlaying {
+			if _, err := a.songArgs(); err != nil {
+				return err
+			}
+		}
 	default:
 		return fmt.Errorf("unknown action type %q", a.Type)
 	}
