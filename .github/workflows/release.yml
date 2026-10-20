@@ -32,6 +32,14 @@ jobs:
       - name: Build the installers
         run: make dist
 
+      - name: Check they carry the release's version
+        if: inputs.tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          test "$(build/linux-amd64/deckhost version)" = "$TAG"
+          test -e "build/dist/deckhost-${TAG#v}-windows-amd64-setup.exe"
+
       - name: Checksums
         run: cd build/dist && sha256sum -- * > SHA256SUMS
 
