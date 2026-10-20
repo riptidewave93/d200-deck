@@ -2,6 +2,7 @@
 package fonts
 
 import (
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"slices"
@@ -299,7 +300,7 @@ func kern(f *sfnt.Font, glyphs []uint16, newID map[uint16]uint16) []byte {
 	if len(pairs) == 0 || 14+6*len(pairs) > 0xffff {
 		return nil
 	}
-	slices.SortFunc(pairs, func(a, b pair) int { return int(a.l)<<16 + int(a.r) - (int(b.l)<<16 + int(b.r)) })
+	slices.SortFunc(pairs, func(a, b pair) int { return cmp.Or(cmp.Compare(a.l, b.l), cmp.Compare(a.r, b.r)) })
 	search, sel := 1, 0
 	for search*2 <= len(pairs) {
 		search, sel = search*2, sel+1
