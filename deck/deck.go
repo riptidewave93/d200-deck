@@ -570,7 +570,7 @@ func DefaultConfig() *Config {
 			}},
 			// Shortcuts Chrome, Edge and Firefox share on Windows and Linux
 			"browser": {Keys: map[int]Button{
-				0:  {Icon: "back", Label: "Main", Action: Action{Type: ActionBack}}, // "Back" is the browser's
+				0:  back,
 				1:  key("browser-back", "Back", "alt", "left"),
 				2:  key("reload", "Reload", "ctrl", "r"),
 				3:  key("browser-forward", "Forward", "alt", "right"),
