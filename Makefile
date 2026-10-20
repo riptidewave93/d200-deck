@@ -104,9 +104,11 @@ test :
 		GOARCH=386 go test $(WASM_PKGS)'
 
 # The website's packages' tests built with TinyGo, as the website builds them (its JSON without
-# encoding/json/v2), run in wasmtime. TestLoad* use temp dirs WASI can't remove.
+# encoding/json/v2), run in wasmtime. TestLoad* use temp dirs WASI can't remove. The target is
+# wasip1 with wasmtime's cache off: it needs a home directory, which a user ID the image doesn't
+# know (as in CI) lacks.
 tinygo : .cache/bin/wasmtime
-	$(TINYGO) env GOEXPERIMENT=nojsonv2 tinygo test -target wasip1 -skip '^TestLoad' $(WASM_PKGS)
+	$(TINYGO) env GOEXPERIMENT=nojsonv2 tinygo test -target contrib/tinygo-wasip1.json -skip '^TestLoad' $(WASM_PKGS)
 
 .cache/bin/wasmtime :
 	mkdir -p .cache/bin

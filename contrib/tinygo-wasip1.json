@@ -1,0 +1,4 @@
+{
+	"inherits": ["wasip1"],
+	"emulator": "wasmtime run -C cache=n --dir={tmpDir}::/tmp {}"
+}
