@@ -42,6 +42,20 @@ func useConfig(t *testing.T, d *deckd, path string) {
 	if err := d.file.set(cfg, mem, "", nil); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { waitGzip(d) })
+}
+
+// waitGzip waits until d isn't gzipping its config in the background.
+func waitGzip(d *deckd) {
+	for {
+		d.fileMu.Lock()
+		busy := d.file.gzipping
+		d.fileMu.Unlock()
+		if !busy {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestConfigOverChannel(t *testing.T) {
@@ -80,7 +94,7 @@ func TestConfigOverChannel(t *testing.T) {
 		t.Errorf("read back %d bytes, %v", len(b), err)
 	}
 	// the gzip stream sent is the one reads get: not gzipped again
-	if gz, _ := os.ReadFile(path + ".gz"); d.file.gz == nil || !bytes.Equal(gz, proto.Gzip(newFile)) {
+	if gz, _ := os.ReadFile(d.file.gzPath(got.Rev)); d.file.gz == nil || !bytes.Equal(gz, proto.Gzip(newFile)) {
 		t.Error("the gzip stream sent wasn't kept")
 	}
 
@@ -287,7 +301,8 @@ func TestConfigFile(t *testing.T) {
 	cfg.Images = map[string]string{"noise": noisePNG(t)}
 	file, _ := json.Marshal(cfg)
 	os.WriteFile(path, file, 0o644)
-	os.WriteFile(path+".gz", []byte("stale"), 0o644) // from before a restart
+	os.WriteFile(path+".gz", []byte("stale"), 0o644)                  // an older version's
+	os.WriteFile(path+".0123456789abcdef.gz", []byte("stale"), 0o644) // another version's
 	d.fileMu.Lock()
 	useConfig(t, d, path)
 	_, onFlash := d.file.data.r.(*os.File)
@@ -295,29 +310,39 @@ func TestConfigFile(t *testing.T) {
 	if !onFlash {
 		t.Error("config file kept in memory")
 	}
-	read(file, "file")
+	read(file, "file") // plain, if the gzip isn't made yet
+	waitGzip(d)
+	if _, err := os.Stat(path + ".0123456789abcdef.gz"); err == nil {
+		t.Error("another version's gzip is still there")
+	}
+	d.fileMu.Lock()
+	useConfig(t, d, path) // as after a restart: the gzip made before is used
+	reused := d.file.gz != nil
+	d.fileMu.Unlock()
+	if !reused {
+		t.Error("gzip not kept across a restart")
+	}
+	read(file, "file, gzipped")
 
-	// a save during a read: the reader gets the new bytes, and finds out
+	// a save during a read: the reader finds out, and doesn't get the old
+	// config's bytes
 	var info proto.ConfigInfo
 	b, _ := c.Do(proto.CmdConfigInfo, []byte(`{"gzip": true}`))
 	json.Unmarshal(b, &info)
+	if info.GzipSize == 0 {
+		t.Fatal("not gzipped yet")
+	}
 	first, _ := c.Do(proto.CmdConfigRead, []byte{0, 0, 0, 0, 0, 0x10, proto.ConfigReadGzip})
 	cfg.Home = "main"
 	newFile, _ := json.Marshal(cfg)
 	got, err := c.WriteConfig(info.Rev, newFile)
-	if err != nil {
+	if err != nil || got.Rev == info.Rev {
 		t.Fatal(err)
 	}
 	runUI(t, d)
 	rest, err := c.Do(proto.CmdConfigRead, append(binary.LittleEndian.AppendUint32(nil, uint32(len(first))), 0, 0x10, proto.ConfigReadGzip))
-	if err != nil {
-		t.Fatalf("read after a save: %v", err)
-	}
-	if b, err := proto.Gunzip(append(first, rest...), info.Size); err == nil && bytes.Equal(b, file) {
+	if b, gzErr := proto.Gunzip(append(first, rest...), info.Size); err == nil && gzErr == nil && bytes.Equal(b, file) {
 		t.Error("read the old config across a save")
-	}
-	if got.Rev == info.Rev {
-		t.Error("same rev")
 	}
 	read(newFile, "after the save")
 }

@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/proto"
@@ -26,6 +27,10 @@ type configFile struct {
 	rev  string
 	data blob
 	gz   *blob // data gzipped, made when first read
+	// gzipping is set while gz is made in the background, with mu (which
+	// guards f) held only to keep it
+	gzipping bool
+	mu       *sync.Mutex
 }
 
 // blob is bytes to read from: a file kept open, so it's still the same
@@ -88,20 +93,45 @@ func (f *configFile) set(cfg *deck.Config, mem []byte, rev string, gz []byte) er
 		f.gz.close()
 	}
 	f.cfg, f.rev, f.data, f.gz = cfg, rev, data, nil
-	if gz != nil {
+	switch {
+	case gz != nil:
 		f.keepGzip(gz)
+	case mem != nil:
+		f.keepGzip(proto.Gzip(mem)) // small: the default config
+	default:
+		if b, err := openBlob(f.gzPath(rev)); err == nil {
+			f.gz = &b // made before a restart
+		} else {
+			f.makeGzip()
+		}
 	}
 	return nil
 }
 
-// keepGzip keeps gz as the config gzipped: on flash next to a file.
+// gzPath is where the file of version rev is kept gzipped: a cache, named
+// for its version, so it's never mistaken for another's.
+func (f *configFile) gzPath(rev string) string { return f.path + "." + rev[:16] + ".gz" }
+
+// keepGzip keeps gz as the config gzipped: on flash next to a file, in
+// place of older versions'.
 func (f *configFile) keepGzip(gz []byte) {
 	if _, ok := f.data.r.(*os.File); !ok {
 		f.gz = &blob{bytes.NewReader(gz), len(gz)}
 		return
 	}
-	path := f.path + ".gz"
-	err := writeFile(path, gz)
+	path := f.gzPath(f.rev)
+	old, _ := filepath.Glob(f.path + ".*.gz")
+	for _, p := range old {
+		if p != path {
+			os.Remove(p)
+		}
+	}
+	// a cache: if it's lost or cut short in a crash, it's made again
+	tmp := path + ".tmp"
+	err := os.WriteFile(tmp, gz, 0o600)
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
 	var b blob
 	if err == nil {
 		b, err = openBlob(path)
@@ -113,19 +143,36 @@ func (f *configFile) keepGzip(gz []byte) {
 	f.gz = &b
 }
 
-// gzip is the config gzipped, made once per version.
-func (f *configFile) gzip() (blob, error) {
+// gzip is the config gzipped, if it's made yet.
+func (f *configFile) gzip() (blob, bool) {
 	if f.gz == nil {
-		all, err := f.data.read(0, f.data.size)
-		if err != nil {
-			return blob{}, err
-		}
-		f.keepGzip(proto.Gzip(all))
-		if f.gz == nil {
-			return blob{}, errors.New("can't gzip the config")
-		}
+		f.makeGzip()
+		return blob{}, false
 	}
-	return *f.gz, nil
+	return *f.gz, true
+}
+
+// makeGzip makes gz in the background: for a big config it takes longer than
+// a client waits for a reply.
+func (f *configFile) makeGzip() {
+	if f.gzipping {
+		return
+	}
+	f.gzipping = true
+	data, rev := f.data, f.rev
+	go func() {
+		all, err := data.read(0, data.size) // fails if a save closed it: nothing to make
+		var gz []byte
+		if err == nil {
+			gz = proto.Gzip(all)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.gzipping = false
+		if gz != nil && f.rev == rev && f.gz == nil {
+			f.keepGzip(gz)
+		}
+	}()
 }
 
 func (f *configFile) info() proto.ConfigInfo {
@@ -166,12 +213,8 @@ func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
 		if len(p) > 0 && json.Unmarshal(p, &q) != nil {
 			return proto.StatusBadRequest, nil
 		}
-		if q.Gzip {
-			gz, err := d.file.gzip()
-			if err != nil {
-				return failed(err)
-			}
-			info.GzipSize = gz.size
+		if gz, ok := d.file.gzip(); q.Gzip && ok {
+			info.GzipSize = gz.size // until it's made, clients send and read it plain
 		}
 		return okJSON(info)
 	case proto.CmdConfigRead:
@@ -187,9 +230,10 @@ func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
 		}
 		b := d.file.data
 		if len(p) == 7 && p[6]&proto.ConfigReadGzip != 0 {
-			var err error
-			if b, err = d.file.gzip(); err != nil {
-				return failed(err)
+			var ok bool
+			if b, ok = d.file.gzip(); !ok {
+				// gzip_size came from an earlier version
+				return failed(errors.New("the config changed while it was read; read it again"))
 			}
 		}
 		part, err := b.read(off, n)

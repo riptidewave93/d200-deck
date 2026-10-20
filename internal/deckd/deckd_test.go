@@ -33,6 +33,7 @@ func newTestDeckd() *deckd {
 		redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 16)}
 	d.pages = []string{d.cfg.Home}
 	b, _ := json.Marshal(d.cfg)
+	d.file.mu = &d.fileMu
 	d.file.set(d.cfg, b, "", nil)
 	d.renderer = render.New(d.cfg)
 	d.renderer.Extra = systemIcons

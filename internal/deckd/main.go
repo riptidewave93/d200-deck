@@ -405,6 +405,7 @@ func Main(args []string) {
 	d := &deckd{cfg: cfg, canvas: gfx.NewCanvas(render.Width, render.Height),
 		test: *test, redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 4),
 		file: configFile{path: *config}}
+	d.file.mu = &d.fileMu
 	if err := d.file.set(cfg, mem, "", nil); err != nil {
 		log.Fatal(err) // it was there a moment ago
 	}
