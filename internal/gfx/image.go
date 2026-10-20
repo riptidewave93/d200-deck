@@ -77,20 +77,24 @@ func (c *Canvas) DrawImage(img *image.RGBA, r Rect) {
 	b := img.Bounds()
 	at := image.Pt(r.Min.X+(r.Dx()-b.Dx())/2, r.Min.Y+(r.Dy()-b.Dy())/2)
 	dst := b.Add(at).Intersect(image.Rect(0, 0, c.W, c.H))
+	w := dst.Dx()
 	for y := dst.Min.Y; y < dst.Max.Y; y++ {
-		for x := dst.Min.X; x < dst.Max.X; x++ {
-			s := img.Pix[img.PixOffset(x-at.X, y-at.Y):]
-			a := uint32(s[3])
-			if a == 0 {
-				continue
+		src := img.Pix[img.PixOffset(dst.Min.X-at.X, y-at.Y):][:4*w]
+		out := c.Pix[y*c.W+dst.Min.X:][:w]
+		for x := range out {
+			s := src[4*x : 4*x+4 : 4*x+4]
+			switch a := uint32(s[3]); a {
+			case 0:
+			case 255:
+				out[x] = uint32(s[0])<<16 | uint32(s[1])<<8 | uint32(s[2])
+			default:
+				// RGBA is premultiplied: out = src + dst * (1 - alpha)
+				d := out[x]
+				mix := func(src uint8, shift uint) uint32 {
+					return (uint32(src) + (d>>shift&0xff)*(255-a)/255) << shift
+				}
+				out[x] = mix(s[0], 16) | mix(s[1], 8) | mix(s[2], 0)
 			}
-			i := y*c.W + x
-			d := c.Pix[i]
-			// RGBA is premultiplied: out = src + dst * (1 - alpha)
-			mix := func(src uint8, shift uint) uint32 {
-				return (uint32(src) + (d>>shift&0xff)*(255-a)/255) << shift
-			}
-			c.Pix[i] = mix(s[0], 16) | mix(s[1], 8) | mix(s[2], 0)
 		}
 	}
 }

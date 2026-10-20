@@ -3,6 +3,8 @@ package gfx
 import (
 	"image"
 	"image/color"
+	"math/rand/v2"
+	"slices"
 	"testing"
 )
 
@@ -86,4 +88,81 @@ func TestDrawImage(t *testing.T) {
 		t.Errorf("pixel outside the image changed: %#x", got)
 	}
 	c.DrawImage(img, image.Rect(-5, -5, -3, -4)) // off the canvas: no panic
+}
+
+// drawImageBefore is DrawImage as it was, pixel by pixel: the reference for
+// the faster one.
+func drawImageBefore(c *Canvas, img *image.RGBA, r Rect) {
+	b := img.Bounds()
+	at := image.Pt(r.Min.X+(r.Dx()-b.Dx())/2, r.Min.Y+(r.Dy()-b.Dy())/2)
+	dst := b.Add(at).Intersect(image.Rect(0, 0, c.W, c.H))
+	for y := dst.Min.Y; y < dst.Max.Y; y++ {
+		for x := dst.Min.X; x < dst.Max.X; x++ {
+			s := img.Pix[img.PixOffset(x-at.X, y-at.Y):]
+			a := uint32(s[3])
+			if a == 0 {
+				continue
+			}
+			i := y*c.W + x
+			d := c.Pix[i]
+			mix := func(src uint8, shift uint) uint32 {
+				return (uint32(src) + (d>>shift&0xff)*(255-a)/255) << shift
+			}
+			c.Pix[i] = mix(s[0], 16) | mix(s[1], 8) | mix(s[2], 0)
+		}
+	}
+}
+
+func TestDrawImageSameAsBefore(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	img := func(alpha func() uint8) *image.RGBA {
+		m := image.NewRGBA(image.Rect(0, 0, 37, 23))
+		for i := 0; i < len(m.Pix); i += 4 {
+			a := alpha()
+			for j := range 3 { // premultiplied: no channel above alpha
+				m.Pix[i+j] = uint8(rng.IntN(int(a) + 1))
+			}
+			m.Pix[i+3] = a
+		}
+		return m
+	}
+	images := map[string]*image.RGBA{
+		"opaque":      img(func() uint8 { return 255 }),
+		"transparent": img(func() uint8 { return 0 }),
+		"partly":      img(func() uint8 { return uint8(1 + rng.IntN(254)) }),
+		"mixed":       img(func() uint8 { return []uint8{0, 255, uint8(rng.IntN(256))}[rng.IntN(3)] }),
+	}
+	images["sub-image"] = images["mixed"].SubImage(image.Rect(5, 3, 30, 20)).(*image.RGBA)
+	where := []Rect{
+		image.Rect(10, 10, 60, 40),  // inside
+		image.Rect(-20, -9, 10, 10), // off the top left
+		image.Rect(45, 30, 90, 60),  // off the bottom right
+		image.Rect(-90, 0, -50, 10), // off the canvas
+		image.Rect(20, 20, 21, 21),  // larger than its box
+	}
+	for name, m := range images {
+		for _, r := range where {
+			got, want := NewCanvas(64, 48), NewCanvas(64, 48)
+			for i := range got.Pix {
+				got.Pix[i] = rng.Uint32() & 0xffffff
+			}
+			copy(want.Pix, got.Pix)
+			got.DrawImage(m, r)
+			drawImageBefore(want, m, r)
+			if !slices.Equal(got.Pix, want.Pix) {
+				t.Errorf("%s in %v: differs from before", name, r)
+			}
+		}
+	}
+}
+
+// a full-key GIF frame, as an animated key draws it
+func BenchmarkDrawImage(b *testing.B) {
+	c, img := NewCanvas(1280, 720), image.NewRGBA(image.Rect(0, 0, 196, 196))
+	for i := range img.Pix {
+		img.Pix[i] = 0xff
+	}
+	for b.Loop() {
+		c.DrawImage(img, image.Rect(300, 200, 496, 396))
+	}
 }
