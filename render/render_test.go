@@ -456,3 +456,62 @@ func TestMissingGlyphs(t *testing.T) {
 		t.Errorf("missing %q", string(got))
 	}
 }
+
+func TestAnimBytes(t *testing.T) {
+	data := testGIF(t, 3)
+	g, err := deck.DecodeAnimation(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, box := range [][2]int{{196, 196}, {100, 100}, {458, 196}} {
+		want := gfx.NewAnimation(g, box[0], box[1]).Bytes()
+		if got := AnimBytes(data, box[0], box[1]); got != want || got == 0 {
+			t.Errorf("in %v: %d bytes, the renderer keeps %d", box, got, want)
+		}
+	}
+	if got := AnimBytes(data, 196, 196); got != 3*196*196+1024 {
+		t.Errorf("%d bytes for 3 full-key frames", got)
+	}
+	for name, data := range map[string]string{
+		"PNG": solidPNG(t, 8, 8, color.NRGBA{1, 2, 3, 255}), "one frame": testGIF(t, 1),
+		"broken": "R0lGODlhAAA=", "not base64": "R0lGOD!",
+	} {
+		if got := AnimBytes(data, 196, 196); got != 0 {
+			t.Errorf("%s: %d bytes", name, got)
+		}
+	}
+}
+
+// PictureBox and FitSize give the size draw draws a picture at.
+func TestPictureBox(t *testing.T) {
+	wide := -1
+	for i := range deck.KeyCount {
+		if Key(i).Dx() > Key(i).Dy() {
+			wide = i
+		}
+	}
+	col := color.NRGBA{0x12, 0x34, 0x56, 0xff}
+	pic := solidPNG(t, 300, 150, col)
+	cfg := &deck.Config{Images: map[string]string{"pic": pic}, Icons: map[string]deck.Icon{"pic": {PNG: pic}}}
+	r := New(cfg)
+	for _, i := range []int{0, wide} {
+		for _, image := range []bool{true, false} {
+			for _, label := range []bool{false, true} {
+				b := deck.Button{Icon: "pic"}
+				if image {
+					b = deck.Button{Image: "pic"}
+				}
+				if label {
+					b.Label = "Go"
+				}
+				c := gfx.NewCanvas(Width, Height)
+				r.Draw(c, Key(i), b, true, Idle)
+				bw, bh := PictureBox(i, image, label)
+				w, h := FitSize(300, 150, bw, bh)
+				if got := count(c, Key(i), 0x123456); got != w*h {
+					t.Errorf("key %d, image %v, label %v: %d pixels drawn, PictureBox says %dx%d", i, image, label, got, w, h)
+				}
+			}
+		}
+	}
+}

@@ -89,6 +89,47 @@ const maxCachedPixels = 1 << 20
 // frames x width x height as drawn, 4 bytes each.
 const MaxAnimPixels = 2 << 20
 
+// AnimBytes is what the device keeps to animate GIF data drawn to fit w x h;
+// 0 if it isn't an animated GIF or can't be read.
+func AnimBytes(data string, w, h int) int {
+	if !strings.HasPrefix(data, "R0lGOD") { // "GIF8" in base64
+		return 0
+	}
+	g, err := deck.DecodeAnimation(data)
+	if err != nil || g == nil {
+		return 0
+	}
+	return gfx.NewAnimation(g, w, h).Bytes()
+}
+
+// Picture sizes, in a square: beside a label on the wide key, above one on
+// a square key, and an icon alone.
+const (
+	wideIconSize  = 120
+	labelIconSize = 100
+	iconSize      = 120
+)
+
+// PictureBox is the box a picture on key i is scaled to fit: a custom image
+// (image) or a picture icon, with a label or not. FitSize gives the size it's
+// drawn at.
+func PictureBox(i int, image, label bool) (w, h int) {
+	k := keys[i]
+	switch {
+	case label && k.Dx() > k.Dy():
+		return wideIconSize, wideIconSize
+	case label:
+		return labelIconSize, labelIconSize
+	case image:
+		return k.Dx(), k.Dy()
+	}
+	return iconSize, iconSize
+}
+
+// FitSize is the size a w x h picture is drawn at in a box (PictureBox):
+// scaled to fit, larger too, keeping its aspect ratio.
+func FitSize(w, h, boxW, boxH int) (int, int) { return gfx.FitSize(w, h, boxW, boxH) }
+
 // anim is a GIF's frames as drawn; a is nil if it isn't animated, or was
 // refused (no room on its page).
 type anim struct {
@@ -196,14 +237,14 @@ func (r *Renderer) draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok b
 	switch {
 	case hasIcon && label != "" && area.Dx() > area.Dy():
 		// wide key: icon then label, centred together
-		const iconSize, gap, margin = 120, 28, 24
-		px := FitText(f, label, area.Dx()-2*margin-iconSize-gap, 44)
-		w := iconSize + gap + f.TextWidth(label, px)
+		const gap, margin = 28, 24
+		px := FitText(f, label, area.Dx()-2*margin-wideIconSize-gap, 44)
+		w := wideIconSize + gap + f.TextWidth(label, px)
 		x := area.Min.X + (area.Dx()-w)/2
-		icon(image.Rect(x, area.Min.Y, x+iconSize, area.Max.Y), iconSize)
-		c.DrawText(f, label, image.Rect(x+iconSize+gap, area.Min.Y, x+w, area.Max.Y), px, fg)
+		icon(image.Rect(x, area.Min.Y, x+wideIconSize, area.Max.Y), wideIconSize)
+		c.DrawText(f, label, image.Rect(x+wideIconSize+gap, area.Min.Y, x+w, area.Max.Y), px, fg)
 	case hasIcon && label != "":
-		icon(image.Rect(area.Min.X, area.Min.Y+12, area.Max.X, area.Max.Y-44), 100)
+		icon(image.Rect(area.Min.X, area.Min.Y+12, area.Max.X, area.Max.Y-44), labelIconSize)
 		lr := image.Rect(area.Min.X+8, area.Max.Y-52, area.Max.X-8, area.Max.Y-8)
 		c.DrawText(f, label, lr, FitText(f, label, lr.Dx(), 30), fg)
 	case b.Image != "":
@@ -212,7 +253,7 @@ func (r *Renderer) draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok b
 			c.DrawPicture(img, area)
 		}
 	case hasIcon:
-		icon(area, 120)
+		icon(area, iconSize)
 	case b.Label != "":
 		drawLines(c, f, area, strings.Split(b.Label, "\n"), fg)
 	}

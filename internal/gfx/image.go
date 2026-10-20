@@ -10,7 +10,7 @@ import (
 // Fit scales img to fit in a w x h box, keeping its aspect ratio.
 func Fit(img image.Image, w, h int) *image.RGBA {
 	b := img.Bounds()
-	sw, sh := fitSize(b.Dx(), b.Dy(), w, h)
+	sw, sh := FitSize(b.Dx(), b.Dy(), w, h)
 	if sw > b.Dx() || sh > b.Dy() {
 		dst := image.NewRGBA(image.Rect(0, 0, sw, sh))
 		xdraw.BiLinear.Scale(dst, dst.Bounds(), img, b, xdraw.Src, nil)
@@ -27,8 +27,8 @@ func Fit(img image.Image, w, h int) *image.RGBA {
 	return shrink(src.Pix, src.Stride, b, false, sw, sh)
 }
 
-// fitSize is iw x ih scaled to fit w x h, keeping its aspect ratio.
-func fitSize(iw, ih, w, h int) (int, int) {
+// FitSize is iw x ih scaled to fit w x h, keeping its aspect ratio.
+func FitSize(iw, ih, w, h int) (int, int) {
 	sw, sh := w, ih*w/iw
 	if sh > h {
 		sw, sh = iw*h/ih, h

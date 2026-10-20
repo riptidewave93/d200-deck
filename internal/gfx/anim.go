@@ -76,7 +76,7 @@ func compose(g *gif.GIF, f func(*image.RGBA) bool) {
 // can have palettes of their own). nil if a frame has more than 256 colours.
 func indexedFrames(g *gif.GIF, w, h int) []Picture {
 	gw, gh := g.Config.Width, g.Config.Height
-	sw, sh := fitSize(gw, gh, w, h)
+	sw, sh := FitSize(gw, gh, w, h)
 	xs := make([]int, sw)
 	for x := range xs {
 		xs[x] = x * gw / sw
