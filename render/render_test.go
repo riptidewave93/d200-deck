@@ -426,19 +426,18 @@ func TestAnimatedGIF(t *testing.T) {
 }
 
 func TestAnimationsPerPage(t *testing.T) {
-	// one 40-frame full-key GIF fits a page's budget, two don't
-	a, b := testGIF(t, 40), testGIF(t, 40)
-	b = b[:len(b)-4] + b[len(b)-4:] // a different image with the same frames
-	r := New(&deck.Config{Images: map[string]string{"a": a, "b": b}})
+	// two 100-frame full-key GIFs fit a page's budget (3.8 MB each), three don't
+	g := testGIF(t, deck.MaxFrames)
+	r := New(&deck.Config{Images: map[string]string{"a": g, "b": g, "c": g}})
 	animated := func(id string) bool {
 		r.Draw(gfx.NewCanvas(Width, Height), Key(0), deck.Button{Image: id}, true, Idle)
 		return !r.Next().IsZero()
 	}
-	if !animated("a") || animated("b") {
-		t.Fatal("budget: both GIFs animate on one page, or the first doesn't")
+	if !animated("a") || !animated("b") || animated("c") {
+		t.Fatal("budget: three GIFs animate on one page, or the first two don't")
 	}
 	r.NewPage()
-	if !animated("b") {
+	if !animated("c") {
 		t.Error("the refused GIF stays still on a page of its own")
 	}
 	r.NewPage()

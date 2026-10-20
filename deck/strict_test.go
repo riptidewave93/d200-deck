@@ -64,7 +64,7 @@ func TestFeatures(t *testing.T) {
 			t.Errorf("field %q missing", field)
 		}
 	}
-	if f.Limits["label"] != MaxLabel || len(f.Apps[AppDiscord]) == 0 || len(f.Args[AppMedia]) == 0 {
+	if f.Limits["label"] != MaxLabel || f.Limits["anim_bytes"] != MaxAnimBytes || len(f.Apps[AppDiscord]) == 0 || len(f.Args[AppMedia]) == 0 {
 		t.Errorf("%+v", f)
 	}
 }

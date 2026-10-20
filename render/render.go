@@ -67,11 +67,11 @@ type Renderer struct {
 	// start when the config is set.
 	Now func() time.Time
 
-	start      time.Time
-	next       time.Time // when the key drawn last changes, if it's animated
-	anims      map[imageKey]*anim
-	animPixels int
-	page       int // counts NewPage calls
+	start     time.Time
+	next      time.Time // when the key drawn last changes, if it's animated
+	anims     map[imageKey]*anim
+	animBytes int
+	page      int // counts NewPage calls
 
 	cfg       *deck.Config
 	masks     map[imageKey]*image.Alpha // path icons, drawn
@@ -85,9 +85,8 @@ type Renderer struct {
 // of full-key images.
 const maxCachedPixels = 1 << 20
 
-// MaxAnimPixels bounds the frames of the animations on a page, as drawn
-// (frames x width x height, 4 bytes each); past it, a GIF shows its first
-// frame. A full-key GIF (196 px) fits with 54 frames.
+// MaxAnimPixels is what devices without deck.MaxAnimBytes animate on a page:
+// frames x width x height as drawn, 4 bytes each.
 const MaxAnimPixels = 2 << 20
 
 // anim is a GIF's frames as drawn; a is nil if it isn't animated, or was
@@ -114,7 +113,7 @@ func (r *Renderer) SetConfig(cfg *deck.Config) {
 	r.cfg = cfg
 	r.start = r.now()
 	clear(r.anims)
-	r.animPixels = 0
+	r.animBytes = 0
 	clear(r.masks)
 	clear(r.fonts)
 	clear(r.images)
@@ -188,7 +187,7 @@ func (r *Renderer) draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok b
 		if b.Image == "" {
 			r.drawIcon(c, b.Icon, ir, size, fg)
 		} else if img := r.image(b.Image, size, size); img != nil {
-			c.DrawImage(img, ir)
+			c.DrawPicture(img, ir)
 		}
 	}
 	_, known := r.icon(b.Icon)
@@ -210,7 +209,7 @@ func (r *Renderer) draw(c *gfx.Canvas, area image.Rectangle, b deck.Button, ok b
 	case b.Image != "":
 		// a custom image alone fills the key
 		if img := r.image(b.Image, area.Dx(), area.Dy()); img != nil {
-			c.DrawImage(img, area)
+			c.DrawPicture(img, area)
 		}
 	case hasIcon:
 		icon(area, 120)
@@ -298,7 +297,7 @@ func (r *Renderer) drawIcon(c *gfx.Canvas, name string, ir image.Rectangle, size
 	}
 	if ic.PNG != "" {
 		if img := r.picture("\x00"+name, ic.PNG, size, size); img != nil {
-			c.DrawImage(img, ir)
+			c.DrawPicture(img, ir)
 		}
 		return
 	}
@@ -321,7 +320,7 @@ func (r *Renderer) drawIcon(c *gfx.Canvas, name string, ir image.Rectangle, size
 }
 
 // image is custom image id scaled to fit w x h, or nil if it's broken.
-func (r *Renderer) image(id string, w, h int) *image.RGBA {
+func (r *Renderer) image(id string, w, h int) gfx.Picture {
 	if r.badImages[id] || r.cfg == nil {
 		return nil
 	}
@@ -334,7 +333,7 @@ func (r *Renderer) image(id string, w, h int) *image.RGBA {
 
 // picture is base64 image data, cached as id, scaled to fit w x h; nil if
 // it's broken. An animated GIF gives the frame for now.
-func (r *Renderer) picture(id, data string, w, h int) *image.RGBA {
+func (r *Renderer) picture(id, data string, w, h int) gfx.Picture {
 	k := imageKey{id, w, h}
 	if a := r.animation(k, data); a != nil {
 		now := r.now()
@@ -345,6 +344,9 @@ func (r *Renderer) picture(id, data string, w, h int) *image.RGBA {
 		return f
 	}
 	if img, ok := r.images[k]; ok {
+		if img == nil {
+			return nil // not a nil *image.RGBA in a Picture
+		}
 		return img
 	}
 	if r.images == nil {
@@ -363,11 +365,14 @@ func (r *Renderer) picture(id, data string, w, h int) *image.RGBA {
 		r.pixels += n
 	}
 	r.images[k] = scaled
+	if scaled == nil {
+		return nil
+	}
 	return scaled
 }
 
 // animation is data's frames scaled to fit k's size if it's an animated GIF
-// and they fit in MaxAnimPixels; nil otherwise.
+// and they fit in deck.MaxAnimBytes; nil otherwise.
 func (r *Renderer) animation(k imageKey, data string) *gfx.Animation {
 	if !strings.HasPrefix(data, "R0lGOD") { // "GIF8" in base64
 		return nil
@@ -384,14 +389,14 @@ func (r *Renderer) animation(k imageKey, data string) *gfx.Animation {
 		log.Printf("image %q: %v", k.id, err)
 	} else if g != nil {
 		e.a = gfx.NewAnimation(g, k.w, k.h)
-		if r.animPixels+e.a.Pixels() > MaxAnimPixels {
+		if r.animBytes+e.a.Bytes() > deck.MaxAnimBytes {
 			r.dropOtherPages()
 		}
-		if r.animPixels+e.a.Pixels() > MaxAnimPixels {
+		if r.animBytes+e.a.Bytes() > deck.MaxAnimBytes {
 			log.Printf("image %q: too many animated frames on this page; showing the first", k.id)
 			e.a, e.refused = nil, true
 		} else {
-			r.animPixels += e.a.Pixels()
+			r.animBytes += e.a.Bytes()
 		}
 	}
 	r.anims[k] = e
@@ -403,7 +408,7 @@ func (r *Renderer) dropOtherPages() {
 	for k, e := range r.anims {
 		if e.page != r.page {
 			if e.a != nil {
-				r.animPixels -= e.a.Pixels()
+				r.animBytes -= e.a.Bytes()
 			}
 			delete(r.anims, k)
 		}

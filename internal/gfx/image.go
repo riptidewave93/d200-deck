@@ -10,11 +10,7 @@ import (
 // Fit scales img to fit in a w x h box, keeping its aspect ratio.
 func Fit(img image.Image, w, h int) *image.RGBA {
 	b := img.Bounds()
-	sw, sh := w, b.Dy()*w/b.Dx()
-	if sh > h {
-		sw, sh = b.Dx()*h/b.Dy(), h
-	}
-	sw, sh = max(sw, 1), max(sh, 1)
+	sw, sh := fitSize(b.Dx(), b.Dy(), w, h)
 	if sw > b.Dx() || sh > b.Dy() {
 		dst := image.NewRGBA(image.Rect(0, 0, sw, sh))
 		xdraw.BiLinear.Scale(dst, dst.Bounds(), img, b, xdraw.Src, nil)
@@ -29,6 +25,15 @@ func Fit(img image.Image, w, h int) *image.RGBA {
 	src := image.NewRGBA(b)
 	draw.Draw(src, b, img, b.Min, draw.Src)
 	return shrink(src.Pix, src.Stride, b, false, sw, sh)
+}
+
+// fitSize is iw x ih scaled to fit w x h, keeping its aspect ratio.
+func fitSize(iw, ih, w, h int) (int, int) {
+	sw, sh := w, ih*w/iw
+	if sh > h {
+		sw, sh = iw*h/ih, h
+	}
+	return max(sw, 1), max(sh, 1)
 }
 
 // shrink scales an RGBA (or, if straight, NRGBA) image down to w x h,
@@ -88,13 +93,28 @@ func (c *Canvas) DrawImage(img *image.RGBA, r Rect) {
 			case 255:
 				out[x] = uint32(s[0])<<16 | uint32(s[1])<<8 | uint32(s[2])
 			default:
-				// RGBA is premultiplied: out = src + dst * (1 - alpha)
-				d := out[x]
-				mix := func(src uint8, shift uint) uint32 {
-					return (uint32(src) + (d>>shift&0xff)*(255-a)/255) << shift
-				}
-				out[x] = mix(s[0], 16) | mix(s[1], 8) | mix(s[2], 0)
+				out[x] = over(uint32(s[0]), uint32(s[1]), uint32(s[2]), a, out[x])
 			}
 		}
+	}
+}
+
+// over is premultiplied colour r, g, b with alpha a over canvas pixel d:
+// d * (1 - alpha) + colour.
+func over(r, g, b, a, d uint32) uint32 {
+	na := 255 - a
+	return (r+(d>>16&0xff)*na/255)<<16 | (g+(d>>8&0xff)*na/255)<<8 | (b + (d&0xff)*na/255)
+}
+
+// Picture is an *image.RGBA or an *Indexed.
+type Picture interface{ Bounds() image.Rectangle }
+
+// DrawPicture draws p centred in r, blended over the canvas by its alpha.
+func (c *Canvas) DrawPicture(p Picture, r Rect) {
+	switch p := p.(type) {
+	case *image.RGBA:
+		c.DrawImage(p, r)
+	case *Indexed:
+		c.DrawIndexed(p, r)
 	}
 }

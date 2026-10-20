@@ -166,3 +166,54 @@ func BenchmarkDrawImage(b *testing.B) {
 		c.DrawImage(img, image.Rect(300, 200, 496, 396))
 	}
 }
+
+// DrawIndexed draws as DrawImage does the same picture in RGBA.
+func TestDrawIndexed(t *testing.T) {
+	rng := rand.New(rand.NewPCG(3, 4))
+	pal := new([256]uint32)
+	for i := range pal {
+		a := []uint32{0, 255, uint32(rng.IntN(256))}[i%3]
+		c := a << 24
+		for _, shift := range []uint{16, 8, 0} { // premultiplied
+			c |= uint32(rng.IntN(int(a)+1)) << shift
+		}
+		pal[i] = c
+	}
+	p := &Indexed{W: 37, H: 23, Pix: make([]uint8, 37*23), Palette: pal}
+	rgba := image.NewRGBA(p.Bounds())
+	for i := range p.Pix {
+		p.Pix[i] = uint8(rng.IntN(256))
+		v := pal[p.Pix[i]]
+		copy(rgba.Pix[4*i:], []uint8{uint8(v >> 16), uint8(v >> 8), uint8(v), uint8(v >> 24)})
+	}
+	for _, r := range []Rect{
+		image.Rect(10, 10, 60, 40),
+		image.Rect(-20, -9, 10, 10),
+		image.Rect(45, 30, 90, 60),
+		image.Rect(-90, 0, -50, 10),
+	} {
+		got, want := NewCanvas(64, 48), NewCanvas(64, 48)
+		for i := range got.Pix {
+			got.Pix[i] = rng.Uint32() & 0xffffff
+		}
+		copy(want.Pix, got.Pix)
+		got.DrawPicture(p, r)
+		want.DrawPicture(rgba, r)
+		if !slices.Equal(got.Pix, want.Pix) {
+			t.Errorf("in %v: differs from RGBA", r)
+		}
+	}
+}
+
+// a full-key GIF frame, kept a byte a pixel
+func BenchmarkDrawIndexed(b *testing.B) {
+	c := NewCanvas(1280, 720)
+	pal := new([256]uint32)
+	for i := range pal {
+		pal[i] = 0xff000000 | uint32(i)*0x010101
+	}
+	p := &Indexed{W: 196, H: 196, Pix: make([]uint8, 196*196), Palette: pal}
+	for b.Loop() {
+		c.DrawIndexed(p, image.Rect(300, 200, 496, 396))
+	}
+}

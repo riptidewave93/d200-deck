@@ -45,6 +45,7 @@ func Features() FeatureSet {
 			"image_bytes": MaxImageBytes, "image_side": MaxImageSide, "font_bytes": MaxFontBytes,
 			"icons": MaxIcons, "icon_path": MaxIconPath, "icon_bytes": MaxIconBytes,
 			"icon_side": MaxIconSide, "gif_frames": MaxFrames, "gif_pixels": MaxGIFPixels,
+			"anim_bytes": MaxAnimBytes,
 			"song_cycle": MaxSongCycle,
 		},
 	}

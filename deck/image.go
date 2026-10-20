@@ -62,6 +62,11 @@ const (
 	MaxGIFPixels = 4 << 20
 )
 
+// MaxAnimBytes bounds the frames of the animations on a page, as the device
+// keeps them: a byte a pixel at the size drawn, 4 for a GIF of more than 256
+// colours. Past it, a GIF shows its first frame.
+const MaxAnimBytes = 8 << 20
+
 // ImageSize checks a custom image (base64 PNG, JPEG or GIF) from its header
 // (a GIF's frames too) and returns its size.
 func ImageSize(data string) (image.Point, error) {
