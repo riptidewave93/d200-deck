@@ -4,15 +4,22 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 )
 
 // openURL opens u in the default browser.
 var openURL = func(u string) error { return start("xdg-open", u) }
 
-// systemdRun, if found, puts started programs in their own systemd scope, so
-// they aren't part of deckhost's service and outlive it.
-var systemdRun, _ = exec.LookPath("systemd-run")
+// systemdRun, where systemd runs, puts started programs in their own systemd
+// scope, so they aren't part of deckhost's service and outlive it.
+var systemdRun = func() string {
+	if _, err := os.Stat("/run/systemd/system"); err != nil {
+		return ""
+	}
+	p, _ := exec.LookPath("systemd-run")
+	return p
+}()
 
 // detached is a command for program path in its own session and scope.
 func detached(path string, args []string) *exec.Cmd {
@@ -58,16 +65,29 @@ func restartSelf(lock *os.File) error {
 	return syscall.Exec(exe, os.Args, os.Environ())
 }
 
-// restartService restarts the daemon through its service manager.
+// restartService restarts the daemon through systemd or, where there's no
+// systemd unit for it, starts it logging to deckhost.log next to its socket.
 func restartService() error {
-	return exec.Command("systemctl", "--user", "restart", "deckhost.service").Run()
+	if exec.Command("systemctl", "--user", "restart", "deckhost.service").Run() == nil {
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := detached(exe, []string{"daemon"})
+	if dir, err := runtimeDir(); err == nil {
+		f, err := os.OpenFile(filepath.Join(dir, "deckhost.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err == nil {
+			defer f.Close()
+			cmd.Stdout, cmd.Stderr = f, f
+		}
+	}
+	return cmd.Start()
 }
 
 // secureSocket makes the control socket the user's alone.
 func secureSocket(path string) error { return os.Chmod(path, 0o600) }
-
-// ensureDaemon starts the daemon if the system doesn't: systemd does here.
-func ensureDaemon() {}
 
 // logToFile sends the daemon's log to a file if nothing else keeps it:
 // journald does here.

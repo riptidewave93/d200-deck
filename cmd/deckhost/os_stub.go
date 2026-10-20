@@ -26,8 +26,6 @@ func restartService() error { return errUnsupported }
 
 func secureSocket(path string) error { return nil }
 
-func ensureDaemon() {}
-
 func logToFile() {}
 
 func trayIcon(png []byte) []byte { return png }

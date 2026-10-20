@@ -22,6 +22,16 @@ func runTray() {
 	systray.Run(trayReady, nil)
 }
 
+// ensureDaemon starts the daemon if nothing has: on Windows, or on Linux
+// without systemd or a session that starts its unit.
+func ensureDaemon() {
+	if _, running := daemonStatus(); !running {
+		if err := restartService(); err != nil {
+			log.Printf("starting the daemon: %v", err)
+		}
+	}
+}
+
 func trayReady() {
 	icons := map[bool][]byte{true: trayIcon(drawIcon(0x2f6fde)), false: trayIcon(drawIcon(0x8a8a8a))}
 	systray.SetIcon(icons[false])

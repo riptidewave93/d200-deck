@@ -97,16 +97,6 @@ func restartService() error {
 // secureSocket does nothing: %LOCALAPPDATA% is the user's alone.
 func secureSocket(path string) error { return nil }
 
-// ensureDaemon starts the daemon if it isn't running: Windows has no
-// service manager for it, so the tray (started at login) does.
-func ensureDaemon() {
-	if _, running := daemonStatus(); !running {
-		if err := restartService(); err != nil {
-			log.Printf("starting the daemon: %v", err)
-		}
-	}
-}
-
 // maxLog is how big the log gets before it's started afresh.
 const maxLog = 1 << 20
 
