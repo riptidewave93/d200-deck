@@ -11,7 +11,7 @@ import (
 func TestAppIcons(t *testing.T) {
 	var sizes [][]byte
 	for _, s := range []int{16, 24, 32, 48, 64, 128, 256} {
-		sizes = append(sizes, drawIcon(iconBlue, s))
+		sizes = append(sizes, drawIcon(iconBlue, s, s >= detailedFrom))
 	}
 	for path, want := range map[string][]byte{
 		"../../contrib/icons/deckhost.ico": icoFromPNG(sizes...),

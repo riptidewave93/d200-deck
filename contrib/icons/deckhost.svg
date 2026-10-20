@@ -1,9 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<rect x="2" y="10" width="60" height="44" rx="9" fill="#2f6fde"/>
-<rect x="9" y="17" width="14" height="14" rx="3" fill="#ffffff"/>
-<rect x="25" y="17" width="14" height="14" rx="3" fill="#ffffff"/>
-<rect x="41" y="17" width="14" height="14" rx="3" fill="#ffffff"/>
-<rect x="9" y="33" width="14" height="14" rx="3" fill="#ffffff"/>
-<rect x="25" y="33" width="14" height="14" rx="3" fill="#ffffff"/>
-<rect x="41" y="33" width="14" height="14" rx="3" fill="#ffffff"/>
+<rect x="2" y="12.6" width="60" height="38.8" rx="7" fill="#2f6fde"/>
+<rect x="6.5" y="17.1" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="17.1" y="17.1" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="27.7" y="17.1" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="38.3" y="17.1" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="48.9" y="17.1" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="6.5" y="27.7" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="17.1" y="27.7" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="27.7" y="27.7" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="38.3" y="27.7" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="48.9" y="27.7" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="6.5" y="38.3" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="17.1" y="38.3" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="27.7" y="38.3" width="8.6" height="8.6" rx="2" fill="#ffffff"/>
+<rect x="38.3" y="38.3" width="19.2" height="8.6" rx="2" fill="#ffffff"/>
 </svg>
