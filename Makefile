@@ -23,7 +23,7 @@ WINDOWS := GOOS=windows GOARCH=amd64 CGO_ENABLED=0
 # what deckhost builds from: checked for Windows too
 # what the configuration website runs in the browser
 WASM := GOOS=js GOARCH=wasm
-WASM_PKGS := ./render ./deck ./icons
+WASM_PKGS := ./render ./deck ./icons ./fonts
 PC_PKGS := ./cmd/deckhost ./internal/discord ./internal/obs ./internal/hidraw ./proto/... ./deck ./netid
 
 .PHONY: all build deckd deckhost deckhost.exe dist dist-linux dist-windows test check cover clean
