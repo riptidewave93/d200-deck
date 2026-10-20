@@ -9,9 +9,12 @@ import (
 	"image/jpeg"
 	_ "image/png"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/image/draw"
@@ -69,7 +72,7 @@ func readArtURL(s string) ([]byte, error) {
 	var r io.ReadCloser
 	switch u.Scheme {
 	case "file":
-		if r, err = os.Open(u.Path); err != nil {
+		if r, err = openArtFile(u.Path); err != nil {
 			return nil, err
 		}
 	case "http", "https":
@@ -91,4 +94,26 @@ func readArtURL(s string) ([]byte, error) {
 		err = errors.New("art file too big")
 	}
 	return b, err
+}
+
+// flatpakDir holds each Flatpak app's /tmp, at <app>/tmp; "" for none.
+var flatpakDir = func() string {
+	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
+		return filepath.Join(d, ".flatpak")
+	}
+	return ""
+}()
+
+// openArtFile opens art file path, looking in Flatpak apps' /tmp for one in
+// /tmp that isn't there: a Flatpak player names its own.
+func openArtFile(path string) (*os.File, error) {
+	f, err := os.Open(path)
+	rest, inTmp := strings.CutPrefix(path, "/tmp/")
+	if !errors.Is(err, fs.ErrNotExist) || !inTmp || flatpakDir == "" {
+		return f, err
+	}
+	if m, _ := filepath.Glob(filepath.Join(flatpakDir, "*", "tmp", filepath.Clean("/"+rest))); len(m) > 0 {
+		return os.Open(m[0])
+	}
+	return f, err
 }
