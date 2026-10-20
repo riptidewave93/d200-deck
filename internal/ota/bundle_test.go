@@ -35,7 +35,7 @@ func testBundle() (*Manifest, []member) {
 	for _, t := range Targets {
 		d := files[t]
 		sum := sha256.Sum256(d)
-		m.Images = append(m.Images, Image{t, names[t], int64(len(d)), hex.EncodeToString(sum[:])})
+		m.Images = append(m.Images, Image{Target: t, File: names[t], Size: int64(len(d)), SHA256: hex.EncodeToString(sum[:])})
 		ms = append(ms, member{names[t], d})
 	}
 	return m, ms
@@ -93,8 +93,14 @@ func TestReceiveRejects(t *testing.T) {
 		"missing":      func(m *Manifest, ms []member) (any, []member) { return m, ms[:3] },
 		"extra":        func(m *Manifest, ms []member) (any, []member) { return m, append(ms, member{"x", nil}) },
 		"twice":        func(m *Manifest, ms []member) (any, []member) { return m, append(ms, ms[3]) },
-		"hash":         func(m *Manifest, ms []member) (any, []member) { ms[2].data = []byte("kernal"); return m, ms },
-		"short":        func(m *Manifest, ms []member) (any, []member) { ms[2].data = []byte("kern"); return m, ms },
+		"two kernels": func(m *Manifest, ms []member) (any, []member) {
+			k := m.Images[2]
+			k.File = "kernel2.itb"
+			m.Images = append(m.Images, k)
+			return m, append(ms, member{"kernel2.itb", ms[2].data})
+		},
+		"hash":  func(m *Manifest, ms []member) (any, []member) { ms[2].data = []byte("kernal"); return m, ms },
+		"short": func(m *Manifest, ms []member) (any, []member) { ms[2].data = []byte("kern"); return m, ms },
 		"manifest json": func(m *Manifest, ms []member) (any, []member) {
 			return json.RawMessage(`{"format": "one"}`), ms
 		},
@@ -197,5 +203,55 @@ func TestValidVersion(t *testing.T) {
 		if validVersion(v) != ok {
 			t.Errorf("%q: %v", v, !ok)
 		}
+	}
+}
+
+// Bundles for newer updaters: an optional image of a target this updater
+// doesn't know is checked and skipped; anything else it can't install is
+// refused before anything is kept.
+func TestReceiveNewerBundles(t *testing.T) {
+	extra := []byte("splash")
+	sum := sha256.Sum256(extra)
+	splash := Image{Target: "splash", File: "splash.img", Size: int64(len(extra)), SHA256: hex.EncodeToString(sum[:])}
+
+	m, ms := testBundle()
+	splash.Optional = true
+	m.Images = append(m.Images, splash)
+	dir := t.TempDir()
+	got, err := Receive(bytes.NewReader(tarOf(t, m, append(ms, member{"splash.img", extra}))), dir)
+	if err != nil {
+		t.Fatalf("optional image: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "splash.img")); err == nil || got.Image("kernel").File != "kernel.itb" {
+		t.Error("the optional image was kept, or the rest lost")
+	}
+
+	m, ms = testBundle()
+	splash.Optional = false
+	m.Images = append(m.Images, splash)
+	if _, err := Receive(bytes.NewReader(tarOf(t, m, append(ms, member{"splash.img", extra}))), t.TempDir()); err == nil ||
+		err.Error() != "This update needs newer device software. Install a newer update first." {
+		t.Errorf("required unknown image: %v", err)
+	}
+
+	m, ms = testBundle()
+	m.MinUpdater, m.MinUpdaterRelease = UpdaterVersion+1, "v0.3.0"
+	dir = t.TempDir()
+	if _, err := Receive(bytes.NewReader(tarOf(t, m, ms)), dir); err == nil ||
+		err.Error() != "This update needs newer device software. Install v0.3.0 first." {
+		t.Errorf("min_updater: %v", err)
+	}
+	if e, _ := os.ReadDir(dir); len(e) != 0 {
+		t.Errorf("kept %d files of a refused bundle", len(e))
+	}
+
+	// fields this updater doesn't know are ignored; min_updater it meets is fine
+	m, ms = testBundle()
+	m.MinUpdater = UpdaterVersion
+	b, _ := json.Marshal(m)
+	b = append(b[:len(b)-1], `,"compression":"none","images_note":1}`...)
+	var raw json.RawMessage = b
+	if _, err := Receive(bytes.NewReader(tarOf(t, raw, ms)), t.TempDir()); err != nil {
+		t.Errorf("unknown manifest fields: %v", err)
 	}
 }

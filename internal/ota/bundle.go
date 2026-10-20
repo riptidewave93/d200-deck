@@ -23,6 +23,11 @@ import (
 // Targets are what a bundle writes, in write order.
 var Targets = []string{"idbloader", "u-boot", "kernel", "rootfs"}
 
+// UpdaterVersion is this updater's version, for bundles' min_updater. It goes
+// up only when bundles need something an older updater can't do; new manifest
+// fields an older updater may ignore don't need it.
+const UpdaterVersion = 1
+
 // Manifest describes a bundle (manifest.json).
 type Manifest struct {
 	Format  int     `json:"format"`
@@ -31,6 +36,10 @@ type Manifest struct {
 	Version string  `json:"version"`
 	BuildID int64   `json:"build_id"` // UTC YYYYMMDDHHMM, as os-release's BUILD_ID
 	Images  []Image `json:"images"`
+	// MinUpdater is the oldest UpdaterVersion that can install the bundle,
+	// and MinUpdaterRelease the first OS release with it, to tell the user.
+	MinUpdater        int    `json:"min_updater,omitempty"`
+	MinUpdaterRelease string `json:"min_updater_release,omitempty"`
 
 	// Signed is set by Receive: the bundle's signature checks out with
 	// KeyFile, so it's an official build.
@@ -43,7 +52,12 @@ type Image struct {
 	File   string `json:"file"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
+	// Optional: an updater that doesn't know the target skips the image.
+	Optional bool `json:"optional,omitempty"`
 }
+
+// known reports whether this updater writes im's target.
+func (im Image) known() bool { return slices.Contains(Targets, im.Target) }
 
 // Image returns the bundle's image for target.
 func (m *Manifest) Image(target string) Image {
@@ -65,6 +79,7 @@ const (
 	SigFile     = "manifest.sig"
 	maxManifest = 64 << 10
 	maxImage    = 64 << 20
+	maxImages   = 16
 	idbSize     = 256 << 10 // one IDB copy
 )
 
@@ -77,28 +92,46 @@ func (m *Manifest) check() error {
 	if m.Format != 1 || m.Product != Product {
 		return fmt.Errorf("not an update for this device (format %d, product %q)", m.Format, m.Product)
 	}
-	if !validVersion(m.Version) || m.BuildID <= 0 || (m.Flavour != "release" && m.Flavour != "debug") {
+	if m.MinUpdater > UpdaterVersion {
+		return m.needsNewer()
+	}
+	if !validVersion(m.Version) || m.BuildID <= 0 || (m.Flavour != "release" && m.Flavour != "debug") ||
+		(m.MinUpdaterRelease != "" && !validVersion(m.MinUpdaterRelease)) {
 		return errors.New("manifest: bad version, build_id or flavour")
 	}
-	if len(m.Images) != len(Targets) {
-		return fmt.Errorf("manifest: %d images, want %d", len(m.Images), len(Targets))
+	if len(m.Images) > maxImages {
+		return fmt.Errorf("manifest: over %d images", maxImages)
 	}
-	var files []string
-	for _, t := range Targets {
-		im := m.Image(t)
+	var files, targets []string
+	for _, im := range m.Images {
 		switch {
-		case im.Target == "":
-			return fmt.Errorf("manifest: no %s image", t)
+		case !im.known() && !im.Optional:
+			return m.needsNewer()
+		case slices.Contains(targets, im.Target):
+			return fmt.Errorf("manifest: two %s images", im.Target)
 		case !validFile(im.File) || im.File == ManifestFile || im.File == SigFile || slices.Contains(files, im.File):
 			return fmt.Errorf("manifest: bad file name %q", im.File)
-		case im.Size <= 0 || im.Size > maxImage || (t == "idbloader" && im.Size != idbSize):
+		case im.Size <= 0 || im.Size > maxImage || (im.Target == "idbloader" && im.Size != idbSize):
 			return fmt.Errorf("manifest: bad size for %s", im.File)
 		case len(im.SHA256) != 64:
 			return fmt.Errorf("manifest: bad sha256 for %s", im.File)
 		}
-		files = append(files, im.File)
+		files, targets = append(files, im.File), append(targets, im.Target)
+	}
+	for _, t := range Targets {
+		if !slices.Contains(targets, t) {
+			return fmt.Errorf("manifest: no %s image", t)
+		}
 	}
 	return nil
+}
+
+// needsNewer is the error for a bundle this updater can't install.
+func (m *Manifest) needsNewer() error {
+	if validVersion(m.MinUpdaterRelease) {
+		return fmt.Errorf("This update needs newer device software. Install %s first.", m.MinUpdaterRelease)
+	}
+	return errors.New("This update needs newer device software. Install a newer update first.")
 }
 
 // validVersion reports whether v is a version the device shows as it is:
@@ -177,7 +210,11 @@ func Receive(r io.Reader, dir string) (*Manifest, error) {
 			return nil, fmt.Errorf("unexpected %q in the bundle", h.Name)
 		}
 		seen[h.Name] = true
-		if err := save(tr, filepath.Join(dir, h.Name), m.Images[i]); err != nil {
+		path := filepath.Join(dir, h.Name)
+		if !m.Images[i].known() {
+			path = "" // optional, for a newer updater: checked, not kept
+		}
+		if err := save(tr, path, m.Images[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -204,16 +241,21 @@ func verify(manifest, sig []byte) bool {
 	return err == nil && ok && ed25519.Verify(pub, manifest, sig)
 }
 
-// save writes r to path, checking it against im.
+// save writes r to path, or nowhere if path is "", checking it against im.
 func save(r io.Reader, path string, im Image) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
+	var w io.Writer = io.Discard
+	if path != "" {
+		f, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		w = f
 	}
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(r, im.Size+1))
-	if cerr := f.Close(); err == nil {
-		err = cerr
+	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(r, im.Size+1))
+	if f, ok := w.(*os.File); ok && err == nil {
+		err = f.Close()
 	}
 	switch {
 	case err != nil:
