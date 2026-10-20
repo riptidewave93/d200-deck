@@ -3,6 +3,7 @@ package proto_test
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -240,5 +241,27 @@ func TestReadConfigWithoutGzip(t *testing.T) {
 	b, info, err := c.ReadConfig()
 	if err != nil || !bytes.Equal(b, file) || info.Size != len(file) {
 		t.Errorf("%d bytes, %+v, %v", len(b), info, err)
+	}
+}
+
+func TestGzipImages(t *testing.T) {
+	// base64 image data has no repeats but only 64 symbols: Huffman coding
+	// alone takes a quarter off
+	raw := make([]byte, 300<<10)
+	for i := range raw {
+		raw[i] = byte(i*7919 + i>>3*31)
+	}
+	sum := sha256.Sum256(raw)
+	for i := 0; i < len(raw); i += 32 { // look random
+		sum = sha256.Sum256(sum[:])
+		copy(raw[i:], sum[:])
+	}
+	b := []byte(`{"images": {"x": "` + base64.StdEncoding.EncodeToString(raw) + `"}}`)
+	z := proto.Gzip(b)
+	if len(z) > len(b)*80/100 {
+		t.Errorf("gzipped %d of %d bytes", len(z), len(b))
+	}
+	if back, err := proto.Gunzip(z, len(b)); err != nil || !bytes.Equal(back, b) {
+		t.Errorf("round trip: %v", err)
 	}
 }

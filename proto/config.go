@@ -94,10 +94,12 @@ func (c *Conn) WriteConfig(base string, b []byte) (ConfigInfo, error) {
 	return info, err
 }
 
-// Gzip compresses a config for transfer.
+// Gzip compresses a config for transfer. Below BestCompression, Go's
+// compressor stores base64 image data as it is, finding no repeats; the
+// device gzips once per config version, so the time is worth it.
 func Gzip(b []byte) []byte {
 	var buf bytes.Buffer
-	w, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	w, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
 	w.Write(b)
 	w.Close()
 	return buf.Bytes()
