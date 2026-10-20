@@ -482,6 +482,36 @@ func TestPCState(t *testing.T) {
 	}
 }
 
+// The host resends its state with every heartbeat: only a change redraws.
+func TestPCStateUnchanged(t *testing.T) {
+	changed := make(chan struct{}, 8)
+	p := pcActions{changed: func() { changed <- struct{}{} }}
+	p.heartbeat(proto.ActionHost{ID: "a"})
+	redrew := func() bool {
+		select {
+		case <-changed:
+			return true
+		case <-time.After(100 * time.Millisecond):
+			return false
+		}
+	}
+	steps := []struct {
+		state map[string]bool
+		want  bool
+	}{
+		{map[string]bool{"x": true}, true},
+		{map[string]bool{"x": true}, false},  // the same again
+		{map[string]bool{"y": false}, false}, // off, as it was
+		{map[string]bool{"x": false}, true},
+	}
+	for i, s := range steps {
+		p.setState(proto.State{Host: "a", State: s.state})
+		if got := redrew(); got != s.want {
+			t.Errorf("step %d (%v): redraw %v, want %v", i, s.state, got, s.want)
+		}
+	}
+}
+
 func TestStateLook(t *testing.T) {
 	d := newTestDeckd()
 	d.cfg.Pages["main"].Keys[4] = deck.Button{Icon: "mic", Action: deck.Action{Type: deck.ActionApp, App: deck.AppDiscord, Op: deck.DiscordMute}}

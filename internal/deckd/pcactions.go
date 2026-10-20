@@ -85,10 +85,14 @@ func (p *pcActions) setState(s proto.State) {
 	if p.state == nil {
 		p.state = map[string]bool{}
 	}
+	changed := false
 	for k, v := range s.State {
+		changed = changed || p.state[k] != v
 		p.state[k] = v
 	}
-	p.notify()
+	if changed { // the host resends its state with every heartbeat
+		p.notify()
+	}
 }
 
 // ready reports whether the action host can run a now.
