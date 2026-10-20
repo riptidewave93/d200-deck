@@ -158,4 +158,17 @@ func TestSubsetBad(t *testing.T) {
 		bad[i] ^= 0x5a
 	}
 	Subset(bad, []rune(text)) // no panic
+
+	// a glyph offset past 2 GiB, negative in a 32-bit int (a subset has long offsets)
+	sub, err := Subset(goregular.TTF, []rune(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, _ := readTables(sub)
+	loca := slices.Clone(tables["loca"])
+	loca[0] = 0x80 // the first: nothing before it to be out of order with
+	tables["loca"], tables["head"] = loca, slices.Clone(tables["head"])
+	if _, err := Subset(write(tables), []rune(text)); err == nil {
+		t.Error("huge glyph offset taken")
+	}
 }

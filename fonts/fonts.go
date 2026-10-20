@@ -180,7 +180,11 @@ func locations(loca []byte, long bool, numGlyphs, glyfLen int) ([]int, error) {
 	offs := make([]int, numGlyphs+1)
 	for i := range offs {
 		if long {
-			offs[i] = int(u32(loca[4*i:]))
+			o := u32(loca[4*i:])
+			if o > uint32(glyfLen) { // before int: it may be 32 bits
+				return nil, errBad
+			}
+			offs[i] = int(o)
 		} else {
 			offs[i] = 2 * int(u16(loca[2*i:]))
 		}
