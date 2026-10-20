@@ -115,6 +115,15 @@ func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte)
 		if s.USBNet4 != nil && *s.USBNet4 != "" && !validNet4(*s.USBNet4) {
 			return proto.StatusFailed, []byte("usb_net4 must be an IPv4 address such as 10.77.0.4, its first part 1-223 and not 127")
 		}
+		if s.HostOS != nil && !validHostOS(*s.HostOS) {
+			return proto.StatusFailed, []byte(`host_os must be "mac", "other" or ""`)
+		}
+		if s.HostOS != nil && *s.HostOS != d.host.get() {
+			if _, err := d.host.set(*s.HostOS); err != nil {
+				log.Printf("host os: %v", err)
+			}
+			log.Printf("settings: host_os=%s", *s.HostOS)
+		}
 		var changes [][2]string
 		if s.USBDrive != nil && *s.USBDrive != usbDrive(usbConf) {
 			changes = append(changes, [2]string{"drive", map[bool]string{true: "1", false: "0"}[*s.USBDrive]})
@@ -166,7 +175,8 @@ func (d *deckd) change(changes [][2]string) (byte, []byte) {
 
 func (d *deckd) currentSettings() (byte, []byte) {
 	on, net4 := usbDrive(usbConf), usbNet4(usbConf)
-	s := proto.Settings{USBDrive: &on, USBNet4: &net4}
+	host := d.host.get()
+	s := proto.Settings{USBDrive: &on, USBNet4: &net4, HostOS: &host}
 	if d.light != nil {
 		if p, ok := d.light.get(); ok {
 			low, sleep := brightnessMin, d.sleep.get()

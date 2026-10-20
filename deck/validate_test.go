@@ -25,6 +25,9 @@ func TestValidateActions(t *testing.T) {
 		{Type: ActionSystem, System: SystemSleep},
 		{Type: ActionPage, Page: "browser"},
 		{Type: ActionKey, Keys: []string{"Ctrl", "shift", "f13"}},
+		{Type: ActionKey, Keys: []string{"ctrl", "c"}, MacKeys: []string{"gui", "c"}},
+		{Type: ActionMacro, Steps: []Action{{Type: ActionKey, Keys: []string{"ctrl", "v"}, MacKeys: []string{"cmd", "v"}}}},
+		{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: &Action{Type: ActionKey, Keys: []string{"f14"}, MacKeys: []string{"f15"}}},
 		{Type: ActionText, Text: "Hi!\n\t"},
 		{Type: ActionMacro, Steps: []Action{{Type: ActionKey, Keys: []string{"a"}}, {Type: ActionDelay, MS: 1}}},
 		{Type: ActionOpenURL, URL: "http://example.com"},
@@ -48,6 +51,11 @@ func TestValidateActions(t *testing.T) {
 		{Type: ActionKey},
 		{Type: ActionKey, Keys: []string{"hyper"}},
 		{Type: ActionKey, Keys: []string{"a", "b", "c", "d", "e", "f", "g"}},
+		{Type: ActionKey, MacKeys: []string{"gui", "c"}},                   // keys is always there
+		{Type: ActionKey, Keys: []string{"c"}, MacKeys: []string{"hyper"}}, // a bad Mac combo
+		{Type: ActionText, Text: "x", MacKeys: []string{"gui", "c"}},       // only on hid-key
+		{Type: ActionMacro, Steps: []Action{{Type: ActionKey, Keys: []string{"a"}}}, MacKeys: []string{"a"}},
+		{Type: ActionMacro, Steps: []Action{{Type: ActionKey, Keys: []string{"a"}, MacKeys: []string{"hyper"}}}},
 		{Type: ActionText, Text: "é"},
 		{Type: ActionMacro, Steps: []Action{{Type: ActionMacro}}},
 		{Type: ActionMacro, Steps: []Action{{Type: ActionPage, Page: "main"}}},

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -29,8 +30,8 @@ type builtin struct {
 
 // appOps are the built-in looks and fallbacks, by "<app>.<op>".
 var appOps = map[string]builtin{
-	"discord.mute":         {discordLook("mic"), &Look{Icon: "mic_off", Background: red}, keybind("ctrl", "shift", "m")},
-	"discord.deafen":       {discordLook("headphones"), &Look{Icon: "headset_off", Background: red}, keybind("ctrl", "shift", "d")},
+	"discord.mute":         {discordLook("mic"), &Look{Icon: "mic_off", Background: red}, keybind("ctrl+shift+m", "gui+shift+m")},
+	"discord.deafen":       {discordLook("headphones"), &Look{Icon: "headset_off", Background: red}, keybind("ctrl+shift+d", "gui+shift+d")},
 	"discord.push-to-talk": {look: discordLook("record_voice_over")},
 	"discord.push-to-mute": {look: discordLook("voice_over_off")},
 	"discord.open":         {look: discordLook("discord")},
@@ -66,7 +67,10 @@ var appOps = map[string]builtin{
 	"media.now-playing": {fallback: consumer(UsagePlayPause)},
 }
 
-func keybind(keys ...string) *Action { return &Action{Type: ActionKey, Keys: keys} }
+// keybind is a combo such as "ctrl+m", and mac the one a Mac gets.
+func keybind(keys, mac string) *Action {
+	return &Action{Type: ActionKey, Keys: strings.Split(keys, "+"), MacKeys: strings.Split(mac, "+")}
+}
 
 func consumer(u Usage) *Action { return &Action{Type: ActionConsumer, Usage: u} }
 

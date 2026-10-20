@@ -158,15 +158,20 @@ func (s *sleepScreen) set(v string) (bool, error) {
 		return false, nil
 	}
 	s.isOff.Store(v == proto.SleepScreenOff)
-	if s.file == "" {
-		return true, nil
+	return true, saveSetting(s.file, v)
+}
+
+// saveSetting writes v to file, if there is one.
+func saveSetting(file, v string) error {
+	if file == "" {
+		return nil
 	}
-	tmp := filepath.Join(filepath.Dir(s.file), "."+filepath.Base(s.file)+".tmp")
+	tmp := filepath.Join(filepath.Dir(file), "."+filepath.Base(file)+".tmp")
 	err := os.WriteFile(tmp, []byte(v+"\n"), 0o644)
 	if err == nil {
-		err = os.Rename(tmp, s.file)
+		err = os.Rename(tmp, file)
 	}
-	return true, err
+	return err
 }
 
 // pressAsleep asks the PC to wake, once per sleep.

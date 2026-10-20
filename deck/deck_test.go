@@ -79,6 +79,25 @@ func TestLit(t *testing.T) {
 	}
 }
 
+func TestForMac(t *testing.T) {
+	a := Action{Type: ActionMacro, Steps: []Action{
+		{Type: ActionKey, Keys: []string{"ctrl", "c"}, MacKeys: []string{"gui", "c"}},
+		{Type: ActionDelay, MS: 50},
+		{Type: ActionKey, Keys: []string{"enter"}},
+	}}
+	m := a.ForMac()
+	if got := strings.Join(m.Steps[0].Keys, " ") + "," + strings.Join(m.Steps[2].Keys, " "); got != "gui c,enter" {
+		t.Errorf("Mac steps %q", got)
+	}
+	if strings.Join(a.Steps[0].Keys, " ") != "ctrl c" {
+		t.Error("ForMac changed a")
+	}
+	k := Action{Type: ActionKey, Keys: []string{"f11"}, MacKeys: []string{"ctrl", "gui", "f"}}
+	if strings.Join(k.ForMac().Keys, " ") != "ctrl gui f" || strings.Join(k.Keys, " ") != "f11" {
+		t.Errorf("ForMac %+v", k.ForMac())
+	}
+}
+
 func TestFallback(t *testing.T) {
 	own := &Action{Type: ActionKey, Keys: []string{"f14"}}
 	cases := []struct {
@@ -100,6 +119,9 @@ func TestFallback(t *testing.T) {
 		if got != tc.keys {
 			t.Errorf("%+v: fallback %q, want %q", tc.a, got, tc.keys)
 		}
+	}
+	if f := (Action{Type: ActionApp, App: AppDiscord, Op: DiscordMute}).FallbackAction().ForMac(); strings.Join(f.Keys, " ") != "gui shift m" {
+		t.Errorf("Mac fallback %q", f.Keys)
 	}
 	a := Action{Type: ActionApp, App: AppDiscord, Op: DiscordMute, Fallback: own}
 	if a.ForPC().Fallback != nil || a.Fallback == nil {

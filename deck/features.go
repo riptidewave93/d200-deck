@@ -27,7 +27,7 @@ type FeatureSet struct {
 }
 
 // settingNames are proto.Settings' writable fields.
-var settingNames = []string{"brightness", "sleep_screen", "usb_drive", "usb_net4"}
+var settingNames = []string{"brightness", "host_os", "sleep_screen", "usb_drive", "usb_net4"}
 
 // actionTypes are the action types Validate takes.
 var actionTypes = []ActionType{

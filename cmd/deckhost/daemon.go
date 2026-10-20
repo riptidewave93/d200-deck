@@ -348,6 +348,32 @@ func (d *daemon) session(path string) error {
 	return d.serve(c, path)
 }
 
+// setHostOS tells a device that takes it which OS the PC runs, if that
+// changed: keys with Mac combos send them to a Mac.
+func setHostOS(do func(byte, []byte) ([]byte, error), hello proto.Hello, goos string) error {
+	if hello.Features == nil || !slices.Contains(hello.Features.Settings, "host_os") {
+		return nil
+	}
+	b, err := do(proto.CmdSettings, nil)
+	if err != nil {
+		return err
+	}
+	var s proto.Settings
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	v := proto.HostOther
+	if goos == "darwin" {
+		v = proto.HostMac
+	}
+	if s.HostOS != nil && *s.HostOS == v {
+		return nil
+	}
+	b, _ = json.Marshal(proto.Settings{HostOS: &v})
+	_, err = do(proto.CmdSettings, b)
+	return err
+}
+
 // serve runs PC actions for the device on c until the connection fails.
 func (d *daemon) serve(c *proto.Conn, path string) error {
 	b, err := c.Do(proto.CmdHello, nil)
@@ -369,6 +395,9 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 		return err
 	}
 	d.connected(path, hello)
+	if err := setHostOS(c.Do, hello, runtime.GOOS); err != nil {
+		log.Printf("%s: host os: %v", path, err)
+	}
 	// the looks the device shows: nil while it can't say, or doesn't take
 	// them (an older deckd)
 	looks := deviceLooks(reply)

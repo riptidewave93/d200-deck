@@ -79,7 +79,7 @@ example Discord mute shows `mic`, and `mic_off` while muted). The
 
 | `type` | Runs on | Fields |
 |---|---|---|
-| `hid-key` | deck | `keys`: held while the key is held, e.g. `["ctrl", "shift", "m"]` |
+| `hid-key` | deck | `keys`: held while the key is held, e.g. `["ctrl", "shift", "m"]`. Optional `mac_keys`: sent instead to a Mac, e.g. `["gui", "shift", "m"]` |
 | `hid-consumer` | deck | `usage`: `play-pause`, `next-track`, `prev-track`, `mute`, `volume-up`, `volume-down`, or a number |
 | `hid-system` | deck | `system`: `sleep`, `power-down`, `wake-up` |
 | `type-text` | deck | `text`: up to 1024 characters, ASCII, typed on a US layout |

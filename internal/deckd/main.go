@@ -86,6 +86,7 @@ type deckd struct {
 	askedWake bool
 	light     *backlight // nil without one
 	sleep     sleepScreen
+	host      hostOS
 	power     screenPower // nil without a display
 	screenOff bool        // turned off for the PC's sleep
 }
@@ -256,6 +257,9 @@ func (d *deckd) press(i int, down bool) {
 			a = *f
 		}
 	}
+	if d.host.mac() {
+		a = a.ForMac()
+	}
 	d.held[i] = &held{page: d.page(), action: a}
 	d.drawKey(i, render.Pressed)
 
@@ -416,6 +420,7 @@ func Main(args []string) {
 	d.disp, d.power = disp, disp
 	d.light = newBacklight(filepath.Join(filepath.Dir(*config), "brightness"))
 	d.sleep.load(filepath.Join(filepath.Dir(*config), "sleep_screen"))
+	d.host.load(filepath.Join(filepath.Dir(*config), "host_os"))
 	d.show(gfx.Rect{Max: image.Pt(render.Width, render.Height)})
 	d.drawPage()
 	if !d.test {

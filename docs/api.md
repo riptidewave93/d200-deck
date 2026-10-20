@@ -173,6 +173,7 @@ An app without a `status` isn't set up yet. With no helper, it's `{"connected": 
 | `brightness` | 100 | The screen's brightness in percent, `brightness_min` to 100 (others are clamped). It applies at once, so a slider can send it while dragging, and is saved a second after the last change. While the PC sleeps the screen dims to `brightness_min`, unless `sleep_screen` is `"off"`. |
 | `brightness_min` | | Read only: the lowest `brightness` |
 | `sleep_screen` | `"zzz"` | While the PC sleeps: `"zzz"`, the screen dimmed with a sleep mark, or `"off"`, the screen off |
+| `host_os` | `""` | The PC's OS: `"mac"`, `"other"` or `""` (not known). deckhost sets it on connect. On `"mac"`, keys send their `mac_keys`. |
 
 A deck without a dimmable screen, or with older software, leaves out the brightness fields and
 `sleep_screen`.

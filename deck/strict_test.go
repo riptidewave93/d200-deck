@@ -20,6 +20,8 @@ func TestParseStrict(t *testing.T) {
 		{page(`{"label": "x", "on": {"blink": true}}`), "pages.m.keys.0.on.blink: unknown field"},
 		{page(`{"action": {"type": "macro", "steps": [{"type": "delay", "ms": 5, "repeat": 2}]}}`), "pages.m.keys.0.action.steps.0.repeat: unknown field"},
 		{page(`{"action": {"type": "app", "app": "obs", "op": "record", "fallback": {"type": "hid-key", "keys": ["a"], "hold": 1}}}`), "action.fallback.hold: unknown field"},
+		// as older firmware sees mac_keys: refused on write, ignored on load
+		{page(`{"action": {"type": "hid-key", "keys": ["a"], "linux_keys": ["b"]}}`), "pages.m.keys.0.action.linux_keys: unknown field"},
 		{`{"version": 1, "home": "m", "pages": {"m": {"keys": {}}}, "theme": "dark"}`, "theme: unknown field"},
 		{`{"version": 1, "home": "m", "pages": {"m": {"keys": {}}}, "icons": {"a": {"d": "M0 0Z", "viewBox": "0 0 1 1", "fill": 1}}}`, "icons.a.fill: unknown field"},
 		{page(`{"action": {"type": "app", "app": "discord", "op": "mute", "args": {"id": "1", "volume": 3}}}`), `discord mute: unknown arg "volume"`},
@@ -36,6 +38,7 @@ func TestParseStrict(t *testing.T) {
 	}
 	for _, ok := range []string{
 		page(`{"Label": "x"}`), // encoding/json matches names in any case
+		page(`{"action": {"type": "hid-key", "keys": ["ctrl", "c"], "mac_keys": ["gui", "c"]}}`),
 		page(`{"action": {"type": "app", "app": "media", "op": "now-playing", "args": {"show": "both", "cycle": 5}}}`),
 		page(`{"action": {"type": "app", "app": "newapp", "op": "go", "args": {"anything": 1}}}`), // its host checks
 	} {
@@ -59,10 +62,13 @@ func TestFeatures(t *testing.T) {
 			t.Errorf("%q missing", typ)
 		}
 	}
-	for _, field := range []string{"button.on", "action.fallback", "config.fonts", "icon.png"} {
+	for _, field := range []string{"button.on", "action.fallback", "action.mac_keys", "config.fonts", "icon.png"} {
 		if !slices.Contains(f.Fields, field) {
 			t.Errorf("field %q missing", field)
 		}
+	}
+	if !slices.Contains(f.Settings, "host_os") {
+		t.Errorf("settings %q", f.Settings)
 	}
 	if f.Limits["label"] != MaxLabel || f.Limits["anim_bytes"] != MaxAnimBytes || len(f.Apps[AppDiscord]) == 0 || len(f.Args[AppMedia]) == 0 {
 		t.Errorf("%+v", f)

@@ -342,7 +342,16 @@ type Settings struct {
 	// SleepScreenZzz or SleepScreenOff. Only a device with a dimmable screen
 	// has it.
 	SleepScreen *string `json:"sleep_screen,omitempty"`
+	// HostOS is the PC's OS as its software last said: HostMac, HostOther
+	// or "" for not known. On HostMac, keys send their mac_keys.
+	HostOS *string `json:"host_os,omitempty"`
 }
+
+// Host OSes.
+const (
+	HostMac   = "mac"
+	HostOther = "other"
+)
 
 // Sleep screens: dimmed with the sleep mark (the default), or off.
 const (

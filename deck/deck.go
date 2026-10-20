@@ -190,6 +190,22 @@ func (a Action) ForPC() Action {
 	return a
 }
 
+// ForMac is the action as sent to a Mac: its steps and itself with MacKeys
+// in place of Keys, where they have them.
+func (a Action) ForMac() Action {
+	if len(a.MacKeys) > 0 {
+		a.Keys = a.MacKeys
+	}
+	if len(a.Steps) > 0 {
+		steps := make([]Action, len(a.Steps))
+		for i, s := range a.Steps {
+			steps[i] = s.ForMac()
+		}
+		a.Steps = steps
+	}
+	return a
+}
+
 // Action is what pressing a key does; the fields used depend on Type.
 type Action struct {
 	Type    ActionType        `json:"type,omitempty"`
@@ -208,6 +224,8 @@ type Action struct {
 	App     string            `json:"app,omitempty"`
 	Op      string            `json:"op,omitempty"`
 	Args    json.RawMessage   `json:"args,omitempty"`
+	// MacKeys, on a hid-key action, are sent instead of Keys to a Mac.
+	MacKeys []string `json:"mac_keys,omitempty"`
 	// Fallback, on a PC action, runs on the device instead while the PC
 	// can't run the action (see FallbackAction).
 	Fallback *Action `json:"fallback,omitempty"`
@@ -406,6 +424,14 @@ func (c *Config) validateAction(a Action, inMacro bool) error {
 			return fmt.Errorf("%s action is over %d bytes", a.Type, MaxPCAction)
 		}
 	}
+	if len(a.MacKeys) > 0 {
+		if a.Type != ActionKey {
+			return errors.New("mac_keys: only on hid-key")
+		}
+		if _, _, err := ParseKeys(a.MacKeys); err != nil {
+			return fmt.Errorf("mac_keys: %w", err)
+		}
+	}
 	switch a.Type {
 	case ActionNone, ActionBack, ActionHome:
 	case ActionConsumer:
@@ -530,8 +556,16 @@ func DefaultConfig() *Config {
 	folder := func(icon, label, page string) Button {
 		return Button{Icon: icon, Label: label, Action: Action{Type: ActionPage, Page: page}}
 	}
-	key := func(icon, label string, keys ...string) Button {
-		return Button{Icon: icon, Label: label, Action: Action{Type: ActionKey, Keys: keys}}
+	// combos such as "ctrl+r"; a Mac gets mac, if set, instead of keys
+	step := func(keys, mac string) Action {
+		a := Action{Type: ActionKey, Keys: strings.Split(keys, "+")}
+		if mac != "" {
+			a.MacKeys = strings.Split(mac, "+")
+		}
+		return a
+	}
+	key := func(icon, label, keys, mac string) Button {
+		return Button{Icon: icon, Label: label, Action: step(keys, mac)}
 	}
 	back := Button{Icon: "back", Label: "Back", Action: Action{Type: ActionBack}}
 	repo := Button{Icon: "github", Label: "Source Repo", Action: Action{Type: ActionOpenURL, URL: RepoURL}}
@@ -568,22 +602,22 @@ func DefaultConfig() *Config {
 				11: folder("obs", "OBS", "obs"),
 				13: repo,
 			}},
-			// Shortcuts Chrome, Edge and Firefox share on Windows and Linux
+			// Shortcuts Chrome, Edge and Firefox share on Windows, Linux and Mac
 			"browser": {Keys: map[int]Button{
 				0:  back,
-				1:  key("browser-back", "Back", "alt", "left"),
-				2:  key("reload", "Reload", "ctrl", "r"),
-				3:  key("browser-forward", "Forward", "alt", "right"),
-				4:  key("link", "Address", "ctrl", "l"),
-				5:  key("chevron_left", "Prev Tab", "ctrl", "shift", "tab"),
-				6:  key("add", "New Tab", "ctrl", "t"),
-				7:  key("close", "Close Tab", "ctrl", "w"),
-				8:  key("history", "Reopen", "ctrl", "shift", "t"),
-				9:  key("chevron_right", "Next Tab", "ctrl", "tab"),
-				10: key("search", "Find", "ctrl", "f"),
-				11: key("zoom_out", "Zoom Out", "ctrl", "minus"),
-				12: key("zoom_in", "Zoom In", "ctrl", "equal"),
-				13: key("fullscreen", "Full Screen", "f11"),
+				1:  key("browser-back", "Back", "alt+left", "gui+leftbrace"),
+				2:  key("reload", "Reload", "ctrl+r", "gui+r"),
+				3:  key("browser-forward", "Forward", "alt+right", "gui+rightbrace"),
+				4:  key("link", "Address", "ctrl+l", "gui+l"),
+				5:  key("chevron_left", "Prev Tab", "ctrl+shift+tab", ""),
+				6:  key("add", "New Tab", "ctrl+t", "gui+t"),
+				7:  key("close", "Close Tab", "ctrl+w", "gui+w"),
+				8:  key("history", "Reopen", "ctrl+shift+t", "gui+shift+t"),
+				9:  key("chevron_right", "Next Tab", "ctrl+tab", ""),
+				10: key("search", "Find", "ctrl+f", "gui+f"),
+				11: key("zoom_out", "Zoom Out", "ctrl+minus", "gui+minus"),
+				12: key("zoom_in", "Zoom In", "ctrl+equal", "gui+equal"),
+				13: key("fullscreen", "Full Screen", "f11", "ctrl+gui+f"),
 			}},
 			// Mute and deafen use Discord's default keybinds until deckhost
 			// is connected to Discord. Leave has no keybind by default: bind
@@ -603,31 +637,31 @@ func DefaultConfig() *Config {
 				1: {Icon: "sleep", Label: "Sleep", Action: Action{Type: ActionSystem, System: SystemSleep}},
 				2: {Icon: "power_settings_new", Label: "Power Off", Action: Action{Type: ActionSystem, System: SystemPowerDown}},
 			}},
-			// Shortcuts that work on Windows and most Linux desktops, and in
+			// Shortcuts that work on Windows, Mac and most Linux desktops, and in
 			// Zoom, Google Meet and Teams.
 			"macros": {Keys: map[int]Button{
 				0: back,
-				1: key("lock", "Lock", "gui", "l"),
-				2: key("screenshot_monitor", "Screenshot", "printscreen"),
-				3: key("content_paste", "Paste Plain", "ctrl", "shift", "v"),
+				1: key("lock", "Lock", "gui+l", "ctrl+gui+q"),
+				2: key("screenshot_monitor", "Screenshot", "printscreen", "gui+shift+5"),
+				3: key("content_paste", "Paste Plain", "ctrl+shift+v", "gui+alt+shift+v"),
 				5: {Icon: "select_all", Label: "Copy All", Action: Action{Type: ActionMacro, Steps: []Action{
-					{Type: ActionKey, Keys: []string{"ctrl", "a"}},
+					step("ctrl+a", "gui+a"),
 					{Type: ActionDelay, MS: 50},
-					{Type: ActionKey, Keys: []string{"ctrl", "c"}},
+					step("ctrl+c", "gui+c"),
 				}}},
 				// in a browser: search for the selected text in a new tab
 				6: {Icon: "search", Label: "Search It", Action: Action{Type: ActionMacro, Steps: []Action{
-					{Type: ActionKey, Keys: []string{"ctrl", "c"}},
+					step("ctrl+c", "gui+c"),
 					{Type: ActionDelay, MS: 50},
-					{Type: ActionKey, Keys: []string{"ctrl", "t"}},
+					step("ctrl+t", "gui+t"),
 					{Type: ActionDelay, MS: 300},
-					{Type: ActionKey, Keys: []string{"ctrl", "v"}},
-					{Type: ActionKey, Keys: []string{"enter"}},
+					step("ctrl+v", "gui+v"),
+					step("enter", ""),
 				}}},
 				7:  {Icon: "reply", Label: "Reply", Action: Action{Type: ActionText, Text: "Thanks! I'll take a look and get back to you."}},
-				10: key("mic_off", "Zoom Mic", "alt", "a"),
-				11: key("mic_off", "Meet Mic", "ctrl", "d"),
-				12: key("mic_off", "Teams Mic", "ctrl", "shift", "m"),
+				10: key("mic_off", "Zoom Mic", "alt+a", "gui+shift+a"),
+				11: key("mic_off", "Meet Mic", "ctrl+d", "gui+d"),
+				12: key("mic_off", "Teams Mic", "ctrl+shift+m", "gui+shift+m"),
 			}},
 			// OBS's default scene and audio sources: rename to match yours
 			"obs": {Keys: map[int]Button{

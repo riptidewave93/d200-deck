@@ -617,3 +617,47 @@ func TestWebURL(t *testing.T) {
 		t.Error("opened a file URL")
 	}
 }
+
+// deckhost tells the device its OS only if the device takes host_os, and
+// only when it changed.
+func TestSetHostOS(t *testing.T) {
+	takes := &deck.FeatureSet{Settings: []string{"host_os", "usb_drive"}}
+	for _, tc := range []struct {
+		name     string
+		features *deck.FeatureSet
+		has      string // the device's host_os; "-" for none in its reply
+		goos     string
+		want     string // what's written; "" for nothing
+	}{
+		{"no features", nil, "-", "darwin", ""},
+		{"no host_os", &deck.FeatureSet{Settings: []string{"usb_drive"}}, "-", "linux", ""},
+		{"unknown", takes, "", "linux", `{"host_os":"other"}`},
+		{"mac", takes, "", "darwin", `{"host_os":"mac"}`},
+		{"unchanged", takes, "other", "windows", ""},
+		{"changed", takes, "other", "darwin", `{"host_os":"mac"}`},
+	} {
+		var reads int
+		var wrote string
+		do := func(cmd byte, p []byte) ([]byte, error) {
+			if cmd != proto.CmdSettings {
+				t.Fatalf("%s: command %#x", tc.name, cmd)
+			}
+			if len(p) > 0 {
+				wrote = string(p)
+				return nil, nil
+			}
+			reads++
+			if tc.has == "-" {
+				return []byte(`{"usb_drive":true}`), nil
+			}
+			return json.Marshal(proto.Settings{HostOS: &tc.has})
+		}
+		err := setHostOS(do, proto.Hello{Features: tc.features}, tc.goos)
+		if err != nil || wrote != tc.want {
+			t.Errorf("%s: wrote %q, %v; want %q", tc.name, wrote, err, tc.want)
+		}
+		if tc.has == "-" && reads > 0 {
+			t.Errorf("%s: read the settings", tc.name)
+		}
+	}
+}
