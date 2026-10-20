@@ -5,3 +5,4 @@ vendor/
 /deck-update
 /deckhost
 /*.png
+/cmd/deckhost/rsrc_windows_*.syso

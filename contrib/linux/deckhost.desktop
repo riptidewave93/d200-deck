@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=D200 Deck
+Comment=Runs the device's PC keys
+Exec=@BIN@ tray
+Icon=deckhost
+Categories=Utility;

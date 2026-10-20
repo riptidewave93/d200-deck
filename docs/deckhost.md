@@ -25,7 +25,7 @@ no line.
 | Download OS v… | Opens the GitHub release page of a newer device OS than a connected device has (only then) |
 | Download deckhost v… | Opens the GitHub release page of a newer deckhost, shown when there is one, or when a device's software is too new for this deckhost |
 | Restart | Restarts the daemon (or starts it if it isn't running) |
-| Exit | Stops the daemon and closes the tray; both start again at next login |
+| Exit | Stops the daemon and closes the tray; both start again at next login, or from **D200 Deck** in the app launcher or Start menu |
 
 The tray passes these to the daemon over `$XDG_RUNTIME_DIR/deckhost.sock`. The same commands work
 from a shell: `deckhost status | configure | update [serial] | restart | exit`. With several D200s

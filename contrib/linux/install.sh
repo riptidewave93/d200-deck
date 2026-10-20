@@ -1,9 +1,10 @@
 #!/bin/sh
 # Installs deckhost for the current user on any Linux, for distros without the
 # .deb/.rpm or where packages are awkward (atomic distros, SteamOS, Alpine...):
-# the binary, the daemon's systemd user unit (where systemd runs) and the tray
-# icon's autostart entry (the tray starts the daemon if systemd doesn't), then
-# the udev rule that lets you open the D200 (as root, once).
+# the binary, the daemon's systemd user unit (where systemd runs), the tray
+# icon's autostart entry (the tray starts the daemon if systemd doesn't), an
+# app launcher entry with its icon, then the udev rule that lets you open the
+# D200 (as root, once).
 #
 #   ./install.sh               install or update
 #   ./install.sh --uninstall   remove (the udev rule stays; see below)
@@ -13,6 +14,9 @@ cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 bin=$HOME/.local/bin/deckhost
 unit=$cfg/systemd/user/deckhost.service
 autostart=$cfg/autostart/deckhost-tray.desktop
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+app=$data/applications/deckhost.desktop
+icon=$data/icons/hicolor/scalable/apps/deckhost.svg
 rule=/etc/udev/rules.d/70-d200-deck.rules
 
 systemd=
@@ -38,7 +42,7 @@ stop() {
 
 if [ "${1:-}" = --uninstall ]; then
 	stop
-	rm -f "$bin" "$unit" "$autostart"
+	rm -f "$bin" "$unit" "$autostart" "$app" "$icon"
 	if [ -n "$systemd" ]; then
 		systemctl --user daemon-reload 2>/dev/null || true
 	fi
@@ -48,8 +52,10 @@ fi
 
 stop
 install -Dm755 "$src/deckhost" "$bin"
-mkdir -p "$(dirname "$autostart")"
+mkdir -p "$(dirname "$autostart")" "$(dirname "$app")"
 sed "s|@BIN@|$bin|" "$src/deckhost-tray.desktop" > "$autostart"
+sed "s|@BIN@|$bin|" "$src/deckhost.desktop" > "$app"
+install -Dm644 "$src/deckhost.svg" "$icon"
 running=
 if [ -n "$systemd" ]; then
 	mkdir -p "$(dirname "$unit")"

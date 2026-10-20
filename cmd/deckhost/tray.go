@@ -1,13 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"log"
 	"path/filepath"
 	"strings"
@@ -20,6 +16,15 @@ import (
 
 func runTray() {
 	ensureDaemon()
+	// one tray: starting it again, e.g. from the app launcher, does nothing
+	if path, err := socketPath(); err == nil {
+		lock, err := lockInstance(path + ".tray.lock")
+		if err != nil {
+			log.Print("the tray is already running")
+			return
+		}
+		defer lock.Close()
+	}
 	systray.Run(trayReady, nil)
 }
 
@@ -34,7 +39,7 @@ func ensureDaemon() {
 }
 
 func trayReady() {
-	icons := map[bool][]byte{true: trayIcon(drawIcon(0x2f6fde)), false: trayIcon(drawIcon(0x8a8a8a))}
+	icons := map[bool][]byte{true: trayIcon(drawIcon(iconBlue, trayIconSize)), false: trayIcon(drawIcon(0x8a8a8a, trayIconSize))}
 	systray.SetIcon(icons[false])
 	systray.SetTitle("D200")
 	systray.SetTooltip("D200 Deck")
@@ -262,65 +267,4 @@ func daemonStatus() (s Status, running bool) {
 	}
 	json.Unmarshal([]byte(reply), &s)
 	return s, true
-}
-
-// drawIcon draws the tray icon: a deck of 3x2 keys on a body of colour body.
-func drawIcon(body uint32) []byte {
-	const size, ss = 64, 4 // pixels, samples per pixel per axis
-	bodyRGBA := color.RGBA{uint8(body >> 16), uint8(body >> 8), uint8(body), 0xff}
-	white := color.RGBA{0xff, 0xff, 0xff, 0xff}
-	type rect struct{ x0, y0, x1, y1, r float64 }
-	shapes := []rect{{2, 10, 62, 54, 9}}
-	for row := 0; row < 2; row++ {
-		for col := 0; col < 3; col++ {
-			x, y := 9+float64(col)*16, 17+float64(row)*16
-			shapes = append(shapes, rect{x, y, x + 14, y + 14, 3})
-		}
-	}
-	inside := func(s rect, x, y float64) bool {
-		cx := min(max(x, s.x0+s.r), s.x1-s.r)
-		cy := min(max(y, s.y0+s.r), s.y1-s.r)
-		return x >= s.x0 && x < s.x1 && y >= s.y0 && y < s.y1 && (x-cx)*(x-cx)+(y-cy)*(y-cy) <= s.r*s.r
-	}
-	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	for py := 0; py < size; py++ {
-		for px := 0; px < size; px++ {
-			var nBody, nKey int
-			for sy := 0; sy < ss; sy++ {
-				for sx := 0; sx < ss; sx++ {
-					x, y := float64(px)+(float64(sx)+0.5)/ss, float64(py)+(float64(sy)+0.5)/ss
-					switch {
-					case !inside(shapes[0], x, y):
-					case func() bool {
-						for _, k := range shapes[1:] {
-							if inside(k, x, y) {
-								return true
-							}
-						}
-						return false
-					}():
-						nKey++
-					default:
-						nBody++
-					}
-				}
-			}
-			n := nBody + nKey
-			if n == 0 {
-				continue
-			}
-			// colour: mix of body and key samples; alpha: coverage
-			mix := func(a, b uint8) uint8 { return uint8((int(a)*nBody + int(b)*nKey) / n) }
-			a := n * 255 / (ss * ss)
-			img.SetRGBA(px, py, color.RGBA{
-				uint8(int(mix(bodyRGBA.R, white.R)) * a / 255),
-				uint8(int(mix(bodyRGBA.G, white.G)) * a / 255),
-				uint8(int(mix(bodyRGBA.B, white.B)) * a / 255),
-				uint8(a),
-			})
-		}
-	}
-	var b bytes.Buffer
-	png.Encode(&b, img)
-	return b.Bytes()
 }

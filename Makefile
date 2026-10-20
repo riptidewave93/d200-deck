@@ -10,6 +10,7 @@ OUT := build
 PKG_VERSION ?= $(shell t=$$(git describe --tags --exact-match 2>/dev/null) && echo $${t\#v} || \
 	echo 0.0.0~git$$(git show -s --format=%cd --date=format:%Y%m%d HEAD).$$(git rev-parse --short HEAD))
 NFPM_VERSION := v2.41.1
+WINRES_VERSION := v0.3.3
 # The website builds its WebAssembly with TinyGo
 TINYGO_IMAGE ?= docker.io/tinygo/tinygo:0.43.0
 WASMTIME_VERSION := v29.0.1
@@ -52,7 +53,7 @@ deckhost :
 	$(RUN) env $(PC) go build -trimpath -ldflags '$(LDFLAGS)' -o $(OUT)/$@ ./cmd/$@
 
 # a GUI program: no console window at login (commands still print in a terminal)
-deckhost.exe :
+deckhost.exe : cmd/deckhost/rsrc_windows_amd64.syso
 	$(RUN) env $(WINDOWS) go build -trimpath -ldflags '$(LDFLAGS) -H=windowsgui' -o $(OUT)/$@ ./cmd/deckhost
 
 # Builds deckhost for this PC, then installs or updates it for the current user with the Linux
@@ -63,8 +64,14 @@ install :
 	rm -rf $(OUT)/stage/install && mkdir -p $(OUT)/stage/install
 	$(RUN) env CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o $(OUT)/stage/install/deckhost ./cmd/deckhost
 	cp contrib/linux/install.sh contrib/linux/deckhost.service contrib/linux/deckhost-tray.desktop \
-		contrib/linux/70-d200-deck.rules $(OUT)/stage/install/
+		contrib/linux/deckhost.desktop contrib/icons/deckhost.svg contrib/linux/70-d200-deck.rules \
+		$(OUT)/stage/install/
 	sh $(OUT)/stage/install/install.sh
+
+# The exe's icon, a resource go build links in
+cmd/deckhost/rsrc_windows_amd64.syso : contrib/icons/deckhost.ico
+	$(RUN) go run github.com/tc-hib/go-winres@$(WINRES_VERSION) simply --arch amd64 --manifest none \
+		--icon $< --out cmd/deckhost/rsrc
 
 # Installers into ./build/dist: see docs/install.md
 dist : dist-linux dist-windows

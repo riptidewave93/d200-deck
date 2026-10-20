@@ -12,6 +12,8 @@ InstallDir "$PROGRAMFILES64\${APP}"
 SetCompressor /SOLID lzma
 
 !include "MUI2.nsh"
+!define MUI_ICON "contrib\icons\deckhost.ico"
+!define MUI_UNICON "contrib\icons\deckhost.ico"
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_FUNCTION StartTray
 !define MUI_FINISHPAGE_RUN_TEXT "Start ${APP}"

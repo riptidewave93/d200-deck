@@ -14,12 +14,13 @@ sudo dnf install ./deckhost-<version>.x86_64.rpm
 ```
 
 The package installs `/usr/bin/deckhost`, the udev rule that lets you open the D200, the daemon
-as a systemd user service (enabled for every user) and the tray's autostart entry. Log out and in,
+as a systemd user service (enabled for every user), the tray's autostart entry and a
+**D200 Deck** app launcher entry. Log out and in,
 or start them now: `systemctl --user start deckhost.service && deckhost tray &`.
 
 **Atomic distros** (Fedora Silverblue, Bluefin, Bazzite, SteamOS) and anything else: unpack
 `deckhost-<version>-linux-<arch>.tar.gz` and run `./install.sh` in it. It installs for your user
-(`~/.local/bin`) and starts deckhost, then prints the udev rule's root command (needed once) and
+(`~/.local/bin`, with a **D200 Deck** launcher entry) and starts deckhost, then prints the udev rule's root command (needed once) and
 offers to run it with `sudo` or `doas`. Run it again to update; `./install.sh --uninstall` removes
 it. From a checkout of this repo, `make install` builds deckhost and does the same.
 

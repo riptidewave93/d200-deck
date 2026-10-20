@@ -11,7 +11,7 @@ dist=$OUT/dist
 rm -rf "$STAGE"
 mkdir -p "$STAGE" "$dist"
 cp "$bin" "$STAGE/deckhost"
-for f in deckhost.service deckhost-tray.desktop; do
+for f in deckhost.service deckhost-tray.desktop deckhost.desktop; do
 	sed 's|@BIN@|/usr/bin/deckhost|' "contrib/linux/$f" > "$STAGE/$f"
 done
 sed -e "s|\${ARCH}|$ARCH|g" -e "s|\${PKG_VERSION}|$PKG_VERSION|g" -e "s|\${STAGE}|$STAGE|g" \
@@ -26,6 +26,7 @@ rm -rf "$tree"
 mkdir -p "$tree"
 cp "$bin" "$tree/deckhost"
 cp contrib/linux/install.sh contrib/linux/deckhost.service contrib/linux/deckhost-tray.desktop \
-	contrib/linux/70-d200-deck.rules LICENSE NOTICE.md "$tree/"
+	contrib/linux/deckhost.desktop contrib/icons/deckhost.svg contrib/linux/70-d200-deck.rules \
+	LICENSE NOTICE.md "$tree/"
 cp -r LICENSES "$tree/"
 tar -C "$OUT/stage" -czf "$dist/$name.tar.gz" "$name"

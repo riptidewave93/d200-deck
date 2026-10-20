@@ -21,6 +21,10 @@ contents:
   - src: ${STAGE}/deckhost-tray.desktop
     dst: /etc/xdg/autostart/deckhost-tray.desktop
     type: config
+  - src: ${STAGE}/deckhost.desktop
+    dst: /usr/share/applications/deckhost.desktop
+  - src: contrib/icons/deckhost.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/deckhost.svg
   - src: LICENSE
     dst: /usr/share/doc/deckhost/LICENSE
   - src: NOTICE.md
