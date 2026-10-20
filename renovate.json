@@ -1,0 +1,55 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits"],
+  "enabledManagers": ["custom.regex", "github-actions", "gomod"],
+  "postUpdateOptions": ["gomodTidy"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The container images the Makefile runs",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": ["_IMAGE \\?= (?<depName>[a-z0-9./_-]+):(?<currentValue>\\S+)"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Go tools the Makefile installs or runs",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "NFPM_VERSION := (?<currentValue>v\\S+)[\\s\\S]*?(?<depName>github\\.com/goreleaser/nfpm/v2)/cmd/nfpm@",
+        "WINRES_VERSION := (?<currentValue>v\\S+)[\\s\\S]*?(?<depName>github\\.com/tc-hib/go-winres)@"
+      ],
+      "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "description": "wasmtime, for the TinyGo tests",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": ["WASMTIME_VERSION := (?<currentValue>v\\S+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "bytecodealliance/wasmtime"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Build tools, actions and runners: one PR a week",
+      "matchPackageNames": ["*"],
+      "groupName": "tools",
+      "schedule": ["* 0-5 * * 1"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Go modules end up in the shipped programs: a fix, in its own weekly PR",
+      "matchManagers": ["gomod"],
+      "groupName": "Go modules",
+      "semanticCommitType": "fix"
+    },
+    {
+      "description": "So does the Go the release builds use",
+      "matchDepNames": ["docker.io/library/golang"],
+      "groupName": "Go modules",
+      "semanticCommitType": "fix"
+    }
+  ]
+}
