@@ -18,8 +18,8 @@
 //
 // Every client of the device sees every input report. A client starts at a
 // random seq and ignores replies to seqs it didn't send. Each client has one
-// request in flight at a time: the device keeps only the latest unread
-// output report.
+// request in flight at a time: the device keeps few unread output reports,
+// dropping the oldest.
 //
 // The device also sends events on its own: messages with seq EventSeq and
 // an event code in place of the status. Requests never use EventSeq.

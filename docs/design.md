@@ -75,14 +75,17 @@ Configuration is done from a [hosted website](https://riptidewave93.github.io/d2
 the site talks to the device from the browser over WebHID, so it can be updated without touching
 the firmware. `deckhost` uses the same channel (hidraw on Linux, the HID API on Windows).
 
-**Config channel**: a second HID interface ([api.md](api.md#finding-it)) with no OUT endpoint:
-output reports arrive by SET_REPORT on ep0, so the shared RX FIFO can't stall.
+**Config channel**: a second HID interface ([api.md](api.md#finding-it)) with 1024-byte reports
+both ways on interrupt endpoints. The controller has one RX FIFO for every OUT endpoint, so an
+unread one would stall them all, USB networking included: the image's f_hid keeps an OUT request
+queued even when deckd isn't reading, dropping the oldest unread report
+([d200-buildroot](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/linux.md#usb)).
 
-Measured with protocol 3 (Linux hidraw and Chrome WebHID): ~50 KB/s to the device, limited by ep0
-moving 64-byte packets at ~1.25 ms each, and ~27 KB/s back in 64-byte input reports. Protocol 4
-has 1024-byte input reports and gzips the config both ways (image data shrinks by about a
-quarter, the rest much more). Writes stay ep0-bound: faster would want an interrupt OUT endpoint,
-which needs a check against the shared-FIFO stall.
+Speeds (Linux hidraw and Chrome WebHID): protocol 3 moved ~50 KB/s to the device by SET_REPORT on
+ep0 (one 64-byte packet per ms) and ~27 KB/s back in 64-byte input reports. Protocol 4's 1024-byte
+input reports read a 1.69 MiB picture config in 1.4 s, and the config moves gzipped both ways
+(image data shrinks by about a quarter, the rest much more); the OUT endpoint takes a request
+round trip from ~20 ms to ~2 ms.
 
 Firefox and Safari have no WebHID; their users go through `deckhost`. Linux needs a udev
 `uaccess` rule for the hidraw node (`contrib/linux/70-d200-deck.rules`).

@@ -19,11 +19,15 @@ A second HID interface on the deck, next to the keyboard:
 |---|---|
 | Usage page | `0xFFD2` (vendor), usage `0x01` |
 | Input reports (deck to PC) | 1024 bytes, no report ID (64 on protocol 3 decks) |
-| Output reports (PC to deck) | 1024 bytes, no report ID, sent with SET_REPORT |
+| Output reports (PC to deck) | 1024 bytes, no report ID, on the interrupt OUT endpoint (not SET_REPORT: the deck refuses it) |
 
 On Linux it's the hidraw node whose report descriptor is exactly `proto.RawDescriptor` (or
 `proto.RawDescriptorV3` on an older deck); it needs the udev rule in
 `contrib/linux/70-d200-deck.rules`. In a browser, ask WebHID for `{usagePage: 0xFFD2}`.
+
+Send output reports on the OUT endpoint: hidraw `write()`, WebHID `sendReport()` and Windows
+`WriteFile` do. Windows `HidD_SetOutputReport` uses the control endpoint, which the deck refuses
+(older decks, with no OUT endpoint, took SET_REPORT).
 
 ### Requests
 
@@ -36,8 +40,8 @@ One output report per request. Numbers are little-endian.
 | 3-4 | payload length (up to 1019) |
 | 5- | payload, zero-padded |
 
-Send one request at a time and wait for its reply (the deck keeps only the latest unread output
-report). Start seq at a random value and count up, so you can tell your replies from other
+Send one request at a time and wait for its reply (the deck drops the oldest unread output
+reports). Start seq at a random value and count up, so you can tell your replies from other
 clients'.
 
 ### Replies and events

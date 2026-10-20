@@ -19,9 +19,9 @@ func OpenRaw(path string) (*Raw, error) {
 	return &Raw{f: f}, nil
 }
 
-// Read waits for the next output report from the host. The gadget keeps only
-// the latest unread report, so the host must wait for a reply before sending
-// the next one.
+// Read waits for the next output report from the host, one per call. The
+// gadget drops the oldest unread reports, so the host must wait for a reply
+// before sending the next one.
 func (r *Raw) Read(buf []byte) (int, error) {
 	return r.f.Read(buf)
 }
