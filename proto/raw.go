@@ -345,7 +345,28 @@ type Settings struct {
 	// HostOS is the PC's OS as its software last said: HostMac, HostOther
 	// or "" for not known. On HostMac, keys send their mac_keys.
 	HostOS *string `json:"host_os,omitempty"`
+	// ScreenOffset moves the picture on the panel, in pixels (x right, y
+	// down), to line it up with the key windows; values outside
+	// ScreenOffsetMin to ScreenOffsetMax are clamped. Only a device with a
+	// screen has it.
+	ScreenOffset *Offset `json:"screen_offset,omitempty"`
+	// ScreenOffsetMin and ScreenOffsetMax are ScreenOffset's range; read only.
+	ScreenOffsetMin *Offset `json:"screen_offset_min,omitempty"`
+	ScreenOffsetMax *Offset `json:"screen_offset_max,omitempty"`
+	// ScreenPattern shows a frame inside each key window, to line them up.
+	// It ends when set false, PatternTimeout after the last change to it or
+	// ScreenOffset, or when the PC sleeps.
+	ScreenPattern *bool `json:"screen_pattern,omitempty"`
 }
+
+// Offset is a move on the screen, in pixels.
+type Offset struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// PatternTimeout ends a forgotten Settings.ScreenPattern.
+const PatternTimeout = time.Minute
 
 // Host OSes.
 const (

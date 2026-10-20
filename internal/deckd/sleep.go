@@ -89,6 +89,10 @@ func (d *deckd) setAsleep(v bool) {
 		return
 	}
 	d.asleep, d.askedWake = v, false
+	if v && d.pattern.shown {
+		d.pattern.keep(false, nil)
+		d.pattern.shown = false // showSleep redraws the keys
+	}
 	if v {
 		log.Print("PC asleep or off: sleep screen")
 	} else {

@@ -273,13 +273,13 @@ func TestSleepScreenSetting(t *testing.T) {
 	}
 }
 
-// Features lists the settings proto.Settings has, but the read-only one.
+// Features lists the settings proto.Settings has, but the read-only ranges.
 func TestFeatureSettings(t *testing.T) {
 	var want []string
 	typ := reflect.TypeOf(proto.Settings{})
 	for i := range typ.NumField() {
 		name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
-		if name != "brightness_min" {
+		if !strings.HasSuffix(name, "_min") && !strings.HasSuffix(name, "_max") {
 			want = append(want, name)
 		}
 	}

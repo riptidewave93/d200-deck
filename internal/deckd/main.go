@@ -50,7 +50,7 @@ type deckd struct {
 	pages  []string // page stack; the last one is shown
 	held   [deck.KeyCount]*held
 	canvas *gfx.Canvas
-	disp   *drm.Display
+	scan   *screen.Scanout // the panel; nil without one
 	run    *runner
 	// redraw asks the main loop to redraw a key, e.g. after an error flash
 	redraw chan int
@@ -89,14 +89,18 @@ type deckd struct {
 	host      hostOS
 	power     screenPower // nil without a display
 	screenOff bool        // turned off for the PC's sleep
+	// offset lines the picture up with the key windows; shownOffset is
+	// the one on screen (see align.go)
+	offset      screenOffset
+	shownOffset image.Point
+	pattern     alignPattern
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
 
 func (d *deckd) show(r gfx.Rect) {
-	if d.disp != nil {
-		screen.Copy(screen.Scanout{Width: d.disp.Width, Height: d.disp.Height,
-			Stride: d.disp.Stride, Pixels: d.disp.Pixels}, d.canvas, r)
+	if d.scan != nil {
+		screen.Copy(*d.scan, d.canvas, r, d.shownOffset)
 	}
 }
 
@@ -109,6 +113,8 @@ func (d *deckd) drawKey(i int, state render.State) {
 	var next time.Time // when an animated key changes
 	if d.asleep {
 		drawSleepKey(d.canvas, i, r)
+	} else if d.pattern.shown {
+		drawPatternKey(d.canvas, r)
 	} else if d.test {
 		drawTestKey(d.canvas, i, r, state != render.Idle)
 	} else if d.overlay != nil {
@@ -234,6 +240,9 @@ func (d *deckd) press(i int, down bool) {
 	}
 	if d.asleep {
 		d.pressAsleep()
+		return
+	}
+	if d.pattern.shown {
 		return
 	}
 	if d.overlay != nil {
@@ -417,7 +426,10 @@ func Main(args []string) {
 		log.Fatal(err)
 	}
 	defer disp.Close()
-	d.disp, d.power = disp, disp
+	d.scan = &screen.Scanout{Width: disp.Width, Height: disp.Height, Stride: disp.Stride, Pixels: disp.Pixels}
+	d.power = disp
+	d.offset.load(filepath.Join(filepath.Dir(*config), "screen_offset"))
+	d.shownOffset = d.offset.get()
 	d.light = newBacklight(filepath.Join(filepath.Dir(*config), "brightness"))
 	d.sleep.load(filepath.Join(filepath.Dir(*config), "sleep_screen"))
 	d.host.load(filepath.Join(filepath.Dir(*config), "host_os"))
@@ -468,6 +480,7 @@ func Main(args []string) {
 		case s := <-stop:
 			d.run.stop(time.Second)
 			d.light.flush()
+			d.offset.flush()
 			log.Printf("%v, exiting", s)
 			os.Remove(startsFile) // stopped, not crashed
 			return

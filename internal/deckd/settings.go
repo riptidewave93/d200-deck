@@ -144,6 +144,9 @@ func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte)
 			}
 			d.ui <- d.showSleep // if the PC sleeps now
 		}
+		if d.scan != nil {
+			d.align(s)
+		}
 		if s.USBNet4 != nil && *s.USBNet4 != usbNet4(usbConf) {
 			net := *s.USBNet4
 			if net == "" {
@@ -182,6 +185,13 @@ func (d *deckd) currentSettings() (byte, []byte) {
 			low, sleep := brightnessMin, d.sleep.get()
 			s.Brightness, s.BrightnessMin, s.SleepScreen = &p, &low, &sleep
 		}
+	}
+	if d.scan != nil {
+		p, on := d.offset.get(), d.pattern.on.Load()
+		s.ScreenOffset = &proto.Offset{X: p.X, Y: p.Y}
+		s.ScreenOffsetMin = &proto.Offset{X: offsetMin.X, Y: offsetMin.Y}
+		s.ScreenOffsetMax = &proto.Offset{X: offsetMax.X, Y: offsetMax.Y}
+		s.ScreenPattern = &on
 	}
 	b, _ := json.Marshal(s)
 	return proto.StatusOK, b
