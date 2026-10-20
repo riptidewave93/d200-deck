@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/riptidewave93/d200-deck/deck"
@@ -40,7 +41,8 @@ func TestOSUpdates(t *testing.T) {
 	type note struct{ title, body, url string }
 	var notes []note
 	u := newOSUpdates(func(title, body, url string) { notes = append(notes, note{title, body, url}) })
-	rel, ok, fail := Release{Version: "v0.2.0", URL: "https://example.com/r"}, true, error(nil)
+	files := []string{"d200-v0.2.0-release-update.tar", "d200-v0.2.0-debug-update.tar"}
+	rel, ok, fail := Release{Version: "v0.2.0", URL: "https://example.com/r", files: files}, true, error(nil)
 	u.latest = func(string) (Release, bool, error) { return rel, ok, fail }
 	dev := func(v, flavour string) proto.Hello {
 		return proto.Hello{OS: osrelease.Info{Version: v, Flavour: flavour}}
@@ -66,8 +68,15 @@ func TestOSUpdates(t *testing.T) {
 		t.Errorf("update %+v", up)
 	}
 
-	// a newer one: told again; a failed check keeps what's known
-	rel = Release{Version: "v0.3.0", URL: "https://example.com/r3"}
+	// a newer one, told of once its file is uploaded; a failed check keeps
+	// what's known
+	rel = Release{Version: "v0.3.0", URL: "https://example.com/r3", files: []string{"d200-v0.3.0-debug-update.tar"}}
+	u.refresh()
+	u.check([]proto.Hello{dev("v0.2.0", "release")})
+	if len(notes) != 1 || u.update(dev("v0.2.0", "release")) != nil {
+		t.Fatalf("told before the file is there: %+v", notes)
+	}
+	rel.files = append(rel.files, "d200-v0.3.0-release-update.tar")
 	u.refresh()
 	fail = errors.New("offline")
 	if u.refresh() == nil {
@@ -88,19 +97,25 @@ func TestOSUpdates(t *testing.T) {
 
 func TestLatestOS(t *testing.T) {
 	status := http.StatusOK
+	assets := `{"name": "a.tar", "state": "uploaded"}, {"name": "SHA256SUMS", "state": "starter"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("User-Agent") == "" || r.URL.Path != "/o/r" {
 			t.Errorf("User-Agent %q, path %q", r.Header.Get("User-Agent"), r.URL.Path)
 		}
 		w.WriteHeader(status)
-		w.Write([]byte(`{"tag_name": "v0.2.0", "html_url": "https://example.com/r", "assets": []}`))
+		w.Write([]byte(`{"tag_name": "v0.2.0", "html_url": "https://example.com/r", "assets": [` + assets + `]}`))
 	}))
 	defer srv.Close()
 	defer func(u string) { latestURL = u }(latestURL)
 	latestURL = srv.URL + "/%s"
 
-	if rel, ok, err := latestRelease("o/r"); err != nil || !ok || rel.Version != "v0.2.0" || rel.URL != "https://example.com/r" {
+	if rel, ok, err := latestRelease("o/r"); err != nil || !ok || rel.Version != "v0.2.0" || rel.URL != "https://example.com/r" ||
+		!slices.Equal(rel.files, []string{"a.tar"}) {
 		t.Errorf("%+v %v %v", rel, ok, err)
+	}
+	assets = `{"name": "a.tar", "state": "starter"}` // published, files still uploading
+	if _, ok, err := latestRelease("o/r"); ok || err != nil {
+		t.Errorf("no files: %v %v", ok, err)
 	}
 	status = http.StatusNotFound // no releases yet
 	if _, ok, err := latestRelease("o/r"); ok || err != nil {
@@ -117,9 +132,10 @@ func TestHostUpdate(t *testing.T) {
 	version = "v0.1.0"
 	var notes []string
 	u := newOSUpdates(func(title, body, url string) { notes = append(notes, title+" "+url) })
+	files := []string{"deckhost-0.2.0-windows-amd64-setup.exe"}
 	u.latest = func(repo string) (Release, bool, error) {
 		if repo == deck.HostRepo {
-			return Release{Version: "v0.2.0", URL: "https://example.com/host"}, true, nil
+			return Release{Version: "v0.2.0", URL: "https://example.com/host", files: files}, true, nil
 		}
 		return Release{}, false, nil
 	}
@@ -129,6 +145,12 @@ func TestHostUpdate(t *testing.T) {
 	if err := u.refresh(); err != nil {
 		t.Fatal(err)
 	}
+	u.check(nil)
+	if u.hostUpdate() != nil || len(notes) != 0 {
+		t.Errorf("an update before %s is uploaded: %q", hostReadyFile, notes)
+	}
+	files = append(files, hostReadyFile)
+	u.refresh()
 	u.check(nil)
 	u.check(nil) // once per release
 	if up := u.hostUpdate(); up == nil || up.Version != "v0.2.0" || len(notes) != 1 || notes[0] != "deckhost v0.2.0 is out https://example.com/host" {
