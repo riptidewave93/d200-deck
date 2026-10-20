@@ -33,7 +33,7 @@ WASM := GOOS=js GOARCH=wasm
 WASM_PKGS := ./render ./deck ./icons ./fonts
 PC_PKGS := ./cmd/deckhost ./internal/discord ./internal/obs ./internal/hidraw ./proto/... ./deck ./netid
 
-.PHONY: all build deckd deckhost deckhost.exe dist dist-linux dist-windows test tinygo check cover clean
+.PHONY: all build deckd deckhost deckhost.exe install dist dist-linux dist-windows test tinygo check cover clean
 
 all : check test tinygo build
 
@@ -50,6 +50,14 @@ deckhost :
 # a GUI program: no console window at login (commands still print in a terminal)
 deckhost.exe :
 	$(RUN) env $(WINDOWS) go build -trimpath -ldflags '$(LDFLAGS) -H=windowsgui' -o $(OUT)/$@ ./cmd/deckhost
+
+# Installs or updates deckhost for the current user from this checkout, as the Linux tarball's
+# install.sh does, and restarts it
+install : deckhost
+	rm -rf $(OUT)/stage/install && mkdir -p $(OUT)/stage/install
+	cp $(OUT)/deckhost contrib/linux/install.sh contrib/linux/deckhost.service \
+		contrib/linux/deckhost-tray.desktop contrib/linux/70-d200-deck.rules $(OUT)/stage/install/
+	sh $(OUT)/stage/install/install.sh
 
 # Installers into ./build/dist: see docs/install.md
 dist : dist-linux dist-windows

@@ -45,6 +45,7 @@ make test       # unit tests with the race detector, and the coverage total
 make cover      # per-function coverage of the last test run
 make build      # build/deckd (arm64), build/deckhost and
                 # build/deckhost.exe (amd64)
+make install    # build deckhost and install or update it for your user (Linux)
 make dist       # deckhost installers into build/dist: .deb, .rpm, Linux tarball,
                 # Windows setup.exe (see docs/install.md)
 make test DOCKER=   # use the host's Go instead of Docker
