@@ -182,12 +182,21 @@ func (d *deckd) flashAll() {
 	time.AfterFunc(time.Second, func() {
 		d.ui <- func() {
 			if !time.Now().Before(d.white) { // not flashed again since
-				for i := range deck.KeyCount {
-					d.drawKey(i, d.state[i])
-				}
+				d.redrawAll()
 			}
 		}
 	})
+}
+
+// redrawAll draws the whole screen afresh: the background between the keys,
+// then every key as it is.
+func (d *deckd) redrawAll() {
+	r := gfx.Rect{Max: image.Pt(d.canvas.W, d.canvas.H)}
+	d.canvas.Fill(r, 0)
+	for i := range deck.KeyCount {
+		d.drawKey(i, d.state[i])
+	}
+	d.show(r)
 }
 
 func (d *deckd) drawPage() {

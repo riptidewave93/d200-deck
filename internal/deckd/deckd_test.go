@@ -162,6 +162,23 @@ func TestFlash(t *testing.T) {
 	}
 }
 
+// After identify's white screen, the whole screen is as it was, the gaps
+// between keys included.
+func TestFlashAllRestores(t *testing.T) {
+	d := newTestDeckd()
+	d.drawPage()
+	before := slices.Clone(d.canvas.Pix)
+	d.flashAll()
+	if slices.ContainsFunc(d.canvas.Pix, func(p uint32) bool { return p != 0xffffff }) {
+		t.Fatal("not all white")
+	}
+	d.drawKey(0, render.Idle) // drawn during the flash: waits for it to end
+	runUI(t, d)
+	if !slices.Equal(d.canvas.Pix, before) {
+		t.Error("the screen isn't as it was before identify")
+	}
+}
+
 func TestPCActionWithoutHost(t *testing.T) {
 	d := newTestDeckd()
 	d.press(13, true) // Source Repo: open-url
