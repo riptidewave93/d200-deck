@@ -73,11 +73,12 @@ func TestInstall(t *testing.T) {
 		t.Errorf("env sets %q", env.sets)
 	}
 
-	// a failure stops it, and the slot isn't switched
+	// again: the same kernel isn't written again, and a failure (the
+	// system's) stops it, and the slot isn't switched
 	env.sets = nil
 	u.failUpdate = 2
 	results, err = in.Install(m, "a")
-	if err == nil || len(results) != 3 || len(env.sets) != 0 {
+	if err == nil || len(results) != 4 || !results[2].Skipped || results[3].Error == "" || len(env.sets) != 0 {
 		t.Errorf("%v %+v %q", err, results, env.sets)
 	}
 	delete(parts, "u-boot")

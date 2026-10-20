@@ -296,10 +296,15 @@ func SlotVolumes(slot string) (kernel, rootfs Volume) {
 }
 
 // WriteVolume writes image file path into volume v, creating or growing it
-// first.
+// first. A static volume (a kernel) that already holds the image is left as
+// it is: the kernel rarely changes between updates.
 func WriteVolume(u UBI, v Volume, target, path string, im Image) (res Result) {
 	res.Target = target
 	size, ok, err := u.Volume(v.ID)
+	if err == nil && ok && v.Static && size >= im.Size && volumeHolds(u, v.ID, im) == nil {
+		res.Skipped = true
+		return
+	}
 	if err == nil && !ok {
 		err = u.Create(v)
 		size = v.Bytes
@@ -334,6 +339,11 @@ func writeVolume(u UBI, id int, path string, im Image) error {
 	if err := u.Update(id, f, im.Size); err != nil {
 		return err
 	}
+	return volumeHolds(u, id, im)
+}
+
+// volumeHolds checks volume id starts with image im.
+func volumeHolds(u UBI, id int, im Image) error {
 	r, err := u.Open(id)
 	if err != nil {
 		return err

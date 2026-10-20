@@ -335,13 +335,23 @@ func TestWriteVolume(t *testing.T) {
 		t.Errorf("%+v, %d bytes", res, u.vols[3].v.Bytes)
 	}
 
+	// already there: left as it is (a kernel only)
+	if res := WriteVolume(u, kernel, "kernel", path, im); res.Written || !res.Skipped {
+		t.Errorf("same kernel: %+v", res)
+	}
+	if res := WriteVolume(u, rootfs, "rootfs", path, im); !res.Written || res.Skipped {
+		t.Errorf("same rootfs: %+v", res)
+	}
+
 	// fails once: retried
+	u.vols[3].data = nil
 	u.failUpdate = 1
 	if res := WriteVolume(u, kernel, "kernel", path, im); !res.Written || res.Retries != 1 {
 		t.Errorf("%+v", res)
 	}
 
 	// doesn't read back twice: emptied
+	u.vols[3].data = nil
 	u.corrupt = 2
 	if res := WriteVolume(u, kernel, "kernel", path, im); res.Written || res.Error == "" || len(u.vols[3].data) != 0 {
 		t.Errorf("%+v, %d bytes left", res, len(u.vols[3].data))
