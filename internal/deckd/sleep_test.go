@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/riptidewave93/d200-deck/deck"
+	"github.com/riptidewave93/d200-deck/proto"
 	"github.com/riptidewave93/d200-deck/render"
 )
 
@@ -60,6 +62,7 @@ func fakeBacklight(t *testing.T, level string) (brightness func() string) {
 	backlightGlob = dir
 	os.WriteFile(filepath.Join(dir, "max_brightness"), []byte("8\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "brightness"), []byte(level+"\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "bl_power"), []byte("0\n"), 0o644)
 	return func() string {
 		b, _ := os.ReadFile(filepath.Join(dir, "brightness"))
 		return string(b)
@@ -117,5 +120,88 @@ func TestSleepScreen(t *testing.T) {
 	}
 	if !slices.Equal(d.canvas.Pix, page) {
 		t.Error("awake: the page isn't drawn as before")
+	}
+}
+
+// blPower is the fake backlight's bl_power.
+func blPower() string {
+	b, _ := os.ReadFile(filepath.Join(backlightGlob, "bl_power"))
+	return strings.TrimSpace(string(b))
+}
+
+// fakePower is a display's power: it notes each change, with the backlight
+// and the screen as they were then.
+type fakePower struct {
+	d      *deckd
+	events []string
+	shown  [][]uint32 // the canvas at each On
+}
+
+func (f *fakePower) Off() error {
+	f.events = append(f.events, "off, backlight "+blPower())
+	return nil
+}
+
+func (f *fakePower) On() error {
+	f.events = append(f.events, "on, backlight "+blPower())
+	f.shown = append(f.shown, slices.Clone(f.d.canvas.Pix))
+	return nil
+}
+
+func TestSleepScreenOff(t *testing.T) {
+	brightness := fakeBacklight(t, "8")
+	saved := filepath.Join(t.TempDir(), "brightness")
+	os.WriteFile(saved, []byte("75\n"), 0o644)
+	d := newTestDeckd()
+	d.light = newBacklight(saved)
+	power := &fakePower{d: d}
+	d.power = power
+	d.sleep.load(filepath.Join(t.TempDir(), "sleep_screen"))
+	if status, reply := d.settings(1, []byte(`{"sleep_screen": "off"}`)); status != proto.StatusOK {
+		t.Fatalf("set off: %d %q", status, reply)
+	}
+	(<-d.ui)() // as the main loop would
+	d.drawPage()
+	page := slices.Clone(d.canvas.Pix)
+
+	d.setAsleep(true)
+	if blPower() != powerOff || !slices.Equal(power.events, []string{"off, backlight " + powerOff}) {
+		t.Errorf("asleep: bl_power %q, events %q", blPower(), power.events)
+	}
+	d.setAsleep(false)
+	// the panel is back on, showing the page, before the backlight
+	if len(power.events) != 2 || power.events[1] != "on, backlight "+powerOff || !slices.Equal(power.shown[0], page) {
+		t.Errorf("awake: events %q, page shown %v", power.events, len(power.shown) > 0 && slices.Equal(power.shown[0], page))
+	}
+	if blPower() != powerOn || brightness() != "6" {
+		t.Errorf("awake: bl_power %q, brightness %q", blPower(), brightness())
+	}
+
+	// the default dims, and leaves the panel on
+	d.settings(1, []byte(`{"sleep_screen": "zzz"}`))
+	(<-d.ui)()
+	d.setAsleep(true)
+	if len(power.events) != 2 || blPower() != powerOn || brightness() != "1" {
+		t.Errorf("zzz asleep: events %q, bl_power %q, brightness %q", power.events, blPower(), brightness())
+	}
+	// turned off while the PC sleeps, it goes off at once
+	d.settings(1, []byte(`{"sleep_screen": "off"}`))
+	(<-d.ui)()
+	if len(power.events) != 3 || blPower() != powerOff {
+		t.Errorf("set off asleep: events %q, bl_power %q", power.events, blPower())
+	}
+	d.setAsleep(false)
+	if blPower() != powerOn || brightness() != "6" {
+		t.Errorf("awake again: bl_power %q, brightness %q", blPower(), brightness())
+	}
+}
+
+// A deckd started after one stopped with the backlight off turns it on.
+func TestBacklightOnAtStart(t *testing.T) {
+	fakeBacklight(t, "8")
+	os.WriteFile(filepath.Join(backlightGlob, "bl_power"), []byte(powerOff), 0o644)
+	newBacklight(filepath.Join(t.TempDir(), "brightness"))
+	if blPower() != powerOn {
+		t.Errorf("bl_power %q", blPower())
 	}
 }

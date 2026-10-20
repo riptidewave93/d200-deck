@@ -338,7 +338,17 @@ type Settings struct {
 	// BrightnessMin is the lowest Brightness, and the sleep screen's; read
 	// only.
 	BrightnessMin *int `json:"brightness_min,omitempty"`
+	// SleepScreen is what the screen does while the PC sleeps:
+	// SleepScreenZzz or SleepScreenOff. Only a device with a dimmable screen
+	// has it.
+	SleepScreen *string `json:"sleep_screen,omitempty"`
 }
+
+// Sleep screens: dimmed with the sleep mark (the default), or off.
+const (
+	SleepScreenZzz = "zzz"
+	SleepScreenOff = "off"
+)
 
 // Result says how a PC action went; Error is empty on success.
 type Result struct {

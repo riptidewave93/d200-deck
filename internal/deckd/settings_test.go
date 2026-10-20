@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
@@ -230,5 +233,58 @@ func TestBrightness(t *testing.T) {
 	d.setAsleep(false)
 	if brightness() != "8" {
 		t.Errorf("awake: level %q, want 8", brightness())
+	}
+}
+
+func TestSleepScreenSetting(t *testing.T) {
+	usbConf = filepath.Join(t.TempDir(), "usb-gadget.conf")
+	t.Cleanup(func() { usbConf = "/data/usb-gadget.conf" })
+	d := newTestDeckd()
+	get := func(payload string) (byte, proto.Settings) {
+		t.Helper()
+		status, reply := d.settings(1, []byte(payload))
+		var s proto.Settings
+		json.Unmarshal(reply, &s)
+		return status, s
+	}
+	if _, s := get(""); s.SleepScreen != nil {
+		t.Error("sleep_screen without a backlight")
+	}
+	fakeBacklight(t, "8")
+	d.light = newBacklight(filepath.Join(t.TempDir(), "brightness"))
+	file := filepath.Join(t.TempDir(), "sleep_screen")
+	d.sleep.load(file)
+	if _, s := get(""); s.SleepScreen == nil || *s.SleepScreen != proto.SleepScreenZzz {
+		t.Errorf("default: %+v", s)
+	}
+	if status, s := get(`{"sleep_screen": "off"}`); status != proto.StatusOK || *s.SleepScreen != proto.SleepScreenOff {
+		t.Errorf("set off: %d %+v", status, s)
+	}
+	if b, _ := os.ReadFile(file); string(b) != "off\n" {
+		t.Errorf("saved %q", b)
+	}
+	if status, _ := get(`{"sleep_screen": "dim"}`); status != proto.StatusFailed {
+		t.Errorf("bad value: status %d", status)
+	}
+	var again sleepScreen
+	again.load(file)
+	if again.get() != proto.SleepScreenOff {
+		t.Error("not kept across a restart")
+	}
+}
+
+// Features lists the settings proto.Settings has, but the read-only one.
+func TestFeatureSettings(t *testing.T) {
+	var want []string
+	typ := reflect.TypeOf(proto.Settings{})
+	for i := range typ.NumField() {
+		name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+		if name != "brightness_min" {
+			want = append(want, name)
+		}
+	}
+	slices.Sort(want)
+	if got := deck.Features().Settings; !slices.Equal(got, want) {
+		t.Errorf("features list %q; proto.Settings has %q", got, want)
 	}
 }

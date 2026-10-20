@@ -112,6 +112,9 @@ type Display struct {
 	mem    []byte
 	handle uint32
 	fbID   uint32
+	connID uint32
+	crtcID uint32
+	mode   modeInfo
 }
 
 // Open sets up the first connected connector of card at its preferred mode.
@@ -242,20 +245,34 @@ func (d *Display) show(connID, crtcID uint32, mode modeInfo) error {
 	d.Pixels = unsafe.Slice((*uint32)(unsafe.Pointer(&mem[0])), len(mem)/4)
 	d.Width, d.Height, d.Stride = int(cd.width), int(cd.height), int(cd.pitch/4)
 	clear(d.Pixels)
+	d.connID, d.crtcID, d.mode = connID, crtcID, mode
+	return d.On()
+}
 
+// On scans the buffer out: at start, and after Off.
+func (d *Display) On() error {
 	var pin runtime.Pinner
+	defer pin.Unpin()
 	sc := crtc{
-		setConnectors: addr(&pin, []uint32{connID}),
+		setConnectors: addr(&pin, []uint32{d.connID}),
 		nConnectors:   1,
-		id:            crtcID,
+		id:            d.crtcID,
 		fbID:          d.fbID,
 		modeValid:     1,
-		mode:          mode,
+		mode:          d.mode,
 	}
-	err = ioctl(fd, ioctlSetCrtc, unsafe.Pointer(&sc))
-	pin.Unpin()
-	if err != nil {
+	if err := ioctl(d.f.Fd(), ioctlSetCrtc, unsafe.Pointer(&sc)); err != nil {
 		return fmt.Errorf("set CRTC: %w", err)
+	}
+	return nil
+}
+
+// Off stops the CRTC, which powers the panel down. The buffer stays, and
+// On shows it again.
+func (d *Display) Off() error {
+	sc := crtc{id: d.crtcID}
+	if err := ioctl(d.f.Fd(), ioctlSetCrtc, unsafe.Pointer(&sc)); err != nil {
+		return fmt.Errorf("disable CRTC: %w", err)
 	}
 	return nil
 }

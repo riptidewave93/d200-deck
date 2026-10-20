@@ -125,6 +125,16 @@ func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte)
 		if s.Brightness != nil && d.light != nil {
 			d.light.set(*s.Brightness)
 		}
+		if s.SleepScreen != nil && d.light != nil && *s.SleepScreen != d.sleep.get() {
+			ok, err := d.sleep.set(*s.SleepScreen)
+			if !ok {
+				return proto.StatusFailed, []byte(`sleep_screen must be "zzz" or "off"`)
+			}
+			if err != nil {
+				log.Printf("sleep screen: %v", err)
+			}
+			d.ui <- d.showSleep // if the PC sleeps now
+		}
 		if s.USBNet4 != nil && *s.USBNet4 != usbNet4(usbConf) {
 			net := *s.USBNet4
 			if net == "" {
@@ -159,8 +169,8 @@ func (d *deckd) currentSettings() (byte, []byte) {
 	s := proto.Settings{USBDrive: &on, USBNet4: &net4}
 	if d.light != nil {
 		if p, ok := d.light.get(); ok {
-			low := brightnessMin
-			s.Brightness, s.BrightnessMin = &p, &low
+			low, sleep := brightnessMin, d.sleep.get()
+			s.Brightness, s.BrightnessMin, s.SleepScreen = &p, &low, &sleep
 		}
 	}
 	b, _ := json.Marshal(s)

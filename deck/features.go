@@ -21,7 +21,13 @@ type FeatureSet struct {
 	Apps      map[string][]string `json:"apps"` // ops by app
 	Args      map[string][]string `json:"args"` // args by app
 	Limits    map[string]int      `json:"limits"`
+	// Settings are the settings the device takes (proto.Settings), for those
+	// its hardware has.
+	Settings []string `json:"settings"`
 }
+
+// settingNames are proto.Settings' writable fields.
+var settingNames = []string{"brightness", "sleep_screen", "usb_drive", "usb_net4"}
 
 // actionTypes are the action types Validate takes.
 var actionTypes = []ActionType{
@@ -39,6 +45,7 @@ func Features() FeatureSet {
 		Fonts:     BuiltinFonts,
 		Apps:      map[string][]string{AppDiscord: DiscordOps, AppOBS: OBSOps, AppMedia: MediaOps},
 		Args:      AppArgs,
+		Settings:  settingNames,
 		Limits: map[string]int{
 			"label": MaxLabel, "label_lines": MaxLabelLines, "text": MaxText, "steps": MaxSteps,
 			"delay_ms": MaxDelayMS, "pc_action": MaxPCAction, "config_bytes": MaxConfigBytes,

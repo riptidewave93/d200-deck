@@ -85,6 +85,9 @@ type deckd struct {
 	asleep    bool
 	askedWake bool
 	light     *backlight // nil without one
+	sleep     sleepScreen
+	power     screenPower // nil without a display
+	screenOff bool        // turned off for the PC's sleep
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -410,8 +413,9 @@ func Main(args []string) {
 		log.Fatal(err)
 	}
 	defer disp.Close()
-	d.disp = disp
+	d.disp, d.power = disp, disp
 	d.light = newBacklight(filepath.Join(filepath.Dir(*config), "brightness"))
+	d.sleep.load(filepath.Join(filepath.Dir(*config), "sleep_screen"))
 	d.show(gfx.Rect{Max: image.Pt(render.Width, render.Height)})
 	d.drawPage()
 	if !d.test {

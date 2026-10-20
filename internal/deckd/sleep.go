@@ -9,17 +9,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/gfx"
 	"github.com/riptidewave93/d200-deck/internal/hidg"
+	"github.com/riptidewave93/d200-deck/proto"
 	"github.com/riptidewave93/d200-deck/render"
 )
 
 // While the PC's USB is suspended (the PC is asleep, or off with its USB
-// ports powered), deckd dims the screen to brightnessMin, shows the sleep screen and runs no
+// ports powered), deckd dims the screen to brightnessMin and shows the sleep
+// screen, or turns the screen off (the sleep_screen setting), and runs no
 // actions; a press asks the PC to wake.
 
 var (
@@ -91,12 +94,79 @@ func (d *deckd) setAsleep(v bool) {
 	} else {
 		log.Print("PC awake")
 	}
-	if d.light != nil {
-		d.light.setDim(v)
+	d.showSleep()
+}
+
+// screenPower turns the panel off and on (a drm.Display).
+type screenPower interface {
+	Off() error
+	On() error
+}
+
+// showSleep sets the screen for d.asleep and the sleep screen setting:
+// dimmed with the sleep mark, off, or as it was. Off, the backlight goes
+// first; back on, it comes last, after the keys are drawn.
+func (d *deckd) showSleep() {
+	off := d.asleep && d.sleep.off()
+	if off && d.light != nil {
+		d.light.setSleep(false, true)
+	}
+	if off && !d.screenOff && d.power != nil {
+		if err := d.power.Off(); err != nil {
+			log.Printf("screen off: %v", err)
+		}
 	}
 	for i := range deck.KeyCount {
 		d.drawKey(i, d.state[i])
 	}
+	if !off && d.screenOff && d.power != nil {
+		if err := d.power.On(); err != nil {
+			log.Printf("screen on: %v", err)
+		}
+	}
+	d.screenOff = off
+	if !off && d.light != nil {
+		d.light.setSleep(d.asleep, false)
+	}
+}
+
+// sleepScreen is the sleep screen setting, kept in file.
+type sleepScreen struct {
+	file  string
+	isOff atomic.Bool
+}
+
+func (s *sleepScreen) off() bool { return s.isOff.Load() }
+
+func (s *sleepScreen) get() string {
+	if s.off() {
+		return proto.SleepScreenOff
+	}
+	return proto.SleepScreenZzz
+}
+
+// load reads file; anything but "off" is the default.
+func (s *sleepScreen) load(file string) {
+	b, _ := os.ReadFile(file)
+	s.file = file
+	s.isOff.Store(strings.TrimSpace(string(b)) == proto.SleepScreenOff)
+}
+
+// set takes a new setting and saves it; false if v isn't one.
+func (s *sleepScreen) set(v string) (bool, error) {
+	if v != proto.SleepScreenZzz && v != proto.SleepScreenOff {
+		return false, nil
+	}
+	s.isOff.Store(v == proto.SleepScreenOff)
+	if s.file == "" {
+		return true, nil
+	}
+	tmp := filepath.Join(filepath.Dir(s.file), "."+filepath.Base(s.file)+".tmp")
+	err := os.WriteFile(tmp, []byte(v+"\n"), 0o644)
+	if err == nil {
+		err = os.Rename(tmp, s.file)
+	}
+	return true, err
 }
 
 // pressAsleep asks the PC to wake, once per sleep.

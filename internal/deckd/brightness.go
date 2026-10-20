@@ -21,7 +21,7 @@ var (
 )
 
 // backlight is the screen's brightness: the person's level in percent, kept
-// in file, or brightnessMin while the PC sleeps. Percent maps onto the
+// in file, or brightnessMin or off while the PC sleeps. Percent maps onto the
 // kernel's levels.
 type backlight struct {
 	mu      sync.Mutex
@@ -30,9 +30,17 @@ type backlight struct {
 	file    string
 	percent int
 	dim     bool
+	off     bool
+	power   string // bl_power as last written; "" before the first
 	unsaved bool
 	save    *time.Timer
 }
+
+// bl_power values (FB_BLANK_*)
+const (
+	powerOn  = "0"
+	powerOff = "4"
+)
 
 func newBacklight(file string) *backlight {
 	b := &backlight{file: file, percent: 100}
@@ -78,11 +86,12 @@ func (b *backlight) set(percent int) {
 	}
 }
 
-// setDim dims to brightnessMin while the PC sleeps, and back after.
-func (b *backlight) setDim(dim bool) {
+// setSleep dims to brightnessMin, or turns the backlight off, while the PC
+// sleeps; both false is the person's level.
+func (b *backlight) setSleep(dim, off bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.dim = dim
+	b.dim, b.off = dim, off
 	b.applyLocked()
 }
 
@@ -92,8 +101,15 @@ func (b *backlight) apply() {
 	b.applyLocked()
 }
 
+// applyLocked sets the backlight: off, or on at the level, which is set
+// first so it doesn't flash the old one. The first call turns it on, in case
+// deckd stopped while it was off.
 func (b *backlight) applyLocked() {
 	if b.dir == "" {
+		return
+	}
+	if b.off {
+		b.setPower(powerOff)
 		return
 	}
 	p := b.percent
@@ -104,6 +120,17 @@ func (b *backlight) applyLocked() {
 	if err := os.WriteFile(filepath.Join(b.dir, "brightness"), []byte(strconv.Itoa(level)), 0); err != nil {
 		log.Printf("backlight: %v", err)
 	}
+	b.setPower(powerOn)
+}
+
+func (b *backlight) setPower(v string) {
+	if v == b.power {
+		return
+	}
+	if err := os.WriteFile(filepath.Join(b.dir, "bl_power"), []byte(v), 0); err != nil {
+		log.Printf("backlight: %v", err)
+	}
+	b.power = v
 }
 
 // flush saves the person's level if it changed.
