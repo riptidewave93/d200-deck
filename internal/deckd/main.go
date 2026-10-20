@@ -81,6 +81,9 @@ type deckd struct {
 	reply func(seq uint16, status byte, b []byte)
 	// keys queues key events for the config channel; nil sends none
 	keys chan proto.KeyEvent
+	// asleep is set while the PC's USB is suspended (see sleep.go)
+	asleep    bool
+	askedWake bool
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -99,7 +102,9 @@ func (d *deckd) drawKey(i int, state render.State) {
 	}
 	r := render.Key(i)
 	var next time.Time // when an animated key changes
-	if d.test {
+	if d.asleep {
+		drawSleepKey(d.canvas, i, r)
+	} else if d.test {
 		drawTestKey(d.canvas, i, r, state != render.Idle)
 	} else if d.overlay != nil {
 		if draw, ok := d.overlay.drawn[i]; ok {
@@ -211,6 +216,10 @@ func (d *deckd) press(i int, down bool) {
 		if h.page == d.page() {
 			d.drawKey(i, render.Idle)
 		}
+		return
+	}
+	if d.asleep {
+		d.pressAsleep()
 		return
 	}
 	if d.overlay != nil {
@@ -419,6 +428,10 @@ func Main(args []string) {
 	}
 	events := make(chan input.Event)
 	go func() { log.Fatal(input.Read(*keys, events)) }()
+	asleep := make(chan bool)
+	if !d.test {
+		go watchSleep(asleep)
+	}
 	beat := time.NewTicker(alive.Period)
 	alive.Beat()
 	for {
@@ -430,6 +443,8 @@ func Main(args []string) {
 			d.press(ev.Key, ev.Pressed)
 		case f := <-d.ui:
 			f()
+		case v := <-asleep:
+			d.setAsleep(v)
 		case s := <-stop:
 			d.run.stop(time.Second)
 			log.Printf("%v, exiting", s)
