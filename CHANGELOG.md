@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/riptidewave93/d200-deck/compare/v0.1.0...v0.1.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **ci:** stamp release builds with their tag ([ee322ed](https://github.com/riptidewave93/d200-deck/commit/ee322ed2af7b0f60c28fce11aefd3ece22ff9c28))
+* **ci:** stamp release builds with their tag ([#5](https://github.com/riptidewave93/d200-deck/issues/5)) ([ee322ed](https://github.com/riptidewave93/d200-deck/commit/ee322ed2af7b0f60c28fce11aefd3ece22ff9c28))
+
 ## 0.1.0 (2026-10-20)
 
 
