@@ -6,19 +6,22 @@ your PC.
 
 ## What you get
 
-- Pages of keys with your own icons, pictures (animated GIFs too), labels, colours and fonts
-- Keyboard shortcuts, typed text, macros, and media and volume keys that work on any PC, with
-  nothing installed
+- Pages of keys with your own icons, pictures, labels, colours and fonts. Animated GIFs play at
+  their own speed, and a setup can hold up to 4 MiB of pictures and fonts.
+- Keyboard shortcuts, typed text, macros, and media, volume and power keys that work on any PC,
+  with nothing installed
 - With `deckhost` on the PC (Linux or Windows): keys that open websites, start programs and call
   webhooks, and control [Discord](docs/discord.md), [OBS](docs/obs.md) and
   [media players](docs/media.md), showing live state such as mute or the song playing
 - A default layout to start from: media and volume keys, the song playing, and pages of browser
   shortcuts, Discord, OBS, macros and power keys
-- A sleep screen while the PC sleeps, dimmed or off
-- OS updates from a page in your browser, confirmed on the keys
+- A sleep screen while the PC sleeps, dimmed or off, and an adjustable brightness
+- From the [configuration website](https://riptidewave93.github.io/d200-configure/): pick a key to
+  edit by pressing it (the key does nothing meanwhile), line the picture up with the key windows,
+  and reset the device to its defaults
+- OS updates from a page in your browser, confirmed on the device
 
-macOS isn't supported yet: the default shortcuts are for Windows and Linux, and deckhost runs on
-Linux and Windows.
+macOS isn't supported yet: `deckhost` runs on Linux and Windows.
 
 ## Using it
 
@@ -46,7 +49,13 @@ make install    # build deckhost and install it for your user (Linux)
 make dist       # deckhost installers into build/dist
 ```
 
-`go run ./cmd/deckd keys -preview screen.png` renders the default config on a PC.
+`go run ./cmd/deckd keys -preview screen.png` draws the default config's screen on a PC.
+
+| Doc | |
+|---|---|
+| [config.md](docs/config.md) | The config format |
+| [api.md](docs/api.md) | Talking to the device over USB, and its web API |
+| [design.md](docs/design.md) | How the parts fit together |
 
 ### Contributing and releases
 
@@ -58,12 +67,6 @@ Release Please keeps a release PR open with the next version and its changelog, 
 Merging it tags the release, and the installers are built and attached to it. Versions follow
 semver: a major release is one older parts can't work with (a new minimum protocol, a config format
 change, a raised `min_updater`), a minor one adds features, a patch fixes bugs.
-
-| Doc | |
-|---|---|
-| [config.md](docs/config.md) | The config format |
-| [api.md](docs/api.md) | Talking to the device over USB, and its web API |
-| [design.md](docs/design.md) | How the parts fit together |
 
 ## License
 

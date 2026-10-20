@@ -1,8 +1,8 @@
 # Config
 
-The keys' setup: named pages of buttons, in one JSON file, images and fonts included. The deck
+The keys' setup: named pages of buttons, in one JSON file, images and fonts included. The device
 keeps it at `/data/deckd/config.json`; read and replace it over USB with the
-[config commands](api.md#the-config). Without one, or with a broken one, the deck uses its default
+[config commands](api.md#the-config). Without one, or with a broken one, the device uses its default
 (`deckd default-config` prints it).
 
 ```json
@@ -54,7 +54,7 @@ Numbered in reading order. On the D200 (hello says `"keys": 14`):
 10 11 12 [ 13 ]
 ```
 
-Key 13 is the wide one. The `render` package draws keys as the deck does; the configuration website runs it as
+Key 13 is the wide one. The `render` package draws keys as the device does; the configuration website runs it as
 WebAssembly for its previews.
 
 ## Buttons
@@ -73,33 +73,34 @@ A button shows an icon, a label, or both.
 
 Every icon a key can show must be in `icons`, including the built-in looks of app keys (for
 example Discord mute shows `mic`, and `mic_off` while muted). The
-[configuration website](https://riptidewave93.github.io/d200-configure/) adds them; the deck refuses to save a config that's missing any.
+[configuration website](https://riptidewave93.github.io/d200-configure/) adds them; the device refuses to save a config that's missing any.
 
 ## Actions
 
 | `type` | Runs on | Fields |
 |---|---|---|
-| `hid-key` | deck | `keys`: held while the key is held, e.g. `["ctrl", "shift", "m"]`. Optional `mac_keys`: sent instead to a Mac, e.g. `["gui", "shift", "m"]` |
-| `hid-consumer` | deck | `usage`: `play-pause`, `next-track`, `prev-track`, `mute`, `volume-up`, `volume-down`, or a number |
-| `hid-system` | deck | `system`: `sleep`, `power-down`, `wake-up` |
-| `type-text` | deck | `text`: up to 1024 characters, ASCII, typed on a US layout |
-| `macro` | deck | `steps`: deck actions, and `{"type": "delay", "ms": 500}`; up to 256. Press again to stop it. |
-| `page` | deck | `page`: a page name. A page already open is gone back to. |
-| `back`, `home` | deck | none |
+| `hid-key` | device | `keys`: held while the key is held, e.g. `["ctrl", "shift", "m"]`. Optional `mac_keys`: sent instead to a Mac ([`host_os`](api.md#settings)), e.g. `["gui", "shift", "m"]` |
+| `hid-consumer` | device | `usage`: `play-pause`, `next-track`, `prev-track`, `stop`, `mute`, `volume-up`, `volume-down`, or a number |
+| `hid-system` | device | `system`: `sleep`, `power-down`, `wake-up` |
+| `type-text` | device | `text`: up to 1024 characters, ASCII, typed on a US layout |
+| `macro` | device | `steps`: device actions, and `{"type": "delay", "ms": 500}` (up to 60000 ms); up to 256 steps. Press again to stop it. |
+| `page` | device | `page`: a page name. A page already open is gone back to. |
+| `back`, `home` | device | none |
 | `open-url` | PC | `url`: http or https |
 | `launch` | PC | `command`: the program and its arguments, e.g. `["code", "--new-window"]`; no shell, so `~` and `$VARS` aren't expanded |
 | `http` | PC | `method`, `url`, `headers`, `body` |
 | `app` | PC | `app`, `op`, `args` (an object): see [App integrations](design.md#app-integrations), [Discord](discord.md), [OBS](obs.md) and [media](media.md) |
 
 PC actions need `deckhost` on the PC. Without it the key flashes red, unless it has a `fallback`:
-a deck action to run instead, such as a keyboard shortcut.
+a device action to run instead, such as a keyboard shortcut.
 
 **Key names** for `hid-key`: `a`-`z`, `0`-`9`, `f1`-`f24`, `enter`, `esc`, `backspace`, `tab`,
 `space`, `minus`, `equal`, `leftbrace`, `rightbrace`, `backslash`, `semicolon`, `apostrophe`,
 `grave`, `comma`, `dot`, `slash`, `capslock`, `printscreen`, `scrolllock`, `pause`, `insert`,
-`home`, `pageup`, `delete`, `end`, `pagedown`, `up`, `down`, `left`, `right`, `menu`; modifiers
-`ctrl`, `shift`, `alt`, `gui` (also `win`, `cmd`, `super`) and right-hand `rctrl`, `rshift`,
-`ralt`, `rgui`. Up to 6 keys plus modifiers.
+`home`, `pageup`, `delete`, `end`, `pagedown`, `up`, `down`, `left`, `right`, `menu` (also
+`return`, `escape`, `del`); modifiers `ctrl` (also `control`), `shift`, `alt`, `gui` (also `win`,
+`cmd`, `super`, `meta`) and right-hand `rctrl`, `rshift`, `ralt` (also `altgr`), `rgui`. Up to 6
+keys plus modifiers.
 
 F13-F24 make good shortcuts for apps: nothing else uses them, so bind them in Discord, OBS and
 so on.
@@ -108,9 +109,9 @@ so on.
 
 | | |
 |---|---|
-| Config file | 4 MiB (2 MiB on older device software), images and fonts included |
+| Config file | 4 MiB, images and fonts included |
 | Image | 256 KiB and 512x512 px; keys are 196 px, so size them to that |
 | Font | 512 KiB; `fonts.Subset` cuts a TrueType font to the characters labels use |
 | Icons | 256; a path up to 16 KiB, a PNG or GIF up to 24 KiB and 128x128 px |
-| GIF | 100 frames and 4 M pixels in all (frames x width x height); frames show for 50 ms at least. A page animates up to 8 MiB of frames, kept a byte a pixel at the size drawn (4 if a frame has more than 256 colours): a full-key GIF of 100 frames takes 3.8 MiB. Past that, the rest show their first frame. `render.PictureBox` and `render.AnimBytes` count it as the deck does. Decks without the `anim_bytes` limit animate 2 M pixels at 4 bytes each. |
+| GIF | 100 frames and 4 M pixels in all (frames x width x height). The screen changes at most every 50 ms, so faster GIFs skip frames and keep their speed; a whole loop shorter than 100 ms slows to 100 ms. A page animates up to 8 MiB of frames, kept a byte a pixel at the size drawn (4 if a frame has more than 256 colours): a full-key GIF of 100 frames takes 3.8 MiB. Past that, the rest show their first frame. `render.PictureBox` and `render.AnimBytes` count it as the device does. |
 | One PC action | 8 KiB as JSON |
