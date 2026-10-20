@@ -104,6 +104,9 @@ it only in white, black or Blurple (`#5865f2`).
 
 A Discord key flashes red when the press didn't work. The tray menu's Discord line says why.
 
+Discord gives apps no control of the camera, Go Live or the soundboard: give those a keybind in
+Discord and use an `hid-key` key.
+
 ### Without deckhost
 
 While `deckhost` isn't connected to Discord (not running, Discord not running, not set up), a
@@ -141,50 +144,3 @@ On GNOME (Wayland), **Open** and channel keys open Discord but may not bring it 
 In Discord, **User Settings > Authorized Apps** and **Deauthorize** your application. Delete
 `discord.json` and `discord-token.json`, and delete the application on the Developer Portal if
 you like.
-
-## For developers
-
-### What the Stream Deck plugin does
-
-Elgato's [Discord plugin](https://marketplace.elgato.com/product/discord-e3559f36-d31d-4529-ab1f-739955e2ac7a)
-(v2.4, Windows and macOS), which this aims to match:
-
-- Mute, deafen, push to talk, push to mute
-- Join/leave a voice channel, jump to a text channel
-- Camera toggle, Go Live toggle
-- Since [2.0](https://alternativeto.net/news/2023/5/stream-deck-x-discord-elgato-introduces-improved-discord-plugin-for-stream-deck-offering-enhanced-control):
-  soundboard clips (Nitro), switch audio input/output device, voice activity / push to talk mode,
-  per-user volume, unread message count, server stats
-
-Keys show live state (muted, deafened, in a channel), not just a fixed icon.
-
-### How it works
-
-The Discord desktop app has a local [RPC socket](https://docs.discord.com/developers/topics/rpc)
-(`discord-ipc-N` in `$XDG_RUNTIME_DIR` on Linux, or its Flatpak/Snap subdirectory; a named pipe on
-Windows). So the work is in `deckhost`, not on the device. Mute and deafen are
-`SET_VOICE_SETTINGS`; live state comes from `VOICE_SETTINGS_UPDATE`.
-
-Authorisation is OAuth2: `AUTHORIZE` (Discord shows a prompt), exchange the code for a token with
-the app's client secret, then `AUTHENTICATE`. The token is refreshed when it's within an hour of
-expiring.
-
-Changing voice settings needs the `rpc.voice.write`
-[scope](https://docs.discord.com/developers/topics/oauth2), which only Discord-approved partners
-get, but a user's own unapproved application can use it on its owner's account. An open source
-project can't keep a shared secret, so, like other open source plugins
-([example](https://github.com/fredemmott/StreamDeck-Discord)), each user creates their own.
-
-The daemon logs in when Discord is running, follows the voice settings and sends them to the decks
-as state (`discord.ready` while connected, `discord.mute`, `discord.deafen`), following the
-[app conventions](design.md#app-integrations). The D200 decides on
-each press: with `discord.ready` from the current host the key goes to `deckhost`, otherwise it
-runs the fallback; the release goes the same way. Each deck's Discord keys run in order on the
-PC, so a quick push-to-talk tap always ends muted.
-
-### Plan
-
-1. Ask Discord for approved-partner status, so users can skip creating an application.
-2. Switching input/output device, per-user volume and mute (these need device and user IDs, so
-   `deckhost` should list them first).
-3. Camera, Go Live and soundboard aren't in Discord's public API; keys can send their keybinds.

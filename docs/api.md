@@ -26,8 +26,7 @@ On Linux it's the hidraw node whose report descriptor is exactly `proto.RawDescr
 `contrib/linux/70-d200-deck.rules`. In a browser, ask WebHID for `{usagePage: 0xFFD2}`.
 
 Send output reports on the OUT endpoint: hidraw `write()`, WebHID `sendReport()` and Windows
-`WriteFile` do. Windows `HidD_SetOutputReport` uses the control endpoint, which the deck refuses
-(older decks, with no OUT endpoint, took SET_REPORT).
+`WriteFile` do. Windows `HidD_SetOutputReport` uses the control endpoint, which the deck refuses.
 
 ### Requests
 
@@ -72,9 +71,9 @@ Payloads are JSON unless noted.
 | Cmd | Name | Payload | Reply |
 |---|---|---|---|
 | `0x01` | hello | none | `{"protocol": 4, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.23.5", "features": {...}}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API, and `features` what its software supports ([below](#features)) |
-| `0x03` | identify | 1 byte: key number; or none | none; the key flashes, or with no payload the whole screen shows white for a second, to tell decks apart (older decks answer status 2) |
+| `0x03` | identify | 1 byte: key number; or none | none; the key flashes, or with no payload the whole screen shows white for a second, to tell decks apart |
 | `0x04` | result | `{"id": 7, "error": "..."}`: how a PC action went; leave out `error` if it worked | none |
-| `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | `{"looks": {"<name>": "<rev>"}}`: the host's looks the deck shows (older decks: none) |
+| `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | `{"looks": {"<name>": "<rev>"}}`: the host's looks the deck shows |
 | `0x06` | state | `{"host": "<host id>", "state": {"discord.mute": true}}` | none |
 | `0x07` | settings | none to read; to change, the settings to change, e.g. `{"usb_drive": false}` | the settings: `{"usb_drive": true}` |
 | `0x08` | config-info | none, or `{"gzip": true}` | `{"rev": "<sha256 hex>", "size": 1234}`, and `"gzip_size"` if asked |

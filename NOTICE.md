@@ -9,6 +9,7 @@ d200-deck is licensed under the GNU GPL v3 or later ([LICENSE](LICENSE)). It inc
 | Discord symbol from [Discord's brand assets](https://discord.com/branding), Copyright Discord Inc. | `icons/marks.go`, `deck/default_icons.go` | used under Discord's brand guidelines |
 | OBS Studio logo from [Simple Icons](https://simpleicons.org) (`obsstudio`) | `icons/marks.go`, `deck/default_icons.go` | CC0-1.0 |
 | [golang.org/x/image](https://pkg.go.dev/golang.org/x/image), including the Go fonts | Go module | BSD-3-Clause (in the module) |
+| [golang.org/x/sys](https://pkg.go.dev/golang.org/x/sys) | Go module | BSD-3-Clause (in the module) |
 | [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) (used by x/image) | Go module | BSD-3-Clause (in the module) |
 | [fyne.io/systray](https://github.com/fyne-io/systray) (deckhost tray icon) | Go module | Apache-2.0 (in the module) |
 | [godbus/dbus](https://github.com/godbus/dbus) (deckhost's tray and media keys on Linux) | Go module | BSD-2-Clause (in the module) |
