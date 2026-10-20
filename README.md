@@ -36,8 +36,8 @@ The config format is in [docs/config.md](docs/config.md).
 
 ## Building
 
-You need Docker and `make`. Everything builds and tests in a Go container, the same way locally
-and in CI:
+You need Docker or Podman, and `make`. Everything builds and tests in a Go container, the same
+way locally and in CI (without either, `make` uses the host's Go):
 
 ```bash
 make            # check (gofmt, vet, go.mod tidy), test, build
@@ -48,7 +48,7 @@ make build      # build/deckd (arm64), build/deckhost and
 make install    # build deckhost and install or update it for your user (Linux)
 make dist       # deckhost installers into build/dist: .deb, .rpm, Linux tarball,
                 # Windows setup.exe (see docs/install.md)
-make test DOCKER=   # use the host's Go instead of Docker
+make test DOCKER=   # use the host's Go instead of a container
 ```
 
 `go run ./cmd/deckd keys -preview screen.png` renders the default config on a PC.

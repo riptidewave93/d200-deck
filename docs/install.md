@@ -19,8 +19,12 @@ or start them now: `systemctl --user start deckhost.service && deckhost tray &`.
 
 **Atomic distros** (Fedora Silverblue, Bluefin, Bazzite, SteamOS) and anything else: unpack
 `deckhost-<version>-linux-<arch>.tar.gz` and run `./install.sh` in it. It installs for your user
-(`~/.local/bin`) and starts deckhost, then offers to install the udev rule with `sudo` (needed
-once). `./install.sh --uninstall` removes it.
+(`~/.local/bin`) and starts deckhost, then prints the udev rule's root command (needed once) and
+offers to run it with `sudo` or `doas`. Run it again to update; `./install.sh --uninstall` removes
+it. From a checkout of this repo, `make install` builds deckhost and does the same.
+
+Without systemd, the tray starts the daemon and logs it to `$XDG_RUNTIME_DIR/deckhost.log`. If your
+desktop doesn't run autostart entries (some window managers), start `deckhost tray` at login.
 
 On GNOME the tray icon needs the
 [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/)
