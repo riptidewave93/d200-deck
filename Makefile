@@ -4,11 +4,12 @@ GO_IMAGE ?= docker.io/library/golang:1.27.0-bookworm
 ifeq ($(origin DOCKER),undefined)
 DOCKER := $(shell command -v docker >/dev/null 2>&1 && echo docker || { command -v podman >/dev/null 2>&1 && echo podman; })
 endif
-VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
+# Release tags are lightweight, so describe needs --tags
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 OUT := build
 # Package version: v1.2.3 -> 1.2.3 on a tagged commit, else 0.0.0~git<date>.<commit>
-PKG_VERSION ?= $(shell t=$$(git describe --tags --exact-match 2>/dev/null) && echo $${t\#v} || \
-	echo 0.0.0~git$$(git show -s --format=%cd --date=format:%Y%m%d HEAD).$$(git rev-parse --short HEAD))
+TAG := $(shell git describe --tags --exact-match 2>/dev/null)
+PKG_VERSION ?= $(if $(TAG),$(TAG:v%=%),0.0.0~git$(shell git show -s --format=%cd --date=format:%Y%m%d HEAD).$(shell git rev-parse --short HEAD))
 NFPM_VERSION := v2.41.1
 WINRES_VERSION := v0.3.3
 # The website builds its WebAssembly with TinyGo
