@@ -1,11 +1,14 @@
 package deckd
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,30 +18,118 @@ import (
 )
 
 // configFile is the config deckd shows, as a file: what clients read and
-// replace over the config channel.
+// replace over the config channel. Reads come from flash, so the file isn't
+// kept in memory too, but for the default config's, shown without a good file.
 type configFile struct {
 	path string
-	b    []byte
-	gz   *gzipped // b gzipped, made when first read
+	cfg  *deck.Config // parsed
+	rev  string
+	data blob
+	gz   *blob // data gzipped, made when first read
 }
 
-type gzipped struct {
-	rev string
-	b   []byte
+// blob is bytes to read from: a file kept open, so it's still the same
+// bytes after a rename replaces it, or memory.
+type blob struct {
+	r    io.ReaderAt // *os.File or *bytes.Reader
+	size int
+}
+
+func (b blob) read(off, n int) ([]byte, error) {
+	off = min(off, b.size)
+	buf := make([]byte, min(n, b.size-off))
+	_, err := b.r.ReadAt(buf, int64(off))
+	if err == io.EOF {
+		err = nil
+	}
+	return buf, err
+}
+
+func (b blob) close() {
+	if f, ok := b.r.(*os.File); ok {
+		f.Close()
+	}
+}
+
+// openBlob opens the file at path.
+func openBlob(path string) (blob, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return blob{}, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return blob{}, err
+	}
+	return blob{f, int(fi.Size())}, nil
+}
+
+// set shows cfg: from mem if it isn't nil, else from the file, whose rev is
+// given or worked out. gz, if not nil, is the file gzipped.
+func (f *configFile) set(cfg *deck.Config, mem []byte, rev string, gz []byte) error {
+	data := blob{bytes.NewReader(mem), len(mem)}
+	if mem == nil {
+		var err error
+		if data, err = openBlob(f.path); err != nil {
+			return err
+		}
+		if rev == "" {
+			h := sha256.New()
+			io.Copy(h, io.NewSectionReader(data.r, 0, int64(data.size)))
+			rev = hex.EncodeToString(h.Sum(nil))
+		}
+	} else {
+		sum := sha256.Sum256(mem)
+		rev = hex.EncodeToString(sum[:])
+	}
+	f.data.close()
+	if f.gz != nil {
+		f.gz.close()
+	}
+	f.cfg, f.rev, f.data, f.gz = cfg, rev, data, nil
+	if gz != nil {
+		f.keepGzip(gz)
+	}
+	return nil
+}
+
+// keepGzip keeps gz as the config gzipped: on flash next to a file.
+func (f *configFile) keepGzip(gz []byte) {
+	if _, ok := f.data.r.(*os.File); !ok {
+		f.gz = &blob{bytes.NewReader(gz), len(gz)}
+		return
+	}
+	path := f.path + ".gz"
+	err := writeFile(path, gz)
+	var b blob
+	if err == nil {
+		b, err = openBlob(path)
+	}
+	if err != nil {
+		log.Printf("config: %v", err)
+		return
+	}
+	f.gz = &b
 }
 
 // gzip is the config gzipped, made once per version.
-func (f *configFile) gzip() []byte {
-	rev := f.info().Rev
-	if f.gz == nil || f.gz.rev != rev {
-		f.gz = &gzipped{rev, proto.Gzip(f.b)}
+func (f *configFile) gzip() (blob, error) {
+	if f.gz == nil {
+		all, err := f.data.read(0, f.data.size)
+		if err != nil {
+			return blob{}, err
+		}
+		f.keepGzip(proto.Gzip(all))
+		if f.gz == nil {
+			return blob{}, errors.New("can't gzip the config")
+		}
 	}
-	return f.gz.b
+	return *f.gz, nil
 }
 
-func (f configFile) info() proto.ConfigInfo {
-	sum := sha256.Sum256(f.b)
-	return proto.ConfigInfo{Rev: hex.EncodeToString(sum[:]), Size: len(f.b)}
+func (f *configFile) info() proto.ConfigInfo {
+	return proto.ConfigInfo{Rev: f.rev, Size: f.data.size}
 }
 
 // upload is a config being written.
@@ -76,7 +167,11 @@ func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
 			return proto.StatusBadRequest, nil
 		}
 		if q.Gzip {
-			info.GzipSize = len(d.file.gzip())
+			gz, err := d.file.gzip()
+			if err != nil {
+				return failed(err)
+			}
+			info.GzipSize = gz.size
 		}
 		return okJSON(info)
 	case proto.CmdConfigRead:
@@ -90,12 +185,18 @@ func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
 		if n > proto.MaxConfigRead {
 			return proto.StatusBadRequest, nil
 		}
-		b := d.file.b
+		b := d.file.data
 		if len(p) == 7 && p[6]&proto.ConfigReadGzip != 0 {
-			b = d.file.gzip()
+			var err error
+			if b, err = d.file.gzip(); err != nil {
+				return failed(err)
+			}
 		}
-		off = min(off, len(b))
-		return proto.StatusOK, b[off:min(off+n, len(b))]
+		part, err := b.read(off, n)
+		if err != nil {
+			return failed(err)
+		}
+		return proto.StatusOK, part
 	case proto.CmdConfigWrite:
 		var w proto.ConfigWrite
 		if json.Unmarshal(p, &w) != nil || w.Size <= 0 || w.Size > deck.MaxConfigBytes ||
@@ -152,11 +253,7 @@ func (d *deckd) commit(seq uint16, u *upload) (byte, []byte) {
 	if err != nil {
 		return failed(err)
 	}
-	old, _ := deck.Parse(d.file.b)
-	if old == nil {
-		old = &deck.Config{}
-	}
-	if n := newActions(old, c); n > 0 {
+	if n := newActions(d.file.cfg, c); n > 0 {
 		base := d.file.info().Rev
 		return d.ask(seq, "Save keys?", plural(n, "new\nkey action", "new\nkey actions"), "Save", func() (byte, []byte) {
 			d.fileMu.Lock()
@@ -176,11 +273,11 @@ func (d *deckd) save(u *upload, c *deck.Config) (byte, []byte) {
 		log.Printf("config: %v", err)
 		return failed(err)
 	}
-	d.file.b = u.b
-	info := d.file.info()
-	if u.gz != nil {
-		d.file.gz = &gzipped{info.Rev, u.gz}
+	if err := d.file.set(c, nil, u.SHA256, u.gz); err != nil {
+		log.Printf("config: %v", err)
+		return failed(err)
 	}
+	info := d.file.info()
 	log.Printf("config: saved %s", info.Rev[:12])
 	d.ui <- func() {
 		d.cfg = c

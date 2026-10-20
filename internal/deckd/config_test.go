@@ -34,18 +34,27 @@ func noisePNG(t *testing.T) string {
 	return base64.StdEncoding.EncodeToString(b.Bytes())
 }
 
+// useConfig has d show the config at path, as deckd does at start.
+func useConfig(t *testing.T, d *deckd, path string) {
+	t.Helper()
+	cfg, mem := loadConfig(path)
+	d.cfg, d.file.path = cfg, path
+	if err := d.file.set(cfg, mem, "", nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestConfigOverChannel(t *testing.T) {
 	d := newTestDeckd()
 	path := filepath.Join(t.TempDir(), "config.json")
-	d.cfg, d.file.b = loadConfig(path) // missing: the default
-	d.file.path = path
+	useConfig(t, d, path) // missing: the default
 	dev := prototest.New()
 	go serve(d, dev)
 	c := proto.NewConn(dev)
 	defer c.Close()
 
 	b, info, err := c.ReadConfig()
-	if err != nil || !bytes.Equal(b, d.file.b) || info.Size != len(b) {
+	if def, _ := json.MarshalIndent(deck.DefaultConfig(), "", "  "); err != nil || !bytes.Equal(b, append(def, '\n')) || info.Size != len(b) {
 		t.Fatalf("read %d bytes, %+v, %v", len(b), info, err)
 	}
 
@@ -71,7 +80,7 @@ func TestConfigOverChannel(t *testing.T) {
 		t.Errorf("read back %d bytes, %v", len(b), err)
 	}
 	// the gzip stream sent is the one reads get: not gzipped again
-	if d.file.gz == nil || d.file.gz.rev != got.Rev || !bytes.Equal(d.file.gz.b, proto.Gzip(newFile)) {
+	if gz, _ := os.ReadFile(path + ".gz"); d.file.gz == nil || !bytes.Equal(gz, proto.Gzip(newFile)) {
 		t.Error("the gzip stream sent wasn't kept")
 	}
 
@@ -140,8 +149,7 @@ func TestConfigOverChannel(t *testing.T) {
 func TestConfigAsks(t *testing.T) {
 	d := newTestDeckd()
 	path := filepath.Join(t.TempDir(), "config.json")
-	d.cfg, d.file.b = loadConfig(path)
-	d.file.path = path
+	useConfig(t, d, path)
 	dev := prototest.New()
 	go serve(d, dev)
 	c := proto.NewConn(dev)
@@ -232,8 +240,84 @@ func TestLoadNewerConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	b := []byte(`{"version": 1, "home": "m", "pages": {"m": {"keys": {"0": {"label": "x", "font2": "y"}}}}, "later": 1}` + "\n")
 	os.WriteFile(path, b, 0o644)
-	c, file := loadConfig(path)
-	if c.Home != "m" || !bytes.Equal(file, b) {
-		t.Errorf("loaded home %q, file %q", c.Home, file)
+	if c, mem := loadConfig(path); c.Home != "m" || mem != nil {
+		t.Errorf("loaded home %q, default %q", c.Home, mem)
 	}
+}
+
+// The config is served from its file, not memory; without a good file, the
+// default config's JSON is. Either way the bytes served match the rev.
+func TestConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	d := newTestDeckd()
+	dev := prototest.New()
+	go serve(d, dev)
+	c := proto.NewConn(dev)
+	defer c.Close()
+	def, _ := json.MarshalIndent(deck.DefaultConfig(), "", "  ")
+	def = append(def, '\n')
+	read := func(want []byte, what string) {
+		t.Helper()
+		b, info, err := c.ReadConfig() // checks the bytes against the rev, gzipped
+		if err != nil || !bytes.Equal(b, want) || info.Size != len(want) {
+			t.Errorf("%s: read %d bytes, %v", what, len(b), err)
+		}
+		if b, _ := c.Do(proto.CmdConfigRead, []byte{0, 0, 0, 0, 8, 0}); !bytes.Equal(b, want[:8]) {
+			t.Errorf("%s: plain read %q", what, b)
+		}
+	}
+
+	d.fileMu.Lock()
+	useConfig(t, d, path) // no file
+	d.fileMu.Unlock()
+	read(def, "no file")
+
+	os.WriteFile(path, []byte("not json"), 0o644)
+	d.fileMu.Lock()
+	useConfig(t, d, path)
+	d.fileMu.Unlock()
+	read(def, "bad file")
+	if b, _ := os.ReadFile(path); string(b) != "not json" {
+		t.Error("bad file changed")
+	}
+
+	cfg := deck.DefaultConfig()
+	cfg.Home = "browser"
+	cfg.Images = map[string]string{"noise": noisePNG(t)}
+	file, _ := json.Marshal(cfg)
+	os.WriteFile(path, file, 0o644)
+	os.WriteFile(path+".gz", []byte("stale"), 0o644) // from before a restart
+	d.fileMu.Lock()
+	useConfig(t, d, path)
+	_, onFlash := d.file.data.r.(*os.File)
+	d.fileMu.Unlock()
+	if !onFlash {
+		t.Error("config file kept in memory")
+	}
+	read(file, "file")
+
+	// a save during a read: the reader gets the new bytes, and finds out
+	var info proto.ConfigInfo
+	b, _ := c.Do(proto.CmdConfigInfo, []byte(`{"gzip": true}`))
+	json.Unmarshal(b, &info)
+	first, _ := c.Do(proto.CmdConfigRead, []byte{0, 0, 0, 0, 0, 0x10, proto.ConfigReadGzip})
+	cfg.Home = "main"
+	newFile, _ := json.Marshal(cfg)
+	got, err := c.WriteConfig(info.Rev, newFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runUI(t, d)
+	rest, err := c.Do(proto.CmdConfigRead, append(binary.LittleEndian.AppendUint32(nil, uint32(len(first))), 0, 0x10, proto.ConfigReadGzip))
+	if err != nil {
+		t.Fatalf("read after a save: %v", err)
+	}
+	if b, err := proto.Gunzip(append(first, rest...), info.Size); err == nil && bytes.Equal(b, file) {
+		t.Error("read the old config across a save")
+	}
+	if got.Rev == info.Rev {
+		t.Error("same rev")
+	}
+	read(newFile, "after the save")
 }

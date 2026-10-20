@@ -325,7 +325,8 @@ func guardConfig(path string) {
 }
 
 // loadConfig reads the config file, falling back to the default config when
-// it is missing or broken. It returns the config and the file it's from.
+// it is missing or broken. It returns the config and, for the default, its
+// JSON.
 func loadConfig(path string) (*deck.Config, []byte) {
 	b, err := os.ReadFile(path)
 	var c *deck.Config
@@ -334,7 +335,7 @@ func loadConfig(path string) (*deck.Config, []byte) {
 	}
 	switch {
 	case err == nil:
-		return c, b
+		return c, nil
 	case errors.Is(err, fs.ErrNotExist):
 		log.Printf("no %s, using the default config", path)
 	default:
@@ -400,10 +401,13 @@ func Main(args []string) {
 	if !*test && *preview == "" {
 		guardConfig(*config)
 	}
-	cfg, file := loadConfig(*config)
+	cfg, mem := loadConfig(*config)
 	d := &deckd{cfg: cfg, canvas: gfx.NewCanvas(render.Width, render.Height),
 		test: *test, redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 4),
-		file: configFile{path: *config, b: file}}
+		file: configFile{path: *config}}
+	if err := d.file.set(cfg, mem, "", nil); err != nil {
+		log.Fatal(err) // it was there a moment ago
+	}
 	d.pages = []string{d.cfg.Home}
 	d.renderer = render.New(d.cfg)
 	d.renderer.Extra = systemIcons

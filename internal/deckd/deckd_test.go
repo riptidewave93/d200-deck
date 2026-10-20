@@ -32,6 +32,8 @@ func newTestDeckd() *deckd {
 	d := &deckd{cfg: deck.DefaultConfig(), canvas: gfx.NewCanvas(render.Width, render.Height),
 		redraw: make(chan int, deck.KeyCount), ui: make(chan func(), 16)}
 	d.pages = []string{d.cfg.Home}
+	b, _ := json.Marshal(d.cfg)
+	d.file.set(d.cfg, b, "", nil)
 	d.renderer = render.New(d.cfg)
 	d.renderer.Extra = systemIcons
 	d.run = newRunner("")
