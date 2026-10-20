@@ -176,6 +176,14 @@ func TestAnimationFast(t *testing.T) {
 			t.Errorf("at %v: the frame from %v", at, start)
 		}
 	}
+	// very short loops still move: 5 x 20 ms keeps its 100 ms, 2 x 30 ms
+	// can't be shown that fast
+	for _, c := range []struct{ n, delay int }{{5, 2}, {2, 3}} {
+		a := NewAnimation(solidGIF(c.n, c.delay), 2, 2)
+		if len(a.Frames) != 2 || a.total != 100*time.Millisecond || colourAt(a.Frames[0], 0, 0) == colourAt(a.Frames[1], 0, 0) {
+			t.Errorf("%d x %d0 ms: %d frames, %v", c.n, c.delay, len(a.Frames), a.Delays)
+		}
+	}
 	// a slower GIF is unchanged
 	a = NewAnimation(solidGIF(5, 10), 2, 2)
 	if len(a.Frames) != 5 || a.total != 500*time.Millisecond || a.Delays[4] != 100*time.Millisecond {
@@ -195,12 +203,22 @@ func TestShownFrames(t *testing.T) {
 	if fmt.Sprint(keep) != "[true false false true false]" || fmt.Sprint(kept) != fmt.Sprint(ms(60, 120)) {
 		t.Errorf("keep %v, delays %v", keep, kept)
 	}
-	// a whole loop too short to skip frames in: slower instead of still
-	if keep, kept := shown(ms(20, 20, 20, 20, 20)); fmt.Sprint(keep) != "[true true true true true]" || fmt.Sprint(kept) != fmt.Sprint(ms(50, 50, 50, 50, 50)) {
-		t.Errorf("short loop: keep %v, delays %v", keep, kept)
-	}
-	if keep, kept := shown(ms(30, 30)); fmt.Sprint(keep) != "[true true]" || fmt.Sprint(kept) != fmt.Sprint(ms(50, 50)) {
-		t.Errorf("short loop: keep %v, delays %v", keep, kept)
+	// a loop that skipping would leave with one frame keeps two: on time
+	// if the loop is at least 100 ms long, else stretched to 100 ms
+	for _, c := range []struct {
+		delays     []time.Duration
+		keep, kept string
+	}{
+		{ms(20, 20, 20, 20, 20), "[true false true false false]", fmt.Sprint(ms(50, 50))},
+		{ms(30, 40, 40), "[true true false]", fmt.Sprint(ms(50, 60))},
+		{ms(90, 10), "[true true]", fmt.Sprint(ms(50, 50))},
+		{ms(30, 30), "[true true]", fmt.Sprint(ms(50, 50))},
+		{ms(20, 20, 20), "[true true false]", fmt.Sprint(ms(50, 50))},
+	} {
+		keep, kept := shown(c.delays)
+		if fmt.Sprint(keep) != c.keep || fmt.Sprint(kept) != c.kept {
+			t.Errorf("%v: keep %v, delays %v", c.delays, keep, kept)
+		}
 	}
 	if keep, kept := shown(ms(40)); fmt.Sprint(keep) != "[true]" || fmt.Sprint(kept) != fmt.Sprint(ms(40)) {
 		t.Errorf("one frame: keep %v, delays %v", keep, kept)

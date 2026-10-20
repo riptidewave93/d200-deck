@@ -16,7 +16,7 @@ type Animation struct {
 
 // Frame delays: browsers show a GIF frame of 0 or 1 hundredths of a second
 // for 100 ms. Frames change at most every minDelay: faster frames are
-// skipped, keeping the GIF's timing, unless that would leave one frame.
+// skipped, keeping the GIF's timing.
 const (
 	minDelay   = 50 * time.Millisecond
 	shortDelay = 100 * time.Millisecond
@@ -51,6 +51,28 @@ func NewAnimation(g *gif.GIF, w, h int) *Animation {
 	return a
 }
 
+// twoFrames picks two frames to show of a loop too short for shown's: the
+// first, and the one showing minDelay in (half way, in a shorter loop). The
+// loop keeps its length if it's at least 2 x minDelay; a shorter one can't be
+// shown that fast, so it takes 2 x minDelay.
+func twoFrames(delays []time.Duration, total time.Duration) ([]bool, []time.Duration) {
+	split := min(minDelay, total/2)
+	second, at := 1, time.Duration(0)
+	for i, d := range delays {
+		if at <= split && split < at+d {
+			second = max(i, 1)
+			break
+		}
+		at += d
+	}
+	keep := make([]bool, len(delays))
+	keep[0], keep[second] = true, true
+	if total < 2*minDelay {
+		return keep, []time.Duration{minDelay, minDelay}
+	}
+	return keep, []time.Duration{split, total - split}
+}
+
 // shown picks the frames to show, so that none shows for less than minDelay:
 // each starts on time and lasts until the first frame start at least
 // minDelay later. keep marks them, and kept is how long each shows.
@@ -75,12 +97,7 @@ func shown(delays []time.Duration) (keep []bool, kept []time.Duration) {
 		kept = append(kept, rest)
 	}
 	if len(kept) == 1 && len(delays) > 1 {
-		// a loop too short to show in time: slower, rather than standing still
-		kept = kept[:0]
-		for i, d := range delays {
-			keep[i] = true
-			kept = append(kept, max(d, minDelay))
-		}
+		keep, kept = twoFrames(delays, at)
 	}
 	return keep, kept
 }
