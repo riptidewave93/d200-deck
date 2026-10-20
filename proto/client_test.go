@@ -2,6 +2,10 @@ package proto_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -194,5 +198,47 @@ func TestClosed(t *testing.T) {
 	}
 	if _, err := c.Do(proto.CmdHello, nil); err == nil {
 		t.Error("Do worked on a closed connection")
+	}
+}
+
+func TestProtocol3Device(t *testing.T) {
+	// 64-byte reports with a 1-byte length still work
+	dev := prototest.New()
+	dev.V3 = true
+	defer dev.Close()
+	go dev.Serve(func(r proto.Request) (byte, []byte) { return proto.StatusOK, bytes.Repeat([]byte{7}, 200) })
+	c := proto.NewConn(dev)
+	b, err := c.Do(proto.CmdHello, nil)
+	if err != nil || len(b) != 200 {
+		t.Errorf("%d bytes, %v", len(b), err)
+	}
+}
+
+func TestReadConfigWithoutGzip(t *testing.T) {
+	// a protocol 3 device ignores the gzip request
+	file := bytes.Repeat([]byte("config "), 5000)
+	sum := sha256.Sum256(file)
+	dev := prototest.New()
+	dev.V3 = true
+	defer dev.Close()
+	go dev.Serve(func(r proto.Request) (byte, []byte) {
+		switch r.Cmd {
+		case proto.CmdConfigInfo:
+			b, _ := json.Marshal(proto.ConfigInfo{Rev: hex.EncodeToString(sum[:]), Size: len(file)})
+			return proto.StatusOK, b
+		case proto.CmdConfigRead:
+			off, n := int(binary.LittleEndian.Uint32(r.Payload)), int(binary.LittleEndian.Uint16(r.Payload[4:]))
+			if len(r.Payload) != 6 || n > proto.MaxConfigReadV3 {
+				return proto.StatusBadRequest, nil
+			}
+			off = min(off, len(file))
+			return proto.StatusOK, file[off:min(off+n, len(file))]
+		}
+		return proto.StatusUnknownCmd, nil
+	})
+	c := proto.NewConn(dev)
+	b, info, err := c.ReadConfig()
+	if err != nil || !bytes.Equal(b, file) || info.Size != len(file) {
+		t.Errorf("%d bytes, %+v, %v", len(b), info, err)
 	}
 }

@@ -102,7 +102,7 @@ func newDaemon() *daemon {
 	d := &daemon{
 		id:       hex.EncodeToString(id[:]),
 		devices:  map[string]*Device{},
-		find:     func() []string { return hidraw.FindAll(proto.RawDescriptor) },
+		find:     func() []string { return hidraw.FindAll(proto.RawDescriptors...) },
 		open:     func(path string) (proto.Transport, error) { return hidraw.Open(path) },
 		state:    map[string]bool{},
 		known:    map[string]bool{},

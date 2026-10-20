@@ -127,7 +127,7 @@ func direct(cmd byte, payload []byte) ([]byte, error) {
 
 // connect opens the first D200's config channel.
 func connect() (*proto.Conn, error) {
-	paths := hidraw.FindAll(proto.RawDescriptor)
+	paths := hidraw.FindAll(proto.RawDescriptors...)
 	if len(paths) == 0 {
 		return nil, errors.New("no D200 found")
 	}

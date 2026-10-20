@@ -2,6 +2,7 @@ package hidraw
 
 import (
 	"errors"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -29,10 +30,13 @@ type hidpCaps struct {
 
 const hidpStatusSuccess = 0x00110000
 
-// FindAll returns the device paths of the HID devices that match desc: the
-// same usage page and usage and report sizes.
-func FindAll(desc []byte) []string {
-	want := capsOf(desc)
+// FindAll returns the device paths of the HID devices that match one of
+// descs: the same usage page and usage and report sizes.
+func FindAll(descs ...[]byte) []string {
+	var want []caps
+	for _, d := range descs {
+		want = append(want, capsOf(d))
+	}
 	var guid windows.GUID
 	procGetHidGuid.Call(uintptr(unsafe.Pointer(&guid)))
 	paths, err := windows.CM_Get_Device_Interface_List("", &guid, windows.CM_GET_DEVICE_INTERFACE_LIST_PRESENT)
@@ -49,7 +53,7 @@ func FindAll(desc []byte) []string {
 		}
 		c, err := getCaps(h)
 		windows.CloseHandle(h)
-		if err == nil && c == want {
+		if err == nil && slices.Contains(want, c) {
 			found = append(found, p)
 		}
 	}

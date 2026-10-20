@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // Device is an open hidraw node.
@@ -13,13 +14,13 @@ type Device struct{ f *os.File }
 var sysHidraw = "/sys/class/hidraw"
 
 // FindAll returns the /dev paths of the hidraw nodes whose report descriptor
-// is desc.
-func FindAll(desc []byte) []string {
+// is one of descs.
+func FindAll(descs ...[]byte) []string {
 	var paths []string
 	nodes, _ := filepath.Glob(sysHidraw + "/hidraw*")
 	for _, n := range nodes {
 		d, err := os.ReadFile(filepath.Join(n, "device", "report_descriptor"))
-		if err == nil && bytes.Equal(d, desc) {
+		if err == nil && slices.ContainsFunc(descs, func(want []byte) bool { return bytes.Equal(d, want) }) {
 			paths = append(paths, "/dev/"+filepath.Base(n))
 		}
 	}

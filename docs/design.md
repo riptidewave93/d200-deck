@@ -78,9 +78,11 @@ the firmware. `deckhost` uses the same channel (hidraw on Linux, the HID API on 
 **Config channel**: a second HID interface ([api.md](api.md#finding-it)) with no OUT endpoint:
 output reports arrive by SET_REPORT on ep0, so the shared RX FIFO can't stall.
 
-Measured (Linux hidraw and Chrome WebHID): ~50 KB/s to the device, limited by ep0 moving 64-byte
-packets at ~1.25 ms each. Enough for configs; custom icons in bulk would want a 64-byte
-interrupt OUT endpoint (about 10x faster), which needs a check against the shared-FIFO stall.
+Measured with protocol 3 (Linux hidraw and Chrome WebHID): ~50 KB/s to the device, limited by ep0
+moving 64-byte packets at ~1.25 ms each, and ~27 KB/s back in 64-byte input reports. Protocol 4
+has 1024-byte input reports and gzips the config both ways (image data shrinks by about a
+quarter, the rest much more). Writes stay ep0-bound: faster would want an interrupt OUT endpoint,
+which needs a check against the shared-FIFO stall.
 
 Firefox and Safari have no WebHID; their users go through `deckhost`. Linux needs a udev
 `uaccess` rule for the hidraw node (`contrib/linux/70-d200-deck.rules`).
@@ -124,7 +126,9 @@ The USB gadget (interfaces, descriptors, endpoints, VID:PID) is d200-buildroot's
 ([linux.md](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/linux.md#usb), [todo](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/todo.md)). On the deck's side:
 
 - `netid` must stay byte-for-byte the image's address derivation (vectors in `netid/testdata`).
-- HID input reports stay at 64 bytes or less.
+- The config channel's input reports are 1024 bytes: the gadget's `report_length` comes from
+  `deckd raw-report-length`, as its descriptor does from `deckd raw-descriptor`, and the IN
+  endpoint needs a 1 KB TX FIFO.
 
 ## Open items
 

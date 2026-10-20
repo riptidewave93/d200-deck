@@ -19,6 +19,21 @@ import (
 type configFile struct {
 	path string
 	b    []byte
+	gz   *gzipped // b gzipped, made when first read
+}
+
+type gzipped struct {
+	rev string
+	b   []byte
+}
+
+// gzip is the config gzipped, made once per version.
+func (f *configFile) gzip() []byte {
+	rev := f.info().Rev
+	if f.gz == nil || f.gz.rev != rev {
+		f.gz = &gzipped{rev, proto.Gzip(f.b)}
+	}
+	return f.gz.b
 }
 
 func (f configFile) info() proto.ConfigInfo {
@@ -30,6 +45,14 @@ func (f configFile) info() proto.ConfigInfo {
 type upload struct {
 	proto.ConfigWrite
 	b []byte
+}
+
+// sent is how many bytes the client sends: the config, or it gzipped.
+func (u *upload) sent() int {
+	if u.GzipSize > 0 {
+		return u.GzipSize
+	}
+	return u.Size
 }
 
 func failed(err error) (byte, []byte) { return proto.StatusFailed, []byte(err.Error()) }
@@ -46,9 +69,17 @@ func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
 	p := req.Payload
 	switch req.Cmd {
 	case proto.CmdConfigInfo:
-		return okJSON(d.file.info())
+		info := d.file.info()
+		var q proto.ConfigInfoRequest
+		if len(p) > 0 && json.Unmarshal(p, &q) != nil {
+			return proto.StatusBadRequest, nil
+		}
+		if q.Gzip {
+			info.GzipSize = len(d.file.gzip())
+		}
+		return okJSON(info)
 	case proto.CmdConfigRead:
-		if len(p) != 6 {
+		if len(p) != 6 && len(p) != 7 {
 			return proto.StatusBadRequest, nil
 		}
 		off, n := int(binary.LittleEndian.Uint32(p)), int(binary.LittleEndian.Uint16(p[4:]))
@@ -58,18 +89,24 @@ func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
 		if n > proto.MaxConfigRead {
 			return proto.StatusBadRequest, nil
 		}
-		off = min(off, len(d.file.b))
-		return proto.StatusOK, d.file.b[off:min(off+n, len(d.file.b))]
+		b := d.file.b
+		if len(p) == 7 && p[6]&proto.ConfigReadGzip != 0 {
+			b = d.file.gzip()
+		}
+		off = min(off, len(b))
+		return proto.StatusOK, b[off:min(off+n, len(b))]
 	case proto.CmdConfigWrite:
 		var w proto.ConfigWrite
-		if json.Unmarshal(p, &w) != nil || w.Size <= 0 || w.Size > deck.MaxConfigBytes {
+		if json.Unmarshal(p, &w) != nil || w.Size <= 0 || w.Size > deck.MaxConfigBytes ||
+			w.GzipSize < 0 || w.GzipSize > deck.MaxConfigBytes {
 			return proto.StatusBadRequest, nil
 		}
-		d.upload = &upload{ConfigWrite: w, b: make([]byte, 0, w.Size)}
+		d.upload = &upload{ConfigWrite: w}
+		d.upload.b = make([]byte, 0, d.upload.sent())
 		return proto.StatusOK, nil
 	case proto.CmdConfigData:
 		u := d.upload
-		if u == nil || len(p) < 4 || int(binary.LittleEndian.Uint32(p)) != len(u.b) || len(u.b)+len(p)-4 > u.Size {
+		if u == nil || len(p) < 4 || int(binary.LittleEndian.Uint32(p)) != len(u.b) || len(u.b)+len(p)-4 > u.sent() {
 			return proto.StatusBadRequest, nil
 		}
 		u.b = append(u.b, p[4:]...)
@@ -89,9 +126,20 @@ func (d *deckd) configRequest(req proto.Request) (byte, []byte) {
 // there now and valid. If it gives keys new actions, the device asks first,
 // so a website or program can't make keys run things behind the user's back.
 func (d *deckd) commit(seq uint16, u *upload) (byte, []byte) {
+	damaged := fmt.Errorf("the config arrived incomplete or damaged; send it again")
+	if u.GzipSize > 0 {
+		if len(u.b) != u.GzipSize {
+			return failed(damaged)
+		}
+		b, err := proto.Gunzip(u.b, u.Size)
+		if err != nil {
+			return failed(damaged)
+		}
+		u.b = b
+	}
 	sum := sha256.Sum256(u.b)
 	if len(u.b) != u.Size || hex.EncodeToString(sum[:]) != u.SHA256 {
-		return failed(fmt.Errorf("the config arrived incomplete or damaged; send it again"))
+		return failed(damaged)
 	}
 	if u.Base != "" && u.Base != d.file.info().Rev {
 		return failed(fmt.Errorf("the config changed since you read it; read it again"))

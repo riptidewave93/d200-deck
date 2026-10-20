@@ -2,7 +2,10 @@ package deckd
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"image"
 	"image/png"
@@ -84,8 +87,41 @@ func TestConfigOverChannel(t *testing.T) {
 		t.Error("a refused config was saved")
 	}
 
+	// as protocol 3 clients do: no gzip
+	plain, _ := json.Marshal(cfg)
+	plain = append(plain, ' ')
+	sum := sha256.Sum256(plain)
+	w, _ := json.Marshal(proto.ConfigWrite{Base: d.file.info().Rev, Size: len(plain), SHA256: hex.EncodeToString(sum[:])})
+	if _, err := c.Do(proto.CmdConfigWrite, w); err != nil {
+		t.Fatal(err)
+	}
+	for off := 0; off < len(plain); off += proto.MaxConfigData {
+		part := binary.LittleEndian.AppendUint32(nil, uint32(off))
+		if _, err := c.Do(proto.CmdConfigData, append(part, plain[off:min(off+proto.MaxConfigData, len(plain))]...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := c.Do(proto.CmdConfigCommit, nil); err != nil {
+		t.Fatal(err)
+	}
+	runUI(t, d)
+	if b, _ := c.Do(proto.CmdConfigInfo, nil); strings.Contains(string(b), "gzip") {
+		t.Errorf("info %s", b)
+	}
+	if b, _ := c.Do(proto.CmdConfigRead, []byte{0, 0, 0, 0, 10, 0}); string(b) != string(plain[:10]) {
+		t.Errorf("plain read %q", b)
+	}
+
+	// a gzip stream that isn't the config
+	w, _ = json.Marshal(proto.ConfigWrite{Size: len(plain), SHA256: hex.EncodeToString(sum[:]), GzipSize: 5})
+	c.Do(proto.CmdConfigWrite, w)
+	c.Do(proto.CmdConfigData, []byte{0, 0, 0, 0, 1, 2, 3, 4, 5})
+	if _, err := c.Do(proto.CmdConfigCommit, nil); err == nil || !strings.Contains(err.Error(), "damaged") {
+		t.Errorf("bad gzip: %v", err)
+	}
+
 	// parts out of order, and a commit without a write
-	w, _ := json.Marshal(proto.ConfigWrite{Size: 10, SHA256: "x"})
+	w, _ = json.Marshal(proto.ConfigWrite{Size: 10, SHA256: "x"})
 	c.Do(proto.CmdConfigWrite, w)
 	if _, err := c.Do(proto.CmdConfigData, []byte{5, 0, 0, 0, 'x'}); err == nil {
 		t.Error("data at the wrong offset taken")

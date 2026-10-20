@@ -18,12 +18,12 @@ A second HID interface on the deck, next to the keyboard:
 | | |
 |---|---|
 | Usage page | `0xFFD2` (vendor), usage `0x01` |
-| Input reports (deck to PC) | 64 bytes, no report ID |
+| Input reports (deck to PC) | 1024 bytes, no report ID (64 on protocol 3 decks) |
 | Output reports (PC to deck) | 1024 bytes, no report ID, sent with SET_REPORT |
 
-On Linux it's the hidraw node whose report descriptor is exactly `proto.RawDescriptor`; it needs
-the udev rule in `contrib/linux/70-d200-deck.rules`. In a browser, ask WebHID for
-`{usagePage: 0xFFD2}`.
+On Linux it's the hidraw node whose report descriptor is exactly `proto.RawDescriptor` (or
+`proto.RawDescriptorV3` on an older deck); it needs the udev rule in
+`contrib/linux/70-d200-deck.rules`. In a browser, ask WebHID for `{usagePage: 0xFFD2}`.
 
 ### Requests
 
@@ -49,8 +49,11 @@ A reply is one or more input reports:
 | 0-1 | seq of the request; 0 for an event |
 | 2 | status: 0 OK, 1 unknown command, 2 bad request, 3 failed (the payload says why) |
 | 3 | flags: `0x02` first report of a message, `0x01` more reports follow |
-| 4 | payload length in this report (up to 59) |
-| 5- | payload |
+| 4-5 | payload length in this report (up to 1018) |
+| 6- | payload |
+
+Protocol 3 decks send 64-byte input reports with a 1-byte length (byte 4, up to 59) and the payload
+from byte 5. Tell them apart by the input report size.
 
 Join the payloads of a message's reports. Drop a message that loses its first report, and any over
 64 KiB.
@@ -70,15 +73,16 @@ Payloads are JSON unless noted.
 | `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | none |
 | `0x06` | state | `{"host": "<host id>", "state": {"discord.mute": true}}` | none |
 | `0x07` | settings | none to read; to change, the settings to change, e.g. `{"usb_drive": false}` | the settings: `{"usb_drive": true}` |
-| `0x08` | config-info | none | `{"rev": "<sha256 hex>", "size": 1234}` |
-| `0x09` | config-read | binary: offset (uint32), length (uint16; 0 means 4096, at most 16384) | binary: the config's bytes there |
-| `0x0a` | config-write | `{"base": "<rev>", "size": 1234, "sha256": "<hex>"}` | none |
-| `0x0b` | config-data | binary: offset (uint32), then up to 1015 bytes | none |
+| `0x08` | config-info | none, or `{"gzip": true}` | `{"rev": "<sha256 hex>", "size": 1234}`, and `"gzip_size"` if asked |
+| `0x09` | config-read | binary: offset (uint32), length (uint16; 0 means 4096, at most 61440; 16384 on protocol 3), and optionally flags (byte; `0x01`: the gzip stream) | binary: the bytes there |
+| `0x0a` | config-write | `{"base": "<rev>", "size": 1234, "sha256": "<hex>"}`, and `"gzip_size"` to send it gzipped | none |
+| `0x0b` | config-data | binary: offset (uint32), then up to 1015 bytes (of the gzip stream, if gzipped) | none |
 | `0x0c` | config-commit | none | `{"rev": "...", "size": 1234}` |
 | `0x0d` | host | none | the PC helper: `{"connected": true, "name": "deckhost", "version", "os", "apps": [...], "state": {...}}` |
 | `0x0e` | time | `{"unix_ms": 1760900000000}`: the time now | none; the deck has no battery-backed clock, so send it on connecting and every hour |
 
-Check `protocol` in hello: this page is version 3. New commands come without a new version; a deck
+Check `protocol` in hello: this page is version 4. Protocol 3 had 64-byte input reports and no
+gzip. New commands come without a new version; a deck
 that doesn't know one answers status 1.
 
 ### Events
@@ -93,19 +97,21 @@ that doesn't know one answers status 1.
 ### The config
 
 The config is the deck's [config file](config.md), images included, up to
-2 MiB: more than one request or reply holds, so it moves in parts. `proto/config.go` does both.
+2 MiB: more than one request or reply holds, so it moves in parts, gzipped on protocol 4 decks.
+`proto/config.go` does both.
 
 To read it:
 
-1. config-info gives its rev and size.
-2. config-read from offset 0 until you have `size` bytes.
-3. Check its SHA-256 is `rev`. If not, it changed while you read: start again.
+1. config-info with `{"gzip": true}` gives its rev, size and `gzip_size` (a protocol 3 deck
+   leaves that out: read it plain).
+2. config-read with flags `0x01` from offset 0 until you have `gzip_size` bytes, 61440 at a time.
+3. Gunzip it, and check its SHA-256 is `rev`. If not, it changed while you read: start again.
 
 To write it:
 
-1. config-write with the new file's size and SHA-256, and `base`: the rev you read. An empty
-   `base` replaces whatever is there.
-2. config-data for each part, in order, from offset 0.
+1. config-write with the new file's size and SHA-256, `base` (the rev you read; empty replaces
+   whatever is there) and `gzip_size`: the size of the file gzipped.
+2. config-data for each part of the gzip stream, in order, from offset 0.
 3. config-commit. The deck checks the file arrived whole, that the config is still `base`, and
    that the config is valid, then saves it, shows it and sends config-changed. If not, it fails
    (status 3) and says why: show that to the user.

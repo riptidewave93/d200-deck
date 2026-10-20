@@ -290,6 +290,8 @@ func Command(name string) bool {
 		os.Stdout.Write(hidg.ReportDescriptor)
 	case "raw-descriptor":
 		os.Stdout.Write(proto.RawDescriptor)
+	case "raw-report-length": // the input report size, for the gadget's report_length
+		fmt.Println(proto.RawInSize)
 	case "usb-net": // for the USB gadget setup
 		out, err := usbNet(serial.Path, usbConf)
 		if err != nil {

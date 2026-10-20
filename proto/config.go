@@ -1,29 +1,33 @@
 package proto
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 )
 
-// ReadConfig reads the device's config file and names its version.
+// ReadConfig reads the device's config file and names its version. It
+// moves it gzipped if the device can (protocol 4).
 func (c *Conn) ReadConfig() ([]byte, ConfigInfo, error) {
-	var info ConfigInfo
-	b, err := c.Do(CmdConfigInfo, nil)
-	if err == nil {
-		err = json.Unmarshal(b, &info)
-	}
+	info, err := c.configInfo()
 	if err != nil {
 		return nil, info, err
 	}
-	out := make([]byte, 0, info.Size)
-	for len(out) < info.Size {
+	size, readLen, flags := info.Size, MaxConfigReadV3, []byte(nil)
+	if info.GzipSize > 0 {
+		size, readLen, flags = info.GzipSize, MaxConfigRead, []byte{ConfigReadGzip}
+	}
+	out := make([]byte, 0, size)
+	for len(out) < size {
 		req := make([]byte, 6)
 		binary.LittleEndian.PutUint32(req, uint32(len(out)))
-		binary.LittleEndian.PutUint16(req[4:], MaxConfigRead)
-		part, err := c.Do(CmdConfigRead, req)
+		binary.LittleEndian.PutUint16(req[4:], uint16(readLen))
+		part, err := c.Do(CmdConfigRead, append(req, flags...))
 		if err != nil {
 			return nil, info, err
 		}
@@ -32,32 +36,85 @@ func (c *Conn) ReadConfig() ([]byte, ConfigInfo, error) {
 		}
 		out = append(out, part...)
 	}
+	if info.GzipSize > 0 {
+		if out, err = Gunzip(out, info.Size); err != nil {
+			return nil, info, err
+		}
+	}
 	if sum := sha256.Sum256(out); hex.EncodeToString(sum[:]) != info.Rev {
 		return nil, info, errors.New("the config changed while it was read; read it again")
 	}
+	info.GzipSize = 0
 	return out, info, nil
 }
 
-// WriteConfig replaces the device's config with b, if it's still version
-// base ("" replaces any).
-func (c *Conn) WriteConfig(base string, b []byte) (ConfigInfo, error) {
+// configInfo asks for the config's version and, from protocol 4 devices,
+// its gzipped size.
+func (c *Conn) configInfo() (ConfigInfo, error) {
 	var info ConfigInfo
+	q, _ := json.Marshal(ConfigInfoRequest{Gzip: true}) // older devices ignore it
+	b, err := c.Do(CmdConfigInfo, q)
+	if err == nil {
+		err = json.Unmarshal(b, &info)
+	}
+	return info, err
+}
+
+// WriteConfig replaces the device's config with b, if it's still version
+// base ("" replaces any). It moves it gzipped if the device can.
+func (c *Conn) WriteConfig(base string, b []byte) (ConfigInfo, error) {
+	info, err := c.configInfo()
+	if err != nil {
+		return info, err
+	}
 	sum := sha256.Sum256(b)
-	w, _ := json.Marshal(ConfigWrite{Base: base, Size: len(b), SHA256: hex.EncodeToString(sum[:])})
+	cw := ConfigWrite{Base: base, Size: len(b), SHA256: hex.EncodeToString(sum[:])}
+	data := b
+	if info.GzipSize > 0 {
+		data = Gzip(b)
+		cw.GzipSize = len(data)
+	}
+	w, _ := json.Marshal(cw)
 	if _, err := c.Do(CmdConfigWrite, w); err != nil {
 		return info, err
 	}
-	for off := 0; off < len(b); off += MaxConfigData {
+	for off := 0; off < len(data); off += MaxConfigData {
 		part := make([]byte, 4, 4+MaxConfigData)
 		binary.LittleEndian.PutUint32(part, uint32(off))
-		part = append(part, b[off:min(off+MaxConfigData, len(b))]...)
+		part = append(part, data[off:min(off+MaxConfigData, len(data))]...)
 		if _, err := c.Do(CmdConfigData, part); err != nil {
 			return info, err
 		}
 	}
+	info = ConfigInfo{}
 	r, err := c.DoWait(CmdConfigCommit, nil, ConfirmTimeout+ReplyTimeout)
 	if err == nil {
 		err = json.Unmarshal(r, &info)
 	}
 	return info, err
+}
+
+// Gzip compresses a config for transfer.
+func Gzip(b []byte) []byte {
+	var buf bytes.Buffer
+	w, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	w.Write(b)
+	w.Close()
+	return buf.Bytes()
+}
+
+// Gunzip decompresses a config of size bytes; it fails if it's another size.
+func Gunzip(b []byte, size int) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	out, err := io.ReadAll(io.LimitReader(r, int64(size)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(out) != size {
+		return nil, errors.New("the gzipped config isn't the size it should be")
+	}
+	return out, nil
 }

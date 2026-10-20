@@ -10,7 +10,7 @@ var errUnsupported = errors.New("HID devices aren't supported on this system yet
 type Device struct{}
 
 // FindAll finds no devices.
-func FindAll(desc []byte) []string { return nil }
+func FindAll(descs ...[]byte) []string { return nil }
 
 // Open fails.
 func Open(path string) (*Device, error) { return nil, errUnsupported }

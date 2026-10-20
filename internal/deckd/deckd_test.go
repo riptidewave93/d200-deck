@@ -320,11 +320,11 @@ func TestChannelSend(t *testing.T) {
 	}
 	c.set(raw)
 	defer c.set(nil)
-	if err := c.send(5, proto.StatusOK, bytes.Repeat([]byte("x"), 100)); err != nil {
+	if err := c.send(5, proto.StatusOK, bytes.Repeat([]byte("x"), proto.MaxReply+100)); err != nil {
 		t.Fatal(err)
 	}
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
+	buf := make([]byte, 4*proto.RawInSize)
+	n, _ := io.ReadAtLeast(r, buf, 2*proto.RawInSize)
 	if n != 2*proto.RawInSize {
 		t.Errorf("%d bytes written, want 2 reports", n)
 	}

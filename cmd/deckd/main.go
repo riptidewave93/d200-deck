@@ -34,7 +34,7 @@ func main() {
 		if len(os.Args) == 2 && deckd.Command(os.Args[1]) {
 			return
 		}
-		fmt.Fprintln(os.Stderr, "usage: deckd [keys|update] [flags], or deckd fonts|default-config|hid-descriptor|raw-descriptor|usb-net")
+		fmt.Fprintln(os.Stderr, "usage: deckd [keys|update] [flags], or deckd fonts|default-config|hid-descriptor|raw-descriptor|raw-report-length|usb-net")
 		os.Exit(2)
 	}
 	log.SetPrefix(os.Args[1] + ": ") // they share deckd's log
