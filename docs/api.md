@@ -68,7 +68,7 @@ Payloads are JSON unless noted.
 | Cmd | Name | Payload | Reply |
 |---|---|---|---|
 | `0x01` | hello | none | `{"protocol": 3, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.23.5"}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API |
-| `0x03` | identify | 1 byte: key number | none; the key flashes |
+| `0x03` | identify | 1 byte: key number; or none | none; the key flashes, or with no payload the whole screen shows white for a second, to tell decks apart (older decks answer status 2) |
 | `0x04` | result | `{"id": 7, "error": "..."}`: how a PC action went; leave out `error` if it worked | none |
 | `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | none |
 | `0x06` | state | `{"host": "<host id>", "state": {"discord.mute": true}}` | none |

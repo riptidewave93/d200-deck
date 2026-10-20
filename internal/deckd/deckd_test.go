@@ -285,6 +285,21 @@ func TestHandle(t *testing.T) {
 	if got := keyColour(d, 4); got != render.Colours[render.Identify] {
 		t.Errorf("identify colour %#x", got)
 	}
+
+	// no key: the whole screen, white, for a second
+	if s, _ := d.handle(proto.Request{Cmd: proto.CmdIdentify}); s != proto.StatusOK {
+		t.Errorf("identify the screen: %d", s)
+	}
+	runUI(t, d)
+	d.drawKey(4, render.Pressed) // not drawn over it
+	if keyColour(d, 4) != 0xffffff || keyColour(d, 13) != 0xffffff || d.canvas.Pix[len(d.canvas.Pix)-1] != 0xffffff {
+		t.Error("screen not white")
+	}
+	runUI(t, d) // a second later: the keys again
+	if got := keyColour(d, 4); got != render.Colours[render.Pressed] {
+		t.Errorf("after the flash %#x", got)
+	}
+
 	if s, _ := d.handle(proto.Request{Cmd: proto.CmdActionHost}); s != proto.StatusBadRequest {
 		t.Error("heartbeat without a host ID taken")
 	}

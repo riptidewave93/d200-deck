@@ -73,7 +73,10 @@ type deckd struct {
 	// next, if it's animated; frames fires then
 	state   [deck.KeyCount]render.State
 	frameAt [deck.KeyCount]time.Time
-	frames  *time.Timer
+	// white is when the screen stops showing white (flashAll); keys aren't
+	// drawn until then
+	white  time.Time
+	frames *time.Timer
 	// reply sends a reply later; nil sends it on ch
 	reply func(seq uint16, status byte, b []byte)
 	// keys queues key events for the config channel; nil sends none
@@ -90,6 +93,10 @@ func (d *deckd) show(r gfx.Rect) {
 }
 
 func (d *deckd) drawKey(i int, state render.State) {
+	if time.Now().Before(d.white) {
+		d.state[i], d.frameAt[i] = state, time.Time{} // drawn when it ends
+		return
+	}
 	r := render.Key(i)
 	var next time.Time // when an animated key changes
 	if d.test {
@@ -150,6 +157,24 @@ func (d *deckd) flashError(i int) {
 func (d *deckd) flash(i int) {
 	d.drawKey(i, render.Identify)
 	time.AfterFunc(time.Second, func() { d.redraw <- i })
+}
+
+// flashAll shows a white screen for a second, to tell this device from
+// others.
+func (d *deckd) flashAll() {
+	r := gfx.Rect{Max: image.Pt(d.canvas.W, d.canvas.H)}
+	d.canvas.Fill(r, 0xffffff)
+	d.show(r)
+	d.white = time.Now().Add(time.Second)
+	time.AfterFunc(time.Second, func() {
+		d.ui <- func() {
+			if !time.Now().Before(d.white) { // not flashed again since
+				for i := range deck.KeyCount {
+					d.drawKey(i, d.state[i])
+				}
+			}
+		}
+	})
 }
 
 func (d *deckd) drawPage() {

@@ -108,6 +108,10 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 			Keys: deck.KeyCount, Model: model(), IPv4: usbIPv4()})
 		return proto.StatusOK, b
 	case proto.CmdIdentify:
+		if len(req.Payload) == 0 {
+			d.ui <- d.flashAll
+			return proto.StatusOK, nil
+		}
 		if len(req.Payload) != 1 || int(req.Payload[0]) >= deck.KeyCount {
 			return proto.StatusBadRequest, nil
 		}

@@ -84,8 +84,10 @@ const Version = 4
 
 // Commands.
 const (
-	CmdHello    = 0x01 // reply: Hello as JSON
-	CmdIdentify = 0x03 // payload: key number; flashes the key
+	CmdHello = 0x01 // reply: Hello as JSON
+	// CmdIdentify (payload: a key number) flashes the key; with no payload,
+	// the whole screen white for a second.
+	CmdIdentify = 0x03
 	CmdResult   = 0x04 // payload: Result as JSON
 	// CmdActionHost (payload: ActionHost as JSON) says the sender runs PC
 	// actions. The action host sends it every ActionHostPeriod; the device
