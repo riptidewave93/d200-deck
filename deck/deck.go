@@ -530,10 +530,12 @@ func DefaultConfig() *Config {
 		Home:    "main",
 		Pages: map[string]Page{
 			"main": {Keys: map[int]Button{
-				0:  folder("globe", "Browser", "browser"),
-				1:  media("prev", UsagePrevTrack),
-				2:  media("play-pause", UsagePlayPause),
-				3:  media("next", UsageNextTrack),
+				0: folder("globe", "Browser", "browser"),
+				// with deckhost, for the player playing, showing whether it
+				// is; without, the media keys
+				1:  {Action: Action{Type: ActionApp, App: AppMedia, Op: MediaPrevious}},
+				2:  {Action: Action{Type: ActionApp, App: AppMedia, Op: MediaPlayPause}},
+				3:  {Action: Action{Type: ActionApp, App: AppMedia, Op: MediaNext}},
 				4:  folder("power_settings_new", "Power", "power"),
 				5:  {Icon: "discord", Label: "Discord", Background: DiscordBlurple, Action: Action{Type: ActionPage, Page: "discord"}},
 				6:  media("volume-down", UsageVolumeDn),
