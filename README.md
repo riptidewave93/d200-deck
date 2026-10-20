@@ -46,8 +46,18 @@ make install    # build deckhost and install it for your user (Linux)
 make dist       # deckhost installers into build/dist
 ```
 
-`go run ./cmd/deckd keys -preview screen.png` renders the default config on a PC. Pushing a `v*`
-tag builds the installers into a draft release.
+`go run ./cmd/deckd keys -preview screen.png` renders the default config on a PC.
+
+### Contributing and releases
+
+Changes go in as pull requests, squash-merged, so the PR title becomes the commit on `main`. Titles
+are [conventional commits](https://www.conventionalcommits.org/): `feat(deckd): …` for a feature,
+`fix(gfx): …` for a fix, `ci: …`, `docs: …` and so on; a check enforces it.
+
+Release Please keeps a release PR open with the next version and its changelog, from those titles.
+Merging it tags the release, and the installers are built and attached to it. Versions follow
+semver: a major release is one older parts can't work with (a new minimum protocol, a config format
+change, a raised `min_updater`), a minor one adds features, a patch fixes bugs.
 
 | Doc | |
 |---|---|
