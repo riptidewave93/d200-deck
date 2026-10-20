@@ -416,9 +416,9 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 			// another client's request can displace ours: allow one miss
 			if reply, err := c.Do(proto.CmdActionHost, d.heartbeat()); err == nil {
 				missed, sendState = 0, true
-				if looks != nil {
-					looks = deviceLooks(reply) // a restarted deckd has none
-				}
+				// what it shows now: a restarted deckd has none, and may be
+				// newer or older than before
+				looks = deviceLooks(reply)
 			} else if missed++; missed > 1 {
 				return err
 			}

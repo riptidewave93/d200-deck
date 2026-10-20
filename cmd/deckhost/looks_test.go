@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/riptidewave93/d200-deck/proto"
 	"github.com/riptidewave93/d200-deck/proto/prototest"
@@ -18,6 +19,7 @@ type lookDevice struct {
 	sizes map[string]int    // image bytes received
 	pend  proto.HostLook
 	got   int
+	old   bool // an older deckd: no looks
 }
 
 func newLookDevice() *lookDevice {
@@ -30,6 +32,9 @@ func newLookDevice() *lookDevice {
 			b, _ := json.Marshal(proto.Hello{Protocol: proto.Version, Serial: "00112233445566aa", Keys: 14})
 			return proto.StatusOK, b
 		case proto.CmdActionHost:
+			if f.old {
+				return proto.StatusOK, nil
+			}
 			b, _ := json.Marshal(proto.ActionHostReply{Looks: f.looks})
 			return proto.StatusOK, b
 		case proto.CmdHostLook:
@@ -95,8 +100,24 @@ func TestLooksSent(t *testing.T) {
 }
 
 func TestLooksOlderDeckd(t *testing.T) {
-	// an older deckd's heartbeat reply is empty: deckhost sends no looks
-	if deviceLooks(nil) != nil || deviceLooks([]byte("{}")) == nil {
-		t.Error("deviceLooks")
+	// an older deckd's heartbeat reply is empty: deckhost sends no looks,
+	// until deckd is updated while the PC stays connected
+	heartbeatPeriod = 5e6
+	t.Cleanup(func() { heartbeatPeriod = proto.ActionHostPeriod })
+	dev := newLookDevice()
+	dev.old = true
+	defer dev.Close()
+	d := newDaemon()
+	d.find = func() []string { return []string{"/dev/hidraw3"} }
+	d.open = func(string) (proto.Transport, error) { return dev, nil }
+	d.setLook("media.now-playing", "Song", nil)
+	d.scan()
+	time.Sleep(50 * time.Millisecond)
+	if r, _ := dev.has("media.now-playing"); r != "" {
+		t.Fatal("look sent to an older deckd")
 	}
+	dev.mu.Lock()
+	dev.old = false
+	dev.mu.Unlock()
+	waitFor(t, "look after the update", func() bool { r, _ := dev.has("media.now-playing"); return r != "" })
 }
