@@ -30,6 +30,11 @@ var (
 // for: on Save, it runs then and sends its reply to seq; otherwise it sends
 // why not. It returns statusLater, or a failure if it can't ask.
 func (d *deckd) ask(seq uint16, title, detail, ok string, then func() (byte, []byte)) (byte, []byte) {
+	return d.askOn(seq, func(answer func(bool)) *overlay { return askScreen(title, detail, ok, answer) }, then)
+}
+
+// askOn asks as ask does, on its own screen.
+func (d *deckd) askOn(seq uint16, screen func(answer func(bool)) *overlay, then func() (byte, []byte)) (byte, []byte) {
 	if !d.asking.CompareAndSwap(false, true) {
 		return failed(errAsking)
 	}
@@ -42,7 +47,7 @@ func (d *deckd) ask(seq uint16, title, detail, ok string, then func() (byte, []b
 			default:
 			}
 		}
-		o := askScreen(title, detail, ok, func(yes bool) {
+		o := screen(func(yes bool) {
 			if yes {
 				reply(nil)
 			} else {

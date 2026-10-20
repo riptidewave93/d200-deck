@@ -24,6 +24,9 @@ type FeatureSet struct {
 	// Settings are the settings the device takes (proto.Settings); its
 	// settings reply leaves out those its hardware lacks.
 	Settings []string `json:"settings"`
+	// Commands are the optional config channel commands it takes, e.g.
+	// "reset" (proto.CmdReset).
+	Commands []string `json:"commands"`
 }
 
 // settingNames are proto.Settings' writable fields.
@@ -46,6 +49,7 @@ func Features() FeatureSet {
 		Apps:      map[string][]string{AppDiscord: DiscordOps, AppOBS: OBSOps, AppMedia: MediaOps},
 		Args:      AppArgs,
 		Settings:  settingNames,
+		Commands:  []string{"reset"},
 		Limits: map[string]int{
 			"label": MaxLabel, "label_lines": MaxLabelLines, "text": MaxText, "steps": MaxSteps,
 			"delay_ms": MaxDelayMS, "pc_action": MaxPCAction, "config_bytes": MaxConfigBytes,

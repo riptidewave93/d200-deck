@@ -85,6 +85,7 @@ Payloads are JSON unless noted.
 | `0x0e` | time | `{"unix_ms": 1760900000000}`: the time now | none; the deck has no battery-backed clock, so send it on connecting and every hour |
 | `0x0f` | host-look | `{"host", "name", "rev", "label", "image_size", "image_sha256"}`: see [Looks](#looks) | none |
 | `0x10` | host-look-data | binary: offset (uint32), then up to 1015 bytes of the look's image | none |
+| `0x11` | reset | none. The deck asks on its screen first, as for [a config](#the-config); once confirmed it erases its keys and settings and restarts | none, just before it restarts |
 
 Check `protocol` in hello: this page is version 4. Protocol 3 had 64-byte input reports and no
 gzip. The version changes only when old and new can't talk: new commands come without one (a
@@ -105,6 +106,7 @@ offer only that. A deck without it has the first release's.
 | `apps`, `args` | ops and args by app, for the apps the deck knows; other apps are their host's |
 | `limits` | the [limits](config.md#limits) it checks, e.g. `"label": 32` |
 | `settings` | the [settings](#settings) it takes; the settings reply leaves out those its hardware lacks |
+| `commands` | the optional commands it takes: `reset` |
 
 ### Events
 

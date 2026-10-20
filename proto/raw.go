@@ -146,6 +146,10 @@ const (
 	// CmdHostLookData payload: offset (uint32), the next one, and bytes of
 	// the image of the last CmdHostLook. The look shows once it's whole.
 	CmdHostLookData = 0x10
+	// CmdReset (no payload) erases the device's config and settings and
+	// restarts it, once confirmed on the device: OK just before it restarts,
+	// or Failed if it isn't confirmed (the same reasons as a config commit's).
+	CmdReset = 0x11
 )
 
 // Host look limits.

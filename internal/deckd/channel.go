@@ -162,6 +162,8 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 		return proto.StatusOK, nil
 	case proto.CmdSettings:
 		return d.settings(req.Seq, req.Payload)
+	case proto.CmdReset:
+		return d.reset(req.Seq)
 	case proto.CmdResult:
 		var r proto.Result
 		if json.Unmarshal(req.Payload, &r) != nil {
