@@ -128,8 +128,13 @@ func TestComboUnion(t *testing.T) {
 
 func TestComboOverflow(t *testing.T) {
 	r, _, reports := testRunner(t)
+	// hold the runner, so it reports both presses at once
+	running, hold := make(chan struct{}), make(chan struct{})
+	r.jobs <- func() { close(running); <-hold }
+	<-running
 	r.press(0, deck.Action{Type: deck.ActionKey, Keys: []string{"a", "b", "c", "d"}})
 	r.press(1, deck.Action{Type: deck.ActionKey, Keys: []string{"e", "f", "g"}})
+	close(hold)
 	expect(t, reports(), kbd(0, 4, 5, 6, 7, 8, 9))
 }
 

@@ -140,16 +140,19 @@ func TestScreenPattern(t *testing.T) {
 		t.Error("keys not drawn again")
 	}
 
-	// it ends by itself
+	// it ends by itself: the timeout turns it off, then has the main loop
+	// redraw (which alignSettings may already have run)
 	patternTimeout = 20 * time.Millisecond
 	alignSettings(t, d, `{"screen_pattern": true}`)
-	select {
-	case f := <-d.ui:
-		f()
-	case <-time.After(time.Second):
-		t.Fatal("pattern didn't time out")
+	for deadline := time.Now().Add(5 * time.Second); d.pattern.on.Load(); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("pattern didn't time out")
+		}
 	}
-	if d.pattern.shown || d.pattern.on.Load() {
+	for d.pattern.shown {
+		(<-d.ui)()
+	}
+	if d.pattern.on.Load() {
 		t.Error("pattern still on after its timeout")
 	}
 
