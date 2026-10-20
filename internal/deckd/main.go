@@ -114,9 +114,9 @@ func (d *deckd) drawKey(i int, state render.State) {
 	if d.asleep {
 		drawSleepKey(d.canvas, i, r)
 	} else if d.pattern.shown {
-		drawPatternKey(d.canvas, r)
+		drawTestKey(d.canvas, i, r, false, patternBand)
 	} else if d.test {
-		drawTestKey(d.canvas, i, r, state != render.Idle)
+		drawTestKey(d.canvas, i, r, state != render.Idle, 8)
 	} else if d.overlay != nil {
 		if draw, ok := d.overlay.drawn[i]; ok {
 			draw(d.canvas, r)

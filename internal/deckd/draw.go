@@ -14,17 +14,18 @@ var testColours = [deck.KeyCount]uint32{
 	0x6d4c41, 0x546e7a, 0xf4511e, 0x00897b,
 }
 
-// drawTestKey draws key i as a numbered box with 8 px white/black edge bands,
-// to check the key window positions: count the bands visible on each side.
-func drawTestKey(c *gfx.Canvas, i int, r gfx.Rect, pressed bool) {
+// drawTestKey draws key i as a numbered box with 4 white/black edge bands,
+// band px each, to check the key window positions: count the bands visible
+// on each side.
+func drawTestKey(c *gfx.Canvas, i int, r gfx.Rect, pressed bool, band int) {
 	for k := 0; k < 4; k++ {
-		c.Fill(r.Inset(k*8), []uint32{0xffffff, 0}[k%2])
+		c.Fill(r.Inset(k*band), []uint32{0xffffff, 0}[k%2])
 	}
 	bg := testColours[i]
 	if pressed {
 		bg = 0xffffff
 	}
-	c.Fill(r.Inset(32), bg)
+	c.Fill(r.Inset(4*band), bg)
 	c.DrawNumber(i, r, 16, 0)
 }
 

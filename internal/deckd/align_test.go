@@ -117,8 +117,8 @@ func TestScreenOffset(t *testing.T) {
 
 func TestScreenPattern(t *testing.T) {
 	d, _ := alignDeckd(t)
-	edge := render.Key(0).Min.Add(image.Pt(overscan, overscan)) // on the frame
-	inside := edge.Add(image.Pt(5, 5))                          // inside it
+	edge := render.Key(0).Min                              // the outer white band
+	inside := edge.Add(image.Pt(patternBand, patternBand)) // the black one in it
 	isPattern := func() bool { return panel(d, edge) == 0xffffff && panel(d, inside) == 0 }
 	if s := alignSettings(t, d, `{"screen_pattern": true}`); !*s.ScreenPattern || !isPattern() {
 		t.Fatalf("pattern not shown: %+v", s)

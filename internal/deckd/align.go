@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
-	"github.com/riptidewave93/d200-deck/internal/gfx"
 	"github.com/riptidewave93/d200-deck/internal/screen"
 	"github.com/riptidewave93/d200-deck/proto"
 	"github.com/riptidewave93/d200-deck/render"
 )
+
+// patternBand is the alignment pattern's band width (see drawTestKey).
+const patternBand = 4
 
 // overscan is how far the outer keys may move off the screen: the drawn
 // keys are a little larger than the windows they show through.
@@ -164,12 +166,4 @@ func (d *deckd) showPattern() {
 	for i := range deck.KeyCount {
 		d.drawKey(i, d.state[i])
 	}
-}
-
-// drawPatternKey draws a thin white frame overscan inside a key's window,
-// so it shows even where the window's edge hides the key's.
-func drawPatternKey(c *gfx.Canvas, r gfx.Rect) {
-	c.Fill(r, 0)
-	c.Fill(r.Inset(overscan), 0xffffff)
-	c.Fill(r.Inset(overscan+2), 0)
 }
