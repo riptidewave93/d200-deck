@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -174,5 +175,60 @@ func TestUSBNet(t *testing.T) {
 	os.WriteFile(ser, []byte("not hex"), 0o644)
 	if _, err := usbNet(ser, conf); err == nil {
 		t.Error("a bad serial passed")
+	}
+}
+
+func TestBrightness(t *testing.T) {
+	usbConf = filepath.Join(t.TempDir(), "usb-gadget.conf")
+	oldDelay := saveDelay
+	t.Cleanup(func() { usbConf, saveDelay = "/data/usb-gadget.conf", oldDelay })
+	saveDelay = 20 * time.Millisecond
+	d := newTestDeckd()
+
+	set := func(payload string) proto.Settings {
+		t.Helper()
+		status, reply := d.settings(1, []byte(payload))
+		var s proto.Settings
+		if status != proto.StatusOK || json.Unmarshal(reply, &s) != nil {
+			t.Fatalf("%q: status %d, reply %q", payload, status, reply)
+		}
+		return s
+	}
+	if s := set(""); s.Brightness != nil || s.BrightnessMin != nil {
+		t.Error("brightness without a backlight")
+	}
+
+	brightness := fakeBacklight(t, "8")
+	saved := filepath.Join(t.TempDir(), "brightness")
+	d.light = newBacklight(saved)
+	if s := set(""); s.Brightness == nil || *s.Brightness != 100 || s.BrightnessMin == nil || *s.BrightnessMin != brightnessMin {
+		t.Errorf("default: %+v", s)
+	}
+	for _, c := range []struct {
+		set, percent int
+		level        string
+	}{{50, 50, "4"}, {5, brightnessMin, "1"}, {150, 100, "8"}, {60, 60, "5"}} {
+		s := set(`{"brightness": ` + strconv.Itoa(c.set) + `}`)
+		if *s.Brightness != c.percent || brightness() != c.level {
+			t.Errorf("set %d: %d%%, level %q; want %d%%, level %q", c.set, *s.Brightness, brightness(), c.percent, c.level)
+		}
+	}
+	deadline := time.Now().Add(time.Second)
+	for b, _ := os.ReadFile(saved); string(b) != "60\n"; b, _ = os.ReadFile(saved) {
+		if time.Now().After(deadline) {
+			t.Fatalf("saved %q, want 60", b)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// asleep, a new level waits for the PC to wake
+	d.setAsleep(true)
+	set(`{"brightness": 100}`)
+	if brightness() != "1" {
+		t.Errorf("set while asleep: level %q", brightness())
+	}
+	d.setAsleep(false)
+	if brightness() != "8" {
+		t.Errorf("awake: level %q, want 8", brightness())
 	}
 }

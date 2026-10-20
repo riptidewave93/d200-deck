@@ -52,20 +52,36 @@ func TestWatchUSB(t *testing.T) {
 	}
 }
 
-func TestSleepScreen(t *testing.T) {
-	bl, oldGlob, oldWake := t.TempDir(), backlightGlob, wakePC
-	t.Cleanup(func() { backlightGlob, wakePC = oldGlob, oldWake })
-	backlightGlob = bl
-	brightness := func() string {
-		b, _ := os.ReadFile(filepath.Join(bl, "brightness"))
+// fakeBacklight makes a sysfs backlight with levels 0-8 at level, for
+// backlights made after it.
+func fakeBacklight(t *testing.T, level string) (brightness func() string) {
+	dir, old := t.TempDir(), backlightGlob
+	t.Cleanup(func() { backlightGlob = old })
+	backlightGlob = dir
+	os.WriteFile(filepath.Join(dir, "max_brightness"), []byte("8\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "brightness"), []byte(level+"\n"), 0o644)
+	return func() string {
+		b, _ := os.ReadFile(filepath.Join(dir, "brightness"))
 		return string(b)
 	}
-	os.WriteFile(filepath.Join(bl, "max_brightness"), []byte("8\n"), 0o644)
-	os.WriteFile(filepath.Join(bl, "brightness"), []byte("6\n"), 0o644)
+}
+
+func TestSleepScreen(t *testing.T) {
+	// deckd starts dimmed, after a restart while the PC slept: the saved
+	// level comes back
+	brightness := fakeBacklight(t, "1")
+	saved := filepath.Join(t.TempDir(), "brightness")
+	os.WriteFile(saved, []byte("75\n"), 0o644)
+	oldWake := wakePC
+	t.Cleanup(func() { wakePC = oldWake })
 	wakes := 0
 	wakePC = func() error { wakes++; return nil }
 
 	d := newTestDeckd()
+	d.light = newBacklight(saved)
+	if brightness() != "6" {
+		t.Errorf("start: brightness %q, want 6", brightness())
+	}
 	d.drawPage()
 	page := slices.Clone(d.canvas.Pix)
 
@@ -101,13 +117,5 @@ func TestSleepScreen(t *testing.T) {
 	}
 	if !slices.Equal(d.canvas.Pix, page) {
 		t.Error("awake: the page isn't drawn as before")
-	}
-
-	// started while dimmed: back to full brightness after
-	os.WriteFile(filepath.Join(bl, "brightness"), []byte("1\n"), 0o644)
-	d.setAsleep(true)
-	d.setAsleep(false)
-	if brightness() != "8" {
-		t.Errorf("after a dimmed start: brightness %q, want 8", brightness())
 	}
 }

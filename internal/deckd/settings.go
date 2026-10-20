@@ -122,6 +122,9 @@ func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte)
 		if s.USBNet4 != nil && *s.USBNet4 != usbNet4(usbConf) {
 			changes = append(changes, [2]string{"net4", *s.USBNet4})
 		}
+		if s.Brightness != nil && d.light != nil {
+			d.light.set(*s.Brightness)
+		}
 		if s.USBNet4 != nil && *s.USBNet4 != usbNet4(usbConf) {
 			net := *s.USBNet4
 			if net == "" {
@@ -133,7 +136,7 @@ func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte)
 		}
 		return d.change(changes)
 	}
-	return currentSettings()
+	return d.currentSettings()
 }
 
 // change makes settings changes, KEY=value lines in usbConf.
@@ -148,12 +151,19 @@ func (d *deckd) change(changes [][2]string) (byte, []byte) {
 	if len(changes) > 0 {
 		go d.rebind()
 	}
-	return currentSettings()
+	return d.currentSettings()
 }
 
-func currentSettings() (byte, []byte) {
+func (d *deckd) currentSettings() (byte, []byte) {
 	on, net4 := usbDrive(usbConf), usbNet4(usbConf)
-	b, _ := json.Marshal(proto.Settings{USBDrive: &on, USBNet4: &net4})
+	s := proto.Settings{USBDrive: &on, USBNet4: &net4}
+	if d.light != nil {
+		if p, ok := d.light.get(); ok {
+			low := brightnessMin
+			s.Brightness, s.BrightnessMin = &p, &low
+		}
+	}
+	b, _ := json.Marshal(s)
 	return proto.StatusOK, b
 }
 

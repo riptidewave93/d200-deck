@@ -8,7 +8,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -20,13 +19,12 @@ import (
 )
 
 // While the PC's USB is suspended (the PC is asleep, or off with its USB
-// ports powered), deckd dims the screen, shows the sleep screen and runs no
+// ports powered), deckd dims the screen to brightnessMin, shows the sleep screen and runs no
 // actions; a press asks the PC to wake.
 
 var (
-	udcStateGlob  = "/sys/class/udc/*/state"
-	backlightGlob = "/sys/class/backlight/*"
-	wakePC        = hidg.Wake
+	udcStateGlob = "/sys/class/udc/*/state"
+	wakePC       = hidg.Wake
 )
 
 // watchUSB sends whether the USB device controller's state file at path says
@@ -93,7 +91,9 @@ func (d *deckd) setAsleep(v bool) {
 	} else {
 		log.Print("PC awake")
 	}
-	dimBacklight(v)
+	if d.light != nil {
+		d.light.setDim(v)
+	}
 	for i := range deck.KeyCount {
 		d.drawKey(i, d.state[i])
 	}
@@ -110,38 +110,6 @@ func (d *deckd) pressAsleep() {
 		log.Printf("asking the PC to wake: %v", err)
 	} else {
 		log.Print("asked the PC to wake")
-	}
-}
-
-// normalBrightness is the backlight level to go back to after sleep.
-var normalBrightness string
-
-// dimBacklight sets the backlight to its lowest level above off while the PC
-// sleeps, and back after.
-func dimBacklight(dim bool) {
-	dirs, _ := filepath.Glob(backlightGlob)
-	if len(dirs) == 0 {
-		return
-	}
-	read := func(name string) string {
-		b, _ := os.ReadFile(filepath.Join(dirs[0], name))
-		return strings.TrimSpace(string(b))
-	}
-	level := "1"
-	if dim {
-		// deckd may have restarted while dimmed: then go back to full
-		normalBrightness = read("brightness")
-		if n, _ := strconv.Atoi(normalBrightness); n <= 1 {
-			normalBrightness = read("max_brightness")
-		}
-	} else {
-		level = normalBrightness
-	}
-	if level == "" {
-		return
-	}
-	if err := os.WriteFile(filepath.Join(dirs[0], "brightness"), []byte(level), 0); err != nil {
-		log.Printf("backlight: %v", err)
 	}
 }
 

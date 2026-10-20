@@ -323,6 +323,13 @@ type Settings struct {
 	// the /30 holding it, the PC the second. "" is the default, derived from
 	// the serial.
 	USBNet4 *string `json:"usb_net4,omitempty"`
+	// Brightness is the screen's brightness in percent, BrightnessMin to
+	// 100; a change applies at once. Only a device with a dimmable screen
+	// has it.
+	Brightness *int `json:"brightness,omitempty"`
+	// BrightnessMin is the lowest Brightness, and the sleep screen's; read
+	// only.
+	BrightnessMin *int `json:"brightness_min,omitempty"`
 }
 
 // Result says how a PC action went; Error is empty on success.

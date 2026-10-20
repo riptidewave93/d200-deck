@@ -84,6 +84,7 @@ type deckd struct {
 	// asleep is set while the PC's USB is suspended (see sleep.go)
 	asleep    bool
 	askedWake bool
+	light     *backlight // nil without one
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }
@@ -401,6 +402,7 @@ func Main(args []string) {
 	}
 	defer disp.Close()
 	d.disp = disp
+	d.light = newBacklight(filepath.Join(filepath.Dir(*config), "brightness"))
 	d.show(gfx.Rect{Max: image.Pt(render.Width, render.Height)})
 	d.drawPage()
 	if !d.test {
@@ -447,6 +449,7 @@ func Main(args []string) {
 			d.setAsleep(v)
 		case s := <-stop:
 			d.run.stop(time.Second)
+			d.light.flush()
 			log.Printf("%v, exiting", s)
 			os.Remove(startsFile) // stopped, not crashed
 			return
