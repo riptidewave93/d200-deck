@@ -11,10 +11,6 @@ func TestCapsOf(t *testing.T) {
 	if got := capsOf(proto.RawDescriptor); got != want {
 		t.Errorf("capsOf = %+v, want %+v", got, want)
 	}
-	want.in = proto.RawInSizeV3
-	if got := capsOf(proto.RawDescriptorV3); got != want {
-		t.Errorf("capsOf(v3) = %+v, want %+v", got, want)
-	}
 	if got := capsOf([]byte{0x06, 0xd2}); got != (caps{}) { // cut short
 		t.Errorf("capsOf(short) = %+v", got)
 	}

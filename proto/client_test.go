@@ -202,25 +202,11 @@ func TestClosed(t *testing.T) {
 	}
 }
 
-func TestProtocol3Device(t *testing.T) {
-	// 64-byte reports with a 1-byte length still work
-	dev := prototest.New()
-	dev.V3 = true
-	defer dev.Close()
-	go dev.Serve(func(r proto.Request) (byte, []byte) { return proto.StatusOK, bytes.Repeat([]byte{7}, 200) })
-	c := proto.NewConn(dev)
-	b, err := c.Do(proto.CmdHello, nil)
-	if err != nil || len(b) != 200 {
-		t.Errorf("%d bytes, %v", len(b), err)
-	}
-}
-
 func TestReadConfigWithoutGzip(t *testing.T) {
-	// a protocol 3 device ignores the gzip request
-	file := bytes.Repeat([]byte("config "), 5000)
+	// just after a save, the device has no gzip stream yet
+	file := bytes.Repeat([]byte("config "), 20000)
 	sum := sha256.Sum256(file)
 	dev := prototest.New()
-	dev.V3 = true
 	defer dev.Close()
 	go dev.Serve(func(r proto.Request) (byte, []byte) {
 		switch r.Cmd {
@@ -229,7 +215,7 @@ func TestReadConfigWithoutGzip(t *testing.T) {
 			return proto.StatusOK, b
 		case proto.CmdConfigRead:
 			off, n := int(binary.LittleEndian.Uint32(r.Payload)), int(binary.LittleEndian.Uint16(r.Payload[4:]))
-			if len(r.Payload) != 6 || n > proto.MaxConfigReadV3 {
+			if len(r.Payload) != 6 || n > proto.MaxConfigRead {
 				return proto.StatusBadRequest, nil
 			}
 			off = min(off, len(file))

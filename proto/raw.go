@@ -11,9 +11,7 @@
 //	[0:2] seq (LE)  [2] status  [3] flags  [4:6] payload length (LE)  [6:] payload
 //
 // where the first report has FlagFirst and every report but the last has
-// FlagMore. Devices of protocol 3 and older have 64-byte input reports
-// (RawInSizeV3) with a 1-byte length: [4] payload length, [5:] payload.
-// Clients tell them apart by the input report size. Messages are reassembled per seq, so events and replies may
+// FlagMore. Messages are reassembled per seq, so events and replies may
 // interleave.
 //
 // Every client of the device sees every input report. A client starts at a
@@ -36,9 +34,8 @@ import (
 
 // Report sizes; they match the raw HID report descriptor.
 const (
-	RawInSize   = 1024
-	RawInSizeV3 = 64 // protocol 3 and older
-	RawOutSize  = 1024
+	RawInSize  = 1024
+	RawOutSize = 1024
 
 	MaxRequest = RawOutSize - 5
 	MaxReply   = RawInSize - 6
@@ -52,7 +49,7 @@ const RawUsagePage = 0xffd2
 
 // RawDescriptor is the config channel's report descriptor: one vendor
 // collection, no report IDs, 1024-byte input and output reports. Hosts
-// identify the channel by it, or by RawDescriptorV3 for older devices.
+// identify the channel by it.
 var RawDescriptor = []byte{
 	0x06, RawUsagePage & 0xff, RawUsagePage >> 8, // Usage Page (vendor)
 	0x09, 0x01, // Usage (1)
@@ -63,28 +60,12 @@ var RawDescriptor = []byte{
 	0xc0,
 }
 
-// RawDescriptorV3 is the descriptor of protocol 3 and older: 64-byte input
-// reports.
-var RawDescriptorV3 = []byte{
-	0x06, RawUsagePage & 0xff, RawUsagePage >> 8,
-	0x09, 0x01,
-	0xa1, 0x01,
-	0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08,
-	0x09, 0x02, 0x95, RawInSizeV3, 0x81, 0x02,
-	0x09, 0x03, 0x96, RawOutSize & 0xff, RawOutSize >> 8, 0x91, 0x02,
-	0xc0,
-}
-
-// RawDescriptors are the descriptors clients look for.
-var RawDescriptors = [][]byte{RawDescriptor, RawDescriptorV3}
-
 // Version is the protocol version reported by CmdHello, and MinVersion the
-// oldest this package talks. Protocol 4 has 1024-byte input reports and gzip
-// config transfers. It changes only when old and new can't talk; features
-// come and go through Hello.Features.
+// oldest this package talks. It changes only when old and new can't talk;
+// features come and go through Hello.Features.
 const (
 	Version    = 4
-	MinVersion = 3
+	MinVersion = 4
 )
 
 // Commands.
@@ -179,12 +160,11 @@ type ActionHostReply struct {
 // TimePeriod is how often clients send the time.
 const TimePeriod = time.Hour
 
-// Config transfer sizes. Protocol 3 devices read at most MaxConfigReadV3.
+// Config transfer sizes.
 const (
-	ConfigReadSize  = 4096
-	MaxConfigRead   = 61440
-	MaxConfigReadV3 = 16384
-	MaxConfigData   = MaxRequest - 4
+	ConfigReadSize = 4096
+	MaxConfigRead  = 61440
+	MaxConfigData  = MaxRequest - 4
 )
 
 // ConfigReadGzip, in CmdConfigRead's flags, reads the config gzipped (its
@@ -432,29 +412,15 @@ func DecodeRequest(b []byte) (Request, error) {
 
 // EncodeReply splits a message into input reports.
 func EncodeReply(seq uint16, status byte, payload []byte) [][]byte {
-	return encodeReply(RawInSize, seq, status, payload)
-}
-
-// EncodeReplyV3 is EncodeReply for protocol 3 devices.
-func EncodeReplyV3(seq uint16, status byte, payload []byte) [][]byte {
-	return encodeReply(RawInSizeV3, seq, status, payload)
-}
-
-func encodeReply(size int, seq uint16, status byte, payload []byte) [][]byte {
-	head := headerSize(size)
 	var out [][]byte
 	flags := byte(FlagFirst)
 	for {
-		n := min(len(payload), size-head)
-		b := make([]byte, size)
+		n := min(len(payload), MaxReply)
+		b := make([]byte, RawInSize)
 		binary.LittleEndian.PutUint16(b, seq)
 		b[2] = status
-		if head == 5 {
-			b[4] = byte(n)
-		} else {
-			binary.LittleEndian.PutUint16(b[4:], uint16(n))
-		}
-		copy(b[head:], payload[:n])
+		binary.LittleEndian.PutUint16(b[4:], uint16(n))
+		copy(b[replyHeader:], payload[:n])
 		payload = payload[n:]
 		if len(payload) > 0 {
 			flags |= FlagMore
@@ -476,26 +442,16 @@ type ReplyPart struct {
 	Payload     []byte
 }
 
-// headerSize is the input report header size for reports of size bytes:
-// protocol 3's 64-byte reports have a 1-byte length.
-func headerSize(size int) int {
-	if size <= RawInSizeV3 {
-		return 5
-	}
-	return 6
-}
+// replyHeader is the input report header's size.
+const replyHeader = RawInSize - MaxReply
 
-// DecodeReply parses an input report of either size.
+// DecodeReply parses an input report.
 func DecodeReply(b []byte) (ReplyPart, error) {
-	head := headerSize(len(b))
-	if len(b) < head {
+	if len(b) < replyHeader {
 		return ReplyPart{}, errors.New("bad reply")
 	}
-	n := int(b[4])
-	if head == 6 {
-		n = int(binary.LittleEndian.Uint16(b[4:]))
-	}
-	if n > len(b)-head {
+	n := int(binary.LittleEndian.Uint16(b[4:]))
+	if n > len(b)-replyHeader {
 		return ReplyPart{}, errors.New("bad reply")
 	}
 	return ReplyPart{
@@ -503,6 +459,6 @@ func DecodeReply(b []byte) (ReplyPart, error) {
 		Status:  b[2],
 		First:   b[3]&FlagFirst != 0,
 		More:    b[3]&FlagMore != 0,
-		Payload: b[head : head+n],
+		Payload: b[replyHeader : replyHeader+n],
 	}, nil
 }

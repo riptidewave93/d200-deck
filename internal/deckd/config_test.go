@@ -115,7 +115,7 @@ func TestConfigOverChannel(t *testing.T) {
 		t.Error("a refused config was saved")
 	}
 
-	// as protocol 3 clients do: no gzip
+	// a client may send it plain, without gzip_size
 	plain, _ := json.Marshal(cfg)
 	plain = append(plain, ' ')
 	sum := sha256.Sum256(plain)
