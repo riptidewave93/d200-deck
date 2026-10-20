@@ -60,6 +60,9 @@ const Foreground = 0xe8e8e8
 type Renderer struct {
 	// Extra are icons for screens the device draws itself, not configs.
 	Extra map[string]deck.Icon
+	// ExtraImages are images (base64) by ID that aren't in the config, such
+	// as the action host's (proto.HostLook).
+	ExtraImages map[string]string
 	// Now is the time animated GIFs are drawn at; nil is time.Now. They
 	// start when the config is set.
 	Now func() time.Time
@@ -322,7 +325,11 @@ func (r *Renderer) image(id string, w, h int) *image.RGBA {
 	if r.badImages[id] || r.cfg == nil {
 		return nil
 	}
-	return r.picture(id, r.cfg.Images[id], w, h)
+	data, ok := r.cfg.Images[id]
+	if !ok {
+		data = r.ExtraImages[id]
+	}
+	return r.picture(id, data, w, h)
 }
 
 // picture is base64 image data, cached as id, scaled to fit w x h; nil if

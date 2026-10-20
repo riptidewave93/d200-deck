@@ -112,6 +112,9 @@ func (d *deckd) drawKey(i int, state render.State) {
 		b, ok := d.cfg.Pages[d.page()].Keys[i]
 		st := b.Action.State()
 		b = b.Shown(st != "" && d.pc.getState(st))
+		if l, ok := d.pc.look(st); ok {
+			b = d.withLook(b, st, l)
+		}
 		d.renderer.Draw(d.canvas, r, b, ok, state)
 		next = d.renderer.Next()
 	}

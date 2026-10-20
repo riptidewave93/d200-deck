@@ -20,6 +20,9 @@ type mediaPlayer struct {
 	Playing bool
 	Shuffle bool
 	Repeat  bool
+	// the song: Art is a URL on Linux (file or http), "" on Windows, where
+	// art reads the thumbnail
+	Title, Artist, Art string
 }
 
 // mediaBackend lists the PC's media players and controls them
@@ -28,6 +31,8 @@ type mediaBackend interface {
 	players() ([]mediaPlayer, error)
 	// control runs media op on p; shuffle and repeat toggle from p's state.
 	control(p mediaPlayer, op string) error
+	// art reads the album art of p's song: an image file, or nil.
+	art(p mediaPlayer) ([]byte, error)
 	close()
 }
 
@@ -48,7 +53,9 @@ func shortName(s string) string {
 type mediaLink struct {
 	open    func() (mediaBackend, error)
 	publish func(map[string]bool)
+	setLook func(name, label string, image []byte)
 	poll    time.Duration
+	art     map[string][]byte // key-sized JPEGs by artKey; nil for none
 
 	mu      sync.Mutex
 	backend mediaBackend
@@ -59,8 +66,10 @@ type mediaLink struct {
 	kick    chan struct{}
 }
 
-func newMediaLink(open func() (mediaBackend, error), publish func(map[string]bool)) *mediaLink {
-	return &mediaLink{open: open, publish: publish, poll: time.Second, kick: make(chan struct{}, 1)}
+func newMediaLink(open func() (mediaBackend, error), publish func(map[string]bool),
+	setLook func(name, label string, image []byte)) *mediaLink {
+	return &mediaLink{open: open, publish: publish, setLook: setLook, poll: time.Second,
+		art: map[string][]byte{}, kick: make(chan struct{}, 1)}
 }
 
 func (l *mediaLink) title() string { return "Media" }
@@ -106,6 +115,7 @@ func (l *mediaLink) follow(b mediaBackend, stop <-chan struct{}) error {
 		if err != nil {
 			return err
 		}
+		l.fetchArt(b, ps)
 		l.update(b, ps)
 		select {
 		case <-stop:
@@ -158,10 +168,82 @@ func (l *mediaLink) update(b mediaBackend, ps []mediaPlayer) {
 	for n := range l.shown {
 		if !shown[n] {
 			set(":"+n, mediaPlayer{})
+			l.showSong(":"+n, mediaPlayer{})
 		}
 	}
 	l.shown = shown
 	l.publish(s)
+	l.showSong("", a)
+	for _, p := range ps {
+		if shown[p.Name] {
+			if q, _ := l.find(p.Name); q.ID == p.ID {
+				l.showSong(":"+p.Name, p)
+			}
+		}
+	}
+}
+
+// showSong shows p's song on now-playing keys (with suffix: ":<name>" for
+// keys naming a player): its album art, or title and artist.
+func (l *mediaLink) showSong(suffix string, p mediaPlayer) {
+	name := deck.AppMedia + "." + deck.MediaNowPlaying + suffix
+	if p.Title == "" {
+		l.setLook(name, "", nil)
+		return
+	}
+	label := clip(p.Title, songChars)
+	if p.Artist != "" {
+		label += "\n" + clip(p.Artist, songChars)
+	}
+	l.setLook(name, label, l.art[artKey(p)])
+}
+
+// songChars bounds each line of a now-playing key; the device shrinks text
+// to fit, down to a size still readable.
+const songChars = 20
+
+// clip cuts s to n characters, ending in "…" if it was longer.
+func clip(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return strings.TrimSpace(string(r[:n-1])) + "…"
+}
+
+func artKey(p mediaPlayer) string {
+	return p.ID + "\x00" + p.Title + "\x00" + p.Artist + "\x00" + p.Art
+}
+
+// maxArt bounds the album art kept: a few players' songs.
+const maxArt = 8
+
+// fetchArt reads the album art of the players' songs not read yet, scaled
+// for a key.
+func (l *mediaLink) fetchArt(b mediaBackend, ps []mediaPlayer) {
+	for _, p := range ps {
+		k := artKey(p)
+		l.mu.Lock()
+		_, done := l.art[k]
+		l.mu.Unlock()
+		if p.Title == "" || done {
+			continue
+		}
+		var img []byte
+		if raw, err := b.art(p); err != nil {
+			log.Printf("media: %s's album art: %v", p.Name, err)
+		} else if raw != nil {
+			if img, err = keyJPEG(raw); err != nil {
+				log.Printf("media: %s's album art: %v", p.Name, err)
+			}
+		}
+		l.mu.Lock()
+		if len(l.art) >= maxArt {
+			clear(l.art)
+		}
+		l.art[k] = img
+		l.mu.Unlock()
+	}
 }
 
 // pickActive is the player that ops without an id are for: the one
@@ -236,6 +318,9 @@ func (l *mediaLink) do(op string, rawArgs json.RawMessage, release bool) error {
 		return fmt.Errorf("media: no player %q", args.ID)
 	case !ok:
 		return errors.New("media: no players")
+	}
+	if op == deck.MediaNowPlaying {
+		op = deck.MediaPlayPause // the key plays or pauses its song
 	}
 	if err := b.control(p, op); err != nil {
 		return fmt.Errorf("media %s: %w", op, err)

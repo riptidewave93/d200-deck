@@ -26,10 +26,13 @@ var (
 	windowsCreateString       = combase.NewProc("WindowsCreateString")
 	windowsDeleteString       = combase.NewProc("WindowsDeleteString")
 	windowsGetStringRawBuffer = combase.NewProc("WindowsGetStringRawBuffer")
+	// turns a WinRT stream into a COM IStream, which is simpler to read
+	createStreamOverRandomAccessStream = windows.NewLazySystemDLL("shcore.dll").NewProc("CreateStreamOverRandomAccessStream")
 
 	// IGlobalSystemMediaTransportControlsSessionManagerStatics
 	iidManagerStatics = windows.GUID{Data1: 0x2050c4ee, Data2: 0x11a0, Data3: 0x57de, Data4: [8]byte{0xae, 0xd7, 0xc9, 0x7c, 0x70, 0x33, 0x82, 0x45}}
 	iidAsyncInfo      = windows.GUID{Data1: 0x00000036, Data2: 0, Data3: 0, Data4: [8]byte{0xc0, 0, 0, 0, 0, 0, 0, 0x46}}
+	iidIStream        = windows.GUID{Data1: 0x0000000c, Data2: 0, Data3: 0, Data4: [8]byte{0xc0, 0, 0, 0, 0, 0, 0, 0x46}}
 )
 
 const managerClass = "Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager"
@@ -44,6 +47,7 @@ const (
 	mGetSessions       = 7
 
 	mSourceAppUserModelID   = 6 // Session
+	mTryGetMediaProperties  = 7
 	mGetPlaybackInfo        = 9
 	mTryStop                = 12
 	mTrySkipNext            = 16
@@ -51,6 +55,14 @@ const (
 	mTryTogglePlayPause     = 20
 	mTryChangeAutoRepeat    = 21
 	mTryChangeShuffleActive = 23
+
+	mTitle     = 6 // MediaProperties
+	mArtist    = 9
+	mThumbnail = 15
+
+	mOpenReadAsync = 6 // IRandomAccessStreamReference
+
+	mStreamRead = 3 // IStream (ISequentialStream::Read)
 
 	mPlaybackStatus  = 7 // PlaybackInfo
 	mAutoRepeatMode  = 9
@@ -259,13 +271,61 @@ func (s *smtc) sessions(f func(sess unsafe.Pointer, app string) error) error {
 	return nil
 }
 
-func sessionApp(sess unsafe.Pointer) string {
+func sessionApp(sess unsafe.Pointer) string { return getString(sess, mSourceAppUserModelID) }
+
+// getString calls method m, which returns a string.
+func getString(obj unsafe.Pointer, m int) string {
 	var h uintptr
-	if comCall(sess, mSourceAppUserModelID, uintptr(unsafe.Pointer(&h))) != nil {
+	if comCall(obj, m, uintptr(unsafe.Pointer(&h))) != nil {
 		return ""
 	}
 	defer windowsDeleteString.Call(h)
 	return goString(h)
+}
+
+// mediaProperties are the song of session sess (released by the caller).
+func mediaProperties(sess unsafe.Pointer) (unsafe.Pointer, error) {
+	op, err := getObj(sess, mTryGetMediaProperties)
+	if err != nil {
+		return nil, err
+	}
+	return await(op, true)
+}
+
+// thumbnail reads the album art in media properties props; nil if none.
+func thumbnail(props unsafe.Pointer) ([]byte, error) {
+	ref, err := getObj(props, mThumbnail)
+	if err != nil || ref == nil {
+		return nil, err
+	}
+	defer comRelease(ref)
+	op, err := getObj(ref, mOpenReadAsync)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := await(op, true)
+	if err != nil {
+		return nil, err
+	}
+	defer comRelease(stream)
+	var is unsafe.Pointer
+	if r, _, _ := createStreamOverRandomAccessStream.Call(uintptr(stream), uintptr(unsafe.Pointer(&iidIStream)), uintptr(unsafe.Pointer(&is))); int32(r) < 0 {
+		return nil, fmt.Errorf("CreateStreamOverRandomAccessStream: %#08x", uint32(r))
+	}
+	defer comRelease(is)
+	var out []byte
+	buf := make([]byte, 64<<10)
+	for len(out) <= maxArtFile {
+		var n uint32
+		if err := comCall(is, mStreamRead, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&n))); err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return out, nil
+		}
+		out = append(out, buf[:n]...)
+	}
+	return nil, errors.New("art file too big")
 }
 
 // appName is the short name of an app's ID: Spotify.exe and
@@ -286,6 +346,10 @@ func (s *smtc) players() ([]mediaPlayer, error) {
 	err := s.do(func() error {
 		return s.sessions(func(sess unsafe.Pointer, app string) error {
 			p := mediaPlayer{ID: app, Name: appName(app)}
+			if props, err := mediaProperties(sess); err == nil && props != nil {
+				p.Title, p.Artist = getString(props, mTitle), getString(props, mArtist)
+				comRelease(props)
+			}
 			info, err := getObj(sess, mGetPlaybackInfo)
 			if err != nil || info == nil {
 				return nil
@@ -314,6 +378,31 @@ func (s *smtc) players() ([]mediaPlayer, error) {
 		})
 	})
 	return ps, err
+}
+
+func (s *smtc) art(p mediaPlayer) ([]byte, error) {
+	var img []byte
+	err := s.do(func() error {
+		return s.sessions(func(sess unsafe.Pointer, app string) error {
+			if app != p.ID {
+				return nil
+			}
+			props, err := mediaProperties(sess)
+			if err != nil || props == nil {
+				return err
+			}
+			defer comRelease(props)
+			img, err = thumbnail(props)
+			if err == nil {
+				err = errDone
+			}
+			return err
+		})
+	})
+	if errors.Is(err, errDone) {
+		err = nil
+	}
+	return img, err
 }
 
 var errDone = errors.New("done")

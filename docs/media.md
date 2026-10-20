@@ -28,6 +28,11 @@ such as `spotify, firefox (playing)`.
 | `stop` | Stops | `stop` | the Stop key |
 | `shuffle` | Turns shuffle on or off | `shuffle`; `shuffle_on` while on | — |
 | `repeat` | Turns repeating the playlist on or off | `repeat`; `repeat_on` while on | — |
+| `now-playing` | Plays or pauses | the song: its album art, or else its title and artist; blank with no song or no deckhost | the Play/Pause key |
 
 A key that sets no `icon`, `image` or `label` gets the built-in look. Not every player supports
 shuffle and repeat.
+
+The default config has a `now-playing` key next to the media keys. `deckhost` reads the song and
+its art from the player (on Linux, the art URL MPRIS gives, a file or http(s); on Windows, the
+system's thumbnail), scales the art to fill the key and sends it once per song.

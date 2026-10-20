@@ -57,6 +57,8 @@ var appOps = map[string]builtin{
 	"media.stop":       {Look{Icon: "stop"}, nil, consumer(UsageStop)},
 	"media.shuffle":    {look: Look{Icon: "shuffle"}, on: &Look{Icon: "shuffle_on"}},
 	"media.repeat":     {look: Look{Icon: "repeat"}, on: &Look{Icon: "repeat_on"}},
+	// blank until the host shows the song (proto.HostLook)
+	"media.now-playing": {fallback: consumer(UsagePlayPause)},
 }
 
 func keybind(keys ...string) *Action { return &Action{Type: ActionKey, Keys: keys} }
@@ -96,10 +98,13 @@ const (
 	MediaStop      = "stop"
 	MediaShuffle   = "shuffle" // toggle shuffle
 	MediaRepeat    = "repeat"  // toggle repeating the playlist
+	// MediaNowPlaying shows the song playing, its album art or title and
+	// artist, and plays or pauses it.
+	MediaNowPlaying = "now-playing"
 )
 
 // MediaOps are the media operations; the host checks them.
-var MediaOps = []string{MediaPlayPause, MediaNext, MediaPrevious, MediaStop, MediaShuffle, MediaRepeat}
+var MediaOps = []string{MediaPlayPause, MediaNext, MediaPrevious, MediaStop, MediaShuffle, MediaRepeat, MediaNowPlaying}
 
 // iconColors are the colours of brand icons in keys that set none, as their
 // brand rules require.

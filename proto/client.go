@@ -129,6 +129,25 @@ func (c *Conn) read() {
 	}
 }
 
+// StatusError is a reply other than StatusOK.
+type StatusError struct {
+	Status byte
+	Why    string // with StatusFailed
+}
+
+func (e *StatusError) Error() string {
+	if e.Status == StatusFailed {
+		return "device: " + e.Why
+	}
+	return fmt.Sprintf("device: status %d", e.Status)
+}
+
+// IsUnknownCmd reports whether err says the device doesn't know the command.
+func IsUnknownCmd(err error) bool {
+	var s *StatusError
+	return errors.As(err, &s) && s.Status == StatusUnknownCmd
+}
+
 // Do sends a request and returns the reply payload.
 func (c *Conn) Do(cmd byte, payload []byte) ([]byte, error) {
 	return c.DoWait(cmd, payload, ReplyTimeout)
@@ -159,11 +178,8 @@ func (c *Conn) DoWait(cmd byte, payload []byte, wait time.Duration) ([]byte, err
 				continue // a late reply to an earlier request
 			}
 			c.synced.Store(true)
-			if r.status == StatusFailed {
-				return nil, fmt.Errorf("device: %s", r.payload)
-			}
 			if r.status != StatusOK {
-				return nil, fmt.Errorf("device: status %d", r.status)
+				return nil, &StatusError{r.status, string(r.payload)}
 			}
 			return r.payload, nil
 		case <-c.done:

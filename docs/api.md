@@ -74,7 +74,7 @@ Payloads are JSON unless noted.
 | `0x01` | hello | none | `{"protocol": 3, "firmware": "<deckd version>", "os": {"name", "version", "flavour", "build"}, "serial": "...", "keys": 14, "model": "ulanzi,d200", "ipv4": "198.19.23.5"}`; `model` is the kind of device (its device tree's first compatible string), `ipv4` its address on the USB network now, for the web API |
 | `0x03` | identify | 1 byte: key number; or none | none; the key flashes, or with no payload the whole screen shows white for a second, to tell decks apart (older decks answer status 2) |
 | `0x04` | result | `{"id": 7, "error": "..."}`: how a PC action went; leave out `error` if it worked | none |
-| `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | none |
+| `0x05` | action-host | `{"id": "<random host id>", "name": "deckhost", "version": "...", "os": "linux", "apps": [...]}`: heartbeat, every 2 s | `{"looks": {"<name>": "<rev>"}}`: the host's looks the deck shows (older decks: none) |
 | `0x06` | state | `{"host": "<host id>", "state": {"discord.mute": true}}` | none |
 | `0x07` | settings | none to read; to change, the settings to change, e.g. `{"usb_drive": false}` | the settings: `{"usb_drive": true}` |
 | `0x08` | config-info | none, or `{"gzip": true}` | `{"rev": "<sha256 hex>", "size": 1234}`, and `"gzip_size"` if asked |
@@ -84,6 +84,8 @@ Payloads are JSON unless noted.
 | `0x0c` | config-commit | none | `{"rev": "...", "size": 1234}` |
 | `0x0d` | host | none | the PC helper: `{"connected": true, "name": "deckhost", "version", "os", "apps": [...], "state": {...}}` |
 | `0x0e` | time | `{"unix_ms": 1760900000000}`: the time now | none; the deck has no battery-backed clock, so send it on connecting and every hour |
+| `0x0f` | host-look | `{"host", "name", "rev", "label", "image_size", "image_sha256"}`: see [Looks](#looks) | none |
+| `0x10` | host-look-data | binary: offset (uint32), then up to 1015 bytes of the look's image | none |
 
 Check `protocol` in hello: this page is version 4. Protocol 3 had 64-byte input reports and no
 gzip. New commands come without a new version; a deck
@@ -179,6 +181,15 @@ A host can set named on/off states, which the deck forgets when the host goes aw
 
 A name not set is off. Each message changes only the names it gives, so a host can send what's on
 and what just went off, over several messages if it doesn't fit in one.
+
+#### Looks
+
+The action host can also set how keys with a given state name look, such as the song playing on
+a `now-playing` key: host-look with a `label` (up to 96 bytes, 3 lines), or with an image (a JPEG,
+PNG or GIF up to 64 KiB, filling the key) sent after it in host-look-data parts; a look with
+neither clears it. `rev` names the version: the deck lists the looks it shows in its reply to
+action-host, so a host resends only those it's missing, such as after deckd restarts. Up to 16
+looks; the deck forgets them with the host.
 
 See [App integrations](design.md#app-integrations).
 

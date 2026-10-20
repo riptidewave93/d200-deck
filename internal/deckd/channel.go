@@ -1,6 +1,7 @@
 package deckd
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"log"
@@ -124,6 +125,17 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 			return proto.StatusBadRequest, nil
 		}
 		d.pc.heartbeat(h)
+		return okJSON(proto.ActionHostReply{Looks: d.pc.lookRevs()})
+	case proto.CmdHostLook:
+		var l proto.HostLook
+		if json.Unmarshal(req.Payload, &l) != nil || d.pc.setLook(l) != nil {
+			return proto.StatusBadRequest, nil
+		}
+		return proto.StatusOK, nil
+	case proto.CmdHostLookData:
+		if len(req.Payload) < 4 || d.pc.lookData(int(binary.LittleEndian.Uint32(req.Payload)), req.Payload[4:]) != nil {
+			return proto.StatusBadRequest, nil
+		}
 		return proto.StatusOK, nil
 	case proto.CmdState:
 		var s proto.State

@@ -42,6 +42,7 @@ Apps such as Discord are integrated in `deckhost`, not the device, so a new one 
 |---|---|
 | Action | `{"type": "app", "app": "<app>", "op": "<op>", "args": {…}}`; names are lowercase letters, digits and `-` |
 | State | `<app>.ready` and `<app>.<op>`, set by the host ([api.md](api.md#state)) |
+| Looks | The host can give keys with a state name a label or image of its own, such as the song playing ([api.md](api.md#looks)) |
 | Built-ins | Optional built-in looks, on looks and fallbacks (a keybind or media key) per app op (`deck/apps.go`) |
 
 In `deckhost`, an integration implements `app` (`cmd/deckhost/apps.go`): it keeps itself

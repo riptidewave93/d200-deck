@@ -93,6 +93,7 @@ type daemon struct {
 	// changes.
 	state    map[string]bool
 	known    map[string]bool
+	looks    map[string]hostLook // by action state name
 	watchers map[chan struct{}]bool
 }
 
@@ -106,12 +107,13 @@ func newDaemon() *daemon {
 		open:     func(path string) (proto.Transport, error) { return hidraw.Open(path) },
 		state:    map[string]bool{},
 		known:    map[string]bool{},
+		looks:    map[string]hostLook{},
 		watchers: map[chan struct{}]bool{},
 	}
 	d.apps = map[string]app{
 		deck.AppDiscord: newDiscordLink(discordLogin, d.setState),
 		deck.AppOBS:     newOBSLink(obsDial, d.setState),
-		deck.AppMedia:   newMediaLink(openMedia, d.setState),
+		deck.AppMedia:   newMediaLink(openMedia, d.setState, d.setLook),
 	}
 	return d
 }
@@ -134,11 +136,16 @@ func (d *daemon) setState(s map[string]bool) {
 		}
 	}
 	if changed {
-		for ch := range d.watchers {
-			select {
-			case ch <- struct{}{}:
-			default:
-			}
+		d.notifyLocked()
+	}
+}
+
+// notifyLocked tells the sessions the state or looks changed.
+func (d *daemon) notifyLocked() {
+	for ch := range d.watchers {
+		select {
+		case ch <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -311,10 +318,14 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	if hello.Protocol != proto.Version {
 		return fmt.Errorf("device speaks protocol %d, deckhost %d; update the older one", hello.Protocol, proto.Version)
 	}
-	if _, err := c.Do(proto.CmdActionHost, d.heartbeat()); err != nil {
+	reply, err := c.Do(proto.CmdActionHost, d.heartbeat())
+	if err != nil {
 		return err
 	}
 	d.connected(path, hello)
+	// the looks the device shows: nil while it can't say, or doesn't take
+	// them (an older deckd)
+	looks := deviceLooks(reply)
 
 	// the deck takes state only from its action host: send it after each
 	// heartbeat (deckd may have restarted and lost it) and when it changes
@@ -385,6 +396,14 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 			if !sendState {
 				sent = on
 			}
+			if looks != nil {
+				if err := d.syncLooks(c, looks); proto.IsUnknownCmd(err) {
+					looks = nil
+				} else if err != nil {
+					log.Printf("%s: looks: %v", path, err)
+					sendState = true // try again
+				}
+			}
 		}
 		select {
 		case <-c.Done():
@@ -395,8 +414,11 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 			sendTime()
 		case <-heartbeat.C:
 			// another client's request can displace ours: allow one miss
-			if _, err := c.Do(proto.CmdActionHost, d.heartbeat()); err == nil {
+			if reply, err := c.Do(proto.CmdActionHost, d.heartbeat()); err == nil {
 				missed, sendState = 0, true
+				if looks != nil {
+					looks = deviceLooks(reply) // a restarted deckd has none
+				}
 			} else if missed++; missed > 1 {
 				return err
 			}

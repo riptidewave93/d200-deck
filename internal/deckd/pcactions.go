@@ -22,6 +22,8 @@ type pcActions struct {
 	info    proto.ActionHost
 	beat    time.Time // and when
 	state   map[string]bool
+	looks   map[string]hostLook // by action state name
+	upload  *lookUpload
 	nextID  uint32
 	pending map[uint32]pending
 	// fail shows that the action of key failed
@@ -43,8 +45,9 @@ func (p *pcActions) heartbeat(h proto.ActionHost) {
 	p.info = h
 	if host != p.host || !p.aliveLocked() {
 		p.host = host
-		if len(p.state) > 0 {
-			p.state = nil
+		p.upload = nil
+		if len(p.state) > 0 || len(p.looks) > 0 {
+			p.state, p.looks = nil, nil
 			p.notify()
 		}
 	}

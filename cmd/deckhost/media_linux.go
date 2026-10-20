@@ -57,10 +57,18 @@ func (m *mpris) players() ([]mediaPlayer, error) {
 		if v, ok := props["LoopStatus"].Value().(string); ok {
 			p.Repeat = v != "" && v != "None"
 		}
+		if md, ok := props["Metadata"].Value().(map[string]dbus.Variant); ok {
+			p.Title, _ = md["xesam:title"].Value().(string)
+			artists, _ := md["xesam:artist"].Value().([]string)
+			p.Artist = strings.Join(artists, ", ")
+			p.Art, _ = md["mpris:artUrl"].Value().(string)
+		}
 		ps = append(ps, p)
 	}
 	return ps, nil
 }
+
+func (m *mpris) art(p mediaPlayer) ([]byte, error) { return readArtURL(p.Art) }
 
 func (m *mpris) control(p mediaPlayer, op string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

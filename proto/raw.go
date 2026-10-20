@@ -131,7 +131,41 @@ const (
 	// CmdTime (payload: Time as JSON) sets the device's clock: it has no
 	// battery-backed one. Clients send it on connecting and every TimePeriod.
 	CmdTime = 0x0e
+
+	// CmdHostLook (payload: HostLook as JSON), from the action host, sets
+	// how keys whose action state (deck.Action.State) is Name look: a label,
+	// or an image that follows in CmdHostLookData parts. A HostLook with
+	// neither clears it. The device keeps up to MaxHostLooks, forgets them
+	// with the host, and lists them in its reply to CmdActionHost.
+	CmdHostLook = 0x0f
+	// CmdHostLookData payload: offset (uint32), the next one, and bytes of
+	// the image of the last CmdHostLook. The look shows once it's whole.
+	CmdHostLookData = 0x10
 )
+
+// Host look limits.
+const (
+	MaxHostLooks = 16
+	MaxHostLabel = 96 // bytes, up to 3 lines
+	MaxHostImage = 64 << 10
+)
+
+// HostLook is how the action host wants keys with action state Name to
+// look, e.g. the song playing on a now-playing key.
+type HostLook struct {
+	Host        string `json:"host"`
+	Name        string `json:"name"`
+	Rev         string `json:"rev"` // the host's name for this version
+	Label       string `json:"label,omitempty"`
+	ImageSize   int    `json:"image_size,omitempty"` // a JPEG, PNG or GIF
+	ImageSHA256 string `json:"image_sha256,omitempty"`
+}
+
+// ActionHostReply answers CmdActionHost: the Rev of each look the device
+// shows for the host, by Name. Older devices reply with nothing.
+type ActionHostReply struct {
+	Looks map[string]string `json:"looks,omitempty"`
+}
 
 // TimePeriod is how often clients send the time.
 const TimePeriod = time.Hour
