@@ -49,6 +49,9 @@ const (
 	RepoURL = "https://github.com/riptidewave93/d200-deck"
 	// ConfigureURL is the configuration website (not built yet).
 	ConfigureURL = "https://riptidewave93.github.io/d200-configure/"
+	// HostRepo is deckhost's GitHub repository, whose releases are tagged
+	// vMAJOR.MINOR.PATCH.
+	HostRepo = "riptidewave93/d200-deck"
 	// OSRepo is the device OS's GitHub repository, whose releases are
 	// tagged vMAJOR.MINOR.PATCH.
 	OSRepo = "riptidewave93/d200-buildroot"

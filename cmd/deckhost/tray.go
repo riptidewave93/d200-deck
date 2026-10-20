@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"log"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"fyne.io/systray"
@@ -69,6 +70,9 @@ func trayReady() {
 	osUpdate := systray.AddMenuItem("", "Open the release page to download it")
 	osUpdate.Hide()
 	var osURL string
+	hostUpdate := systray.AddMenuItem("", "Open the release page to download it")
+	hostUpdate.Hide()
+	var hostURL string
 	systray.AddSeparator()
 	restart := systray.AddMenuItem("Restart", "Restart deckhost")
 	exit := systray.AddMenuItem("Exit", "Stop deckhost and close this icon")
@@ -119,6 +123,14 @@ func trayReady() {
 		} else {
 			osUpdate.Hide()
 		}
+		hostURL = ""
+		if u := s.HostUpdate; u != nil {
+			hostURL = u.URL
+			hostUpdate.SetTitle(strings.TrimSpace("Download deckhost " + u.Version))
+			hostUpdate.Show()
+		} else {
+			hostUpdate.Hide()
+		}
 	}
 	refresh()
 
@@ -138,6 +150,10 @@ func trayReady() {
 				}
 			case <-osUpdate.ClickedCh:
 				if err := openURL(osURL); osURL != "" && err != nil {
+					log.Printf("release page: %v", err)
+				}
+			case <-hostUpdate.ClickedCh:
+				if err := openURL(hostURL); hostURL != "" && err != nil {
 					log.Printf("release page: %v", err)
 				}
 			case <-restart.ClickedCh:

@@ -16,26 +16,26 @@ import (
 	"github.com/riptidewave93/d200-deck/proto"
 )
 
-// OSUpdate is a device OS release newer than a device's.
-type OSUpdate struct {
-	Version string `json:"version"` // its tag, e.g. v0.2.0
-	URL     string `json:"url"`     // its release page
-	File    string `json:"file"`    // its file for the device's update page
+// Release is a newer release of the device OS or deckhost.
+type Release struct {
+	Version string `json:"version"`        // its tag, e.g. v0.2.0
+	URL     string `json:"url"`            // its release page
+	File    string `json:"file,omitempty"` // an OS release's file for the device's update page
 }
 
-// How often deckhost looks for a new device OS release, and again after
-// failing to.
+// How often deckhost looks for new device OS and deckhost releases, and
+// again after failing to.
 const (
 	osCheckEvery = 24 * time.Hour
 	osRetry      = time.Hour
 )
 
-var latestOSURL = "https://api.github.com/repos/" + deck.OSRepo + "/releases/latest"
+var latestURL = "https://api.github.com/repos/%s/releases/latest"
 
-// latestOS reads the newest published device OS release; ok is false if
+// latestRelease reads GitHub repo's newest published release; ok is false if
 // there's none yet.
-func latestOS() (rel OSUpdate, ok bool, err error) {
-	req, err := http.NewRequest("GET", latestOSURL, nil)
+func latestRelease(repo string) (rel Release, ok bool, err error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf(latestURL, repo), nil)
 	if err != nil {
 		return rel, false, err
 	}
@@ -60,22 +60,24 @@ func latestOS() (rel OSUpdate, ok bool, err error) {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r); err != nil {
 		return rel, false, err
 	}
-	return OSUpdate{Version: r.Tag, URL: r.URL}, r.Tag != "", nil
+	return Release{Version: r.Tag, URL: r.URL}, r.Tag != "", nil
 }
 
-// osUpdates looks for new device OS releases at start and every day, and
-// tells the user of each once if a connected device is older.
+// osUpdates looks for new device OS and deckhost releases at start and every
+// day, and tells the user of each once if it's newer than a connected
+// device's OS, or than deckhost.
 type osUpdates struct {
-	latest func() (OSUpdate, bool, error)
+	latest func(repo string) (Release, bool, error)
 	notify func(title, body, url string)
 
 	mu   sync.Mutex
-	rel  *OSUpdate // the newest release, if known
+	rel  *Release // the newest OS release, if known
+	host *Release // the newest deckhost release, if known
 	told map[string]bool
 }
 
 func newOSUpdates(notify func(title, body, url string)) *osUpdates {
-	return &osUpdates{latest: latestOS, notify: notify, told: map[string]bool{}}
+	return &osUpdates{latest: latestRelease, notify: notify, told: map[string]bool{}}
 }
 
 // run checks until the process exits; devices are those connected.
@@ -83,7 +85,7 @@ func (u *osUpdates) run(devices func() []proto.Hello) {
 	for {
 		wait := osCheckEvery
 		if err := u.refresh(); err != nil {
-			log.Printf("OS releases: %v", err)
+			log.Printf("releases: %v", err)
 			wait = osRetry
 		}
 		u.check(devices())
@@ -92,42 +94,67 @@ func (u *osUpdates) run(devices func() []proto.Hello) {
 }
 
 func (u *osUpdates) refresh() error {
-	rel, ok, err := u.latest()
+	rel, ok, err := u.latest(deck.OSRepo)
+	if err != nil {
+		return err
+	}
+	host, hostOK, err := u.latest(deck.HostRepo)
 	if err != nil {
 		return err
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	u.rel = nil
+	u.rel, u.host = nil, nil
 	if ok {
 		u.rel = &rel
+	}
+	if hostOK {
+		u.host = &host
 	}
 	return nil
 }
 
-// check tells the user of the newest release if a device is older, unless
-// it has already.
+// check tells the user of the newest releases if a device or deckhost is
+// older, unless it has already.
 func (u *osUpdates) check(devices []proto.Hello) {
+	if up := u.hostUpdate(); up != nil && u.first("deckhost "+up.Version) {
+		u.notify("deckhost "+up.Version+" is out",
+			fmt.Sprintf("You have deckhost %s. Download the new one from the release page.", version), up.URL)
+	}
 	for _, h := range devices {
-		up := u.update(h)
-		if up == nil {
-			continue
+		if up := u.update(h); up != nil {
+			if u.first(up.Version) {
+				u.notify("Device OS "+up.Version+" is out",
+					fmt.Sprintf("Your device has %s. Download %s from the release page, then open Update in the deckhost menu.", h.OS.Version, up.File),
+					up.URL)
+			}
+			return
 		}
-		u.mu.Lock()
-		told := u.told[up.Version]
-		u.told[up.Version] = true
-		u.mu.Unlock()
-		if !told {
-			u.notify("Device OS "+up.Version+" is out",
-				fmt.Sprintf("Your device has %s. Download %s from the release page, then open Update in the deckhost menu.", h.OS.Version, up.File),
-				up.URL)
-		}
-		return
 	}
 }
 
-// update is the newest release if it's newer than device h's OS.
-func (u *osUpdates) update(h proto.Hello) *OSUpdate {
+// first reports whether the user hasn't been told of what yet.
+func (u *osUpdates) first(what string) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	told := u.told[what]
+	u.told[what] = true
+	return !told
+}
+
+// hostUpdate is the newest deckhost release if it's newer than this one.
+func (u *osUpdates) hostUpdate() *Release {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.host == nil || !newerOS(u.host.Version, version) {
+		return nil
+	}
+	up := *u.host
+	return &up
+}
+
+// update is the newest OS release if it's newer than device h's OS.
+func (u *osUpdates) update(h proto.Hello) *Release {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.rel == nil || !newerOS(u.rel.Version, h.OS.Version) {
@@ -148,9 +175,9 @@ var (
 	describeRE = regexp.MustCompile(`(-\d+-g[0-9a-f]+)?(-dirty)?(-local)?$`)
 )
 
-// newerOS reports whether release tag is newer than device OS version
-// have. A version without a leading vX.Y.Z, such as a bare commit, never
-// has a newer release.
+// newerOS reports whether release tag is newer than version have (the
+// device OS's or deckhost's). A version without a leading vX.Y.Z, such as a
+// bare commit, never has a newer release.
 func newerOS(tag, have string) bool {
 	t, tpre, ok1 := parseOSVersion(tag)
 	h, hpre, ok2 := parseOSVersion(have)

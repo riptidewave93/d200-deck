@@ -88,8 +88,10 @@ Payloads are JSON unless noted.
 | `0x10` | host-look-data | binary: offset (uint32), then up to 1015 bytes of the look's image | none |
 
 Check `protocol` in hello: this page is version 4. Protocol 3 had 64-byte input reports and no
-gzip. New commands come without a new version; a deck
-that doesn't know one answers status 1.
+gzip. The version changes only when old and new can't talk: new commands come without one (a
+deck that doesn't know one answers status 1), and new config features show in
+[features](#features). A client should accept the versions it knows and, for a newer one, ask
+the user to update the client.
 
 ### Features
 

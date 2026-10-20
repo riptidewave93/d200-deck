@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/internal/osrelease"
 	"github.com/riptidewave93/d200-deck/proto"
 )
@@ -39,8 +40,8 @@ func TestOSUpdates(t *testing.T) {
 	type note struct{ title, body, url string }
 	var notes []note
 	u := newOSUpdates(func(title, body, url string) { notes = append(notes, note{title, body, url}) })
-	rel, ok, fail := OSUpdate{Version: "v0.2.0", URL: "https://example.com/r"}, true, error(nil)
-	u.latest = func() (OSUpdate, bool, error) { return rel, ok, fail }
+	rel, ok, fail := Release{Version: "v0.2.0", URL: "https://example.com/r"}, true, error(nil)
+	u.latest = func(string) (Release, bool, error) { return rel, ok, fail }
 	dev := func(v, flavour string) proto.Hello {
 		return proto.Hello{OS: osrelease.Info{Version: v, Flavour: flavour}}
 	}
@@ -66,7 +67,7 @@ func TestOSUpdates(t *testing.T) {
 	}
 
 	// a newer one: told again; a failed check keeps what's known
-	rel = OSUpdate{Version: "v0.3.0", URL: "https://example.com/r3"}
+	rel = Release{Version: "v0.3.0", URL: "https://example.com/r3"}
 	u.refresh()
 	fail = errors.New("offline")
 	if u.refresh() == nil {
@@ -88,25 +89,53 @@ func TestOSUpdates(t *testing.T) {
 func TestLatestOS(t *testing.T) {
 	status := http.StatusOK
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("User-Agent") == "" {
-			t.Error("no User-Agent")
+		if r.Header.Get("User-Agent") == "" || r.URL.Path != "/o/r" {
+			t.Errorf("User-Agent %q, path %q", r.Header.Get("User-Agent"), r.URL.Path)
 		}
 		w.WriteHeader(status)
 		w.Write([]byte(`{"tag_name": "v0.2.0", "html_url": "https://example.com/r", "assets": []}`))
 	}))
 	defer srv.Close()
-	defer func(u string) { latestOSURL = u }(latestOSURL)
-	latestOSURL = srv.URL
+	defer func(u string) { latestURL = u }(latestURL)
+	latestURL = srv.URL + "/%s"
 
-	if rel, ok, err := latestOS(); err != nil || !ok || rel.Version != "v0.2.0" || rel.URL != "https://example.com/r" {
+	if rel, ok, err := latestRelease("o/r"); err != nil || !ok || rel.Version != "v0.2.0" || rel.URL != "https://example.com/r" {
 		t.Errorf("%+v %v %v", rel, ok, err)
 	}
 	status = http.StatusNotFound // no releases yet
-	if _, ok, err := latestOS(); ok || err != nil {
+	if _, ok, err := latestRelease("o/r"); ok || err != nil {
 		t.Errorf("404: %v %v", ok, err)
 	}
 	status = http.StatusForbidden // rate limited
-	if _, _, err := latestOS(); err == nil {
+	if _, _, err := latestRelease("o/r"); err == nil {
 		t.Error("403: no error")
+	}
+}
+
+func TestHostUpdate(t *testing.T) {
+	defer func(v string) { version = v }(version)
+	version = "v0.1.0"
+	var notes []string
+	u := newOSUpdates(func(title, body, url string) { notes = append(notes, title+" "+url) })
+	u.latest = func(repo string) (Release, bool, error) {
+		if repo == deck.HostRepo {
+			return Release{Version: "v0.2.0", URL: "https://example.com/host"}, true, nil
+		}
+		return Release{}, false, nil
+	}
+	if u.hostUpdate() != nil {
+		t.Error("an update before looking")
+	}
+	if err := u.refresh(); err != nil {
+		t.Fatal(err)
+	}
+	u.check(nil)
+	u.check(nil) // once per release
+	if up := u.hostUpdate(); up == nil || up.Version != "v0.2.0" || len(notes) != 1 || notes[0] != "deckhost v0.2.0 is out https://example.com/host" {
+		t.Errorf("%+v %q", up, notes)
+	}
+	version = "v0.2.0"
+	if u.hostUpdate() != nil {
+		t.Error("an update to the same version")
 	}
 }

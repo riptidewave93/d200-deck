@@ -33,15 +33,26 @@ type Device struct {
 	Hello *proto.Hello `json:"hello,omitempty"` // set while connected
 	Error string       `json:"error,omitempty"` // why it isn't connected
 	// OSUpdate is a newer OS release than the device's, if there's one
-	OSUpdate *OSUpdate `json:"os_update,omitempty"`
-	busy     bool      // a session is running
+	OSUpdate *Release `json:"os_update,omitempty"`
+	// NeedsHost is set if the device's software is too new for deckhost
+	NeedsHost bool `json:"needs_host,omitempty"`
+	busy      bool // a session is running
 }
 
 // Status is what the daemon reports to the tray: every D200 plugged in.
 type Status struct {
 	Devices []Device    `json:"devices"`
 	Apps    []AppStatus `json:"apps,omitempty"` // the app integrations that are set up
+	// HostUpdate is a newer deckhost release, if there's one or a device
+	// needs one (then its Version may be unknown)
+	HostUpdate *Release `json:"host_update,omitempty"`
 }
+
+// Protocols deckhost can't talk.
+var (
+	errDeviceOld = errors.New("the device's software is too old: update it")
+	errHostOld   = errors.New("the device's software is newer: update deckhost")
+)
 
 // Connected are the devices with a working session.
 func (s Status) Connected() []Device {
@@ -215,10 +226,16 @@ func (d *daemon) getStatus() Status {
 	sort.Slice(s.Apps, func(i, j int) bool { return s.Apps[i].Title < s.Apps[j].Title })
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.os != nil {
+		s.HostUpdate = d.os.hostUpdate()
+	}
 	for _, dev := range d.devices {
 		c := *dev
 		if c.Hello != nil && d.os != nil {
 			c.OSUpdate = d.os.update(*c.Hello)
+		}
+		if c.NeedsHost && s.HostUpdate == nil {
+			s.HostUpdate = &Release{URL: deck.RepoURL + "/releases/latest"}
 		}
 		s.Devices = append(s.Devices, c)
 	}
@@ -287,6 +304,7 @@ func (d *daemon) run(path string) {
 	dev := d.devices[path]
 	dev.busy = false
 	dev.Hello = nil
+	dev.NeedsHost = errors.Is(err, errHostOld)
 	if msg := err.Error(); msg != dev.Error {
 		log.Printf("%s: %s", path, msg)
 		dev.Error = msg
@@ -340,8 +358,11 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	if err := json.Unmarshal(b, &hello); err != nil {
 		return fmt.Errorf("bad hello: %w", err)
 	}
-	if hello.Protocol != proto.Version {
-		return fmt.Errorf("device speaks protocol %d, deckhost %d; update the older one", hello.Protocol, proto.Version)
+	switch {
+	case hello.Protocol < proto.MinVersion:
+		return errDeviceOld
+	case hello.Protocol > proto.Version:
+		return errHostOld
 	}
 	reply, err := c.Do(proto.CmdActionHost, d.heartbeat())
 	if err != nil {

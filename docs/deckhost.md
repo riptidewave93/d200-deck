@@ -23,6 +23,7 @@ no line.
 | Configure | Opens the [configuration website](https://riptidewave93.github.io/d200-configure/) |
 | Update | Opens the device's update page, the deck's IPv4 address, e.g. `http://198.19.23.5/update`, since sandboxed browsers often can't resolve `.local` (only while connected; a submenu per device when several are) |
 | Download OS v… | Opens the GitHub release page of a newer device OS than a connected device has (only then) |
+| Download deckhost v… | Opens the GitHub release page of a newer deckhost, shown when there is one, or when a device's software is too new for this deckhost |
 | Restart | Restarts the daemon (or starts it if it isn't running) |
 | Exit | Stops the daemon and closes the tray; both start again at next login |
 
@@ -40,10 +41,12 @@ connected, `update` needs the end of the device's serial.
 - Launched programs (and the browser) run in their own session and, through `systemd-run --user
   --scope`, their own systemd scope, so they keep running when the daemon restarts or stops.
 - `deckhost` runs whatever the device config says; see [design.md](design.md#trust).
-- At start and every 24 h, the daemon reads the device OS's latest release from GitHub. If it's
-  newer than a connected device's OS, a notification says so once per release until deckhost
-  restarts; clicking it opens the release page. A device on a build with no release tag (a bare
-  commit) is never told.
+- At start and every 24 h, the daemon reads the latest device OS and deckhost releases from
+  GitHub. If one is newer than a connected device's OS, or than deckhost, a notification says so
+  once per release until deckhost restarts; clicking it opens the release page. A build with no
+  release tag (a bare commit) is never told.
+- deckhost talks protocols `proto.MinVersion` to `proto.Version`. A device outside that shows
+  "update it" or "update deckhost" in the menu instead of connecting.
 
 ## Window focus on GNOME (Wayland)
 

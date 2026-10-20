@@ -78,9 +78,14 @@ var RawDescriptorV3 = []byte{
 // RawDescriptors are the descriptors clients look for.
 var RawDescriptors = [][]byte{RawDescriptor, RawDescriptorV3}
 
-// Version is the protocol version reported by CmdHello. Protocol 4 has
-// 1024-byte input reports and gzip config transfers.
-const Version = 4
+// Version is the protocol version reported by CmdHello, and MinVersion the
+// oldest this package talks. Protocol 4 has 1024-byte input reports and gzip
+// config transfers. It changes only when old and new can't talk; features
+// come and go through Hello.Features.
+const (
+	Version    = 4
+	MinVersion = 3
+)
 
 // Commands.
 const (
