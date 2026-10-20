@@ -44,7 +44,8 @@ func (f configFile) info() proto.ConfigInfo {
 // upload is a config being written.
 type upload struct {
 	proto.ConfigWrite
-	b []byte
+	b  []byte
+	gz []byte // as sent, if gzipped: kept for reads, saving gzipping it again
 }
 
 // sent is how many bytes the client sends: the config, or it gzipped.
@@ -135,7 +136,7 @@ func (d *deckd) commit(seq uint16, u *upload) (byte, []byte) {
 		if err != nil {
 			return failed(damaged)
 		}
-		u.b = b
+		u.gz, u.b = u.b, b
 	}
 	sum := sha256.Sum256(u.b)
 	if len(u.b) != u.Size || hex.EncodeToString(sum[:]) != u.SHA256 {
@@ -177,6 +178,9 @@ func (d *deckd) save(u *upload, c *deck.Config) (byte, []byte) {
 	}
 	d.file.b = u.b
 	info := d.file.info()
+	if u.gz != nil {
+		d.file.gz = &gzipped{info.Rev, u.gz}
+	}
 	log.Printf("config: saved %s", info.Rev[:12])
 	d.ui <- func() {
 		d.cfg = c

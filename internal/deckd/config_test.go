@@ -70,6 +70,10 @@ func TestConfigOverChannel(t *testing.T) {
 	if b, _, err := c.ReadConfig(); err != nil || !bytes.Equal(b, newFile) {
 		t.Errorf("read back %d bytes, %v", len(b), err)
 	}
+	// the gzip stream sent is the one reads get: not gzipped again
+	if d.file.gz == nil || d.file.gz.rev != got.Rev || !bytes.Equal(d.file.gz.b, proto.Gzip(newFile)) {
+		t.Error("the gzip stream sent wasn't kept")
+	}
 
 	for _, bad := range []struct {
 		base, file, want string
