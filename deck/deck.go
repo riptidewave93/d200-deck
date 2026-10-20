@@ -31,7 +31,7 @@ const (
 	MaxDelayMS    = 60000   // one macro delay
 	MaxPCAction   = 8 << 10 // one PC action as JSON: it's sent to the PC on each press
 
-	MaxConfigBytes = 2 << 20   // the whole config file, images included
+	MaxConfigBytes = 4 << 20   // the whole config file, images included
 	MaxImageBytes  = 256 << 10 // one image file, before base64
 	MaxImageSide   = 512       // pixels; the keys are 196 px
 	MaxFontBytes   = 512 << 10 // one font file, before base64

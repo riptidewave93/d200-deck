@@ -108,7 +108,7 @@ so on.
 
 | | |
 |---|---|
-| Config file | 2 MiB, images and fonts included |
+| Config file | 4 MiB (2 MiB on older device software), images and fonts included |
 | Image | 256 KiB and 512x512 px; keys are 196 px, so size them to that |
 | Font | 512 KiB; `fonts.Subset` cuts a TrueType font to the characters labels use |
 | Icons | 256; a path up to 16 KiB, a PNG or GIF up to 24 KiB and 128x128 px |

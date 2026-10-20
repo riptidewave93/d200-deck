@@ -119,8 +119,9 @@ offer only that. A deck without it has the first release's.
 
 ### The config
 
-The config is the deck's [config file](config.md), images included, up to
-2 MiB: more than one request or reply holds, so it moves in parts, gzipped on protocol 4 decks.
+The config is the deck's [config file](config.md), images included, up to `config_bytes` in
+the features' limits (4 MiB; 2 MiB on older software): more than one request or reply holds, so
+it moves in parts, gzipped on protocol 4 decks.
 `proto/config.go` does both.
 
 To read it:
