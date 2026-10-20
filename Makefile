@@ -8,12 +8,19 @@ OUT := build
 PKG_VERSION ?= $(shell t=$$(git describe --tags --exact-match 2>/dev/null) && echo $${t\#v} || \
 	echo 0.0.0~git$$(git show -s --format=%cd --date=format:%Y%m%d HEAD).$$(git rev-parse --short HEAD))
 NFPM_VERSION := v2.41.1
+# The website builds its WebAssembly with TinyGo
+TINYGO_IMAGE ?= tinygo/tinygo:0.43.0
+WASMTIME_VERSION := v29.0.1
 
 REPO_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 ifneq ($(DOCKER),)
 RUN := $(DOCKER) run --rm --user $(shell id -u):$(shell id -g) -e HOME=/tmp \
 	-e GOCACHE=/repo/.cache/go-build -e GOMODCACHE=/repo/.cache/mod -e GOFLAGS=-buildvcs=false \
 	-v "$(REPO_DIR)":/repo:Z -w /repo $(GO_IMAGE)
+TINYGO := $(DOCKER) run --rm --user $(shell id -u):$(shell id -g) -e HOME=/tmp \
+	-e PATH=/repo/.cache/bin:/usr/local/tinygo/bin:/usr/local/go/bin:/usr/bin:/bin \
+	-e GOCACHE=/repo/.cache/tinygo-build -e GOMODCACHE=/repo/.cache/mod -e GOFLAGS=-buildvcs=false \
+	-v "$(REPO_DIR)":/repo:Z -w /repo $(TINYGO_IMAGE)
 endif
 
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -26,9 +33,9 @@ WASM := GOOS=js GOARCH=wasm
 WASM_PKGS := ./render ./deck ./icons ./fonts
 PC_PKGS := ./cmd/deckhost ./internal/discord ./internal/obs ./internal/hidraw ./proto/... ./deck ./netid
 
-.PHONY: all build deckd deckhost deckhost.exe dist dist-linux dist-windows test check cover clean
+.PHONY: all build deckd deckhost deckhost.exe dist dist-linux dist-windows test tinygo check cover clean
 
-all : check test build
+all : check test tinygo build
 
 # The device program (arm64: the keys and the update page) and the PC program (Linux and
 # Windows amd64) into ./build
@@ -67,10 +74,22 @@ dist-windows : deckhost.exe .cache/nsis-image
 .cache/bin/nfpm :
 	$(RUN) sh -c 'GOBIN=$$PWD/.cache/bin go install github.com/goreleaser/nfpm/v2/cmd/nfpm@$(NFPM_VERSION)'
 
-# Unit tests with the race detector, and a coverage summary
+# Unit tests with the race detector, and a coverage summary; the website's packages also with
+# 32-bit ints, as in TinyGo's WebAssembly
 test :
 	mkdir -p $(OUT)
-	$(RUN) sh -c 'go test -race -coverprofile=$(OUT)/cover.out ./... && go tool cover -func=$(OUT)/cover.out | tail -1'
+	$(RUN) sh -c 'go test -race -coverprofile=$(OUT)/cover.out ./... && go tool cover -func=$(OUT)/cover.out | tail -1 && \
+		GOARCH=386 go test $(WASM_PKGS)'
+
+# The website's packages' tests built with TinyGo, as the website builds them (its JSON without
+# encoding/json/v2), run in wasmtime. TestLoad* use temp dirs WASI can't remove.
+tinygo : .cache/bin/wasmtime
+	$(TINYGO) env GOEXPERIMENT=nojsonv2 tinygo test -target wasip1 -skip '^TestLoad' $(WASM_PKGS)
+
+.cache/bin/wasmtime :
+	mkdir -p .cache/bin
+	curl -sfL https://github.com/bytecodealliance/wasmtime/releases/download/$(WASMTIME_VERSION)/wasmtime-$(WASMTIME_VERSION)-x86_64-linux.tar.xz | \
+		tar -xJ -C .cache/bin --strip-components=1 wasmtime-$(WASMTIME_VERSION)-x86_64-linux/wasmtime
 
 # Per-function coverage of the last test run
 cover :
