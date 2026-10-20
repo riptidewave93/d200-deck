@@ -20,7 +20,6 @@ type runner struct {
 	hid      *hidg.Device
 	lastOpen time.Time
 	lastWake time.Time
-	asked    bool // logged asking the PC to wake, since a report last went out
 	openErr  string
 
 	mu   sync.Mutex
@@ -324,17 +323,10 @@ func (r *runner) send(f func(*hidg.Device) error) error {
 		// allows it does). The press is lost, as on a keyboard.
 		if time.Since(r.lastWake) >= wakeEvery {
 			r.lastWake = time.Now()
-			// the kernel says yes even when it doesn't wake the PC
-			if hidg.Wake() == nil && !r.asked {
-				log.Print("asked the PC to wake")
-				r.asked = true
-			}
+			askWake()
 		}
 		r.valid = false
 		return err
-	}
-	if err == nil {
-		r.asked = false
 	}
 	if err != nil {
 		log.Print(err)

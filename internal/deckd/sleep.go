@@ -99,17 +99,22 @@ func (d *deckd) setAsleep(v bool) {
 	}
 }
 
-// pressAsleep asks the PC to wake, once per sleep: the kernel takes it even
-// when the PC doesn't allow waking.
+// pressAsleep asks the PC to wake, once per sleep.
 func (d *deckd) pressAsleep() {
 	if d.askedWake || d.test {
 		return
 	}
 	d.askedWake = true
+	askWake()
+}
+
+// askWake asks the PC to wake (srp) and logs the result. The kernel may say
+// yes even when the PC doesn't allow waking.
+func askWake() {
 	if err := wakePC(); err != nil {
-		log.Printf("asking the PC to wake: %v", err)
+		log.Printf("asked the PC to wake: %v", err)
 	} else {
-		log.Print("asked the PC to wake")
+		log.Print("asked the PC to wake: ok")
 	}
 }
 
