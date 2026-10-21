@@ -164,7 +164,7 @@ func TestDaemonSeveralDevices(t *testing.T) {
 	devs["/dev/hidraw3"], _, _ = fakeD200(proto.MinVersion - 1)
 	devs["/dev/hidraw4"], _, _ = fakeD200(proto.Version + 1)
 	d := newDaemon()
-	d.os = nil // no release checks
+	d.os.latest = func(string) (Release, bool, error) { return Release{}, false, nil } // no releases
 	d.find = func() []string { return []string{"/dev/hidraw1", "/dev/hidraw2", "/dev/hidraw3", "/dev/hidraw4"} }
 	d.open = func(p string) (proto.Transport, error) { return devs[p], nil }
 	d.scan()
@@ -173,6 +173,15 @@ func TestDaemonSeveralDevices(t *testing.T) {
 		return len(s.Connected()) == 2 && len(s.Devices) == 4 && strings.Contains(s.Devices[2].Error, "too old") &&
 			s.Devices[3].NeedsHost && s.HostUpdate != nil && strings.HasSuffix(s.HostUpdate.URL, "/releases/latest")
 	})
+	// a device too old to talk to keeps its hello, so it can be updated
+	if s := d.getStatus(); s.Devices[2].Hello == nil || len(s.Updatable()) != 3 {
+		t.Errorf("too old: %+v", s.Devices[2])
+	}
+	// told not to look for releases: no link to the official ones
+	d.setCheckUpdates(false)
+	if s := d.getStatus(); s.CheckUpdates || s.HostUpdate != nil {
+		t.Errorf("checks off: %+v", s)
+	}
 	for _, dev := range devs {
 		dev.Close()
 	}

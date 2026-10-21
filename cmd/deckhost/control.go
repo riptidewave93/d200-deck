@@ -72,7 +72,7 @@ func (d *daemon) serveControl(c net.Conn, l net.Listener) {
 		}
 	}
 	cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
-	if arg != "" && cmd != "update" {
+	if arg != "" && cmd != "update" && cmd != "install" && cmd != "checks" {
 		reply(errors.New("unknown command"))
 		return
 	}
@@ -88,6 +88,15 @@ func (d *daemon) serveControl(c net.Conn, l net.Listener) {
 			err = openURL(u)
 		}
 		reply(err)
+	case "install":
+		reply(d.startInstall(arg))
+	case "checks":
+		if arg != "on" && arg != "off" {
+			reply(errors.New("checks takes on or off"))
+			return
+		}
+		d.setCheckUpdates(arg == "on")
+		reply(saveCheckUpdates(arg == "on"))
 	case "restart":
 		reply(nil)
 		c.Close()

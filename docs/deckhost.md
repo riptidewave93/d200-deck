@@ -20,17 +20,24 @@ Below its header the menu lists the connected D200s and each app that's set up, 
 | Item | Does |
 |---|---|
 | Configure | Opens the [configuration website](https://riptidewave93.github.io/d200-configure/) |
-| Update | Opens the device's update page (a submenu per device when several are connected) |
-| Download OS v… | Opens the release page of a newer device OS, when there is one |
+| Install an update file… | Opens the device's update page, to install an update file you have |
+| Update device to v… | When a newer device OS is out: downloads it for the device, checks it and sends it to the device, then opens the update page. Press **Install** on the device to install it |
 | Download deckhost v… | Opens the release page of a newer deckhost, when there is one or the device needs it |
+| Check for updates | On by default. Off, deckhost doesn't look for new releases: no notifications, and no **Update device** or **Download deckhost** items |
 | Restart | Restarts the daemon |
 | Exit | Stops deckhost; it starts again at login, or from **D200 Deck** in the app launcher |
 
-The same commands work from a shell: `deckhost status | configure | update [serial] | restart |
-exit`. With several D200s connected, `update` needs the end of the device's serial.
+With several D200s connected, the device items become submenus, one item per device.
 
-deckhost checks for new device OS and deckhost releases once a day and tells you of each once.
-If a device's software is too old or too new for this deckhost, the menu says which to update.
+The same commands work from a shell: `deckhost status | configure | update [serial] |
+install [serial] | checks on|off | restart | exit`. `update` opens the update page, `install`
+sends the device the new OS and shows how it goes. With several D200s connected, both need the
+end of the device's serial.
+
+With **Check for updates** on, deckhost looks for new device OS and deckhost releases once a day
+and tells you of each once. Turn it off if you build your own: deckhost then never asks GitHub.
+If a device's software is too old or too new for this deckhost, the menu says which to update; a
+device too old for this deckhost can still be updated from the menu.
 
 ## Window focus on GNOME (Wayland)
 
