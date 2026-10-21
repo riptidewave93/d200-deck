@@ -16,7 +16,7 @@ func TestMacCandidates(t *testing.T) {
 			t.Errorf("%s not found", id)
 		}
 	}
-	if findProgram(app("No Such App.app")) != nil {
+	if findProgram(bundles("No Such App.app")) != nil {
 		t.Error("found a missing app")
 	}
 }

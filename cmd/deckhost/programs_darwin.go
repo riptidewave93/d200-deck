@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 )
 
-// macOS: app is the first of these app bundles installed, by name in the
+// macOS: bundles is the first of these app bundles installed, by name in the
 // application folders or by full path; * patterns match versioned names
 // (the last match wins).
-func app(names ...string) []candidate {
+func bundles(names ...string) []candidate {
 	var cs []candidate
 	for _, n := range names {
 		cs = append(cs, candidate{kind: "app", value: n})
@@ -19,69 +19,69 @@ func app(names ...string) []candidate {
 // programCandidates are the ways each app in programs may be installed.
 var programCandidates = map[string][]candidate{
 	// system
-	"files":        app("/System/Library/CoreServices/Finder.app"),
-	"settings":     app("System Settings.app", "System Preferences.app"),
-	"terminal":     app("Terminal.app"),
-	"task-manager": app("Activity Monitor.app"),
-	"calculator":   app("Calculator.app"),
-	"text-editor":  app("TextEdit.app"),
-	"screenshot":   app("Screenshot.app"),
+	"files":        bundles("/System/Library/CoreServices/Finder.app"),
+	"settings":     bundles("System Settings.app", "System Preferences.app"),
+	"terminal":     bundles("Terminal.app"),
+	"task-manager": bundles("Activity Monitor.app"),
+	"calculator":   bundles("Calculator.app"),
+	"text-editor":  bundles("TextEdit.app"),
+	"screenshot":   bundles("Screenshot.app"),
 
 	// browsers
-	"chrome":  app("Google Chrome.app"),
-	"firefox": app("Firefox.app"),
-	"edge":    app("Microsoft Edge.app"),
-	"brave":   app("Brave Browser.app"),
-	"opera":   app("Opera.app"),
-	"vivaldi": app("Vivaldi.app"),
+	"chrome":  bundles("Google Chrome.app"),
+	"firefox": bundles("Firefox.app"),
+	"edge":    bundles("Microsoft Edge.app"),
+	"brave":   bundles("Brave Browser.app"),
+	"opera":   bundles("Opera.app"),
+	"vivaldi": bundles("Vivaldi.app"),
 
 	// chat
-	"discord":  app("Discord.app"),
-	"telegram": app("Telegram.app", "Telegram Desktop.app"),
-	"whatsapp": app("WhatsApp.app"),
-	"signal":   app("Signal.app"),
-	"zoom":     app("zoom.us.app"),
-	"slack":    app("Slack.app"),
-	"teams":    app("Microsoft Teams.app", "Microsoft Teams (work or school).app"),
+	"discord":  bundles("Discord.app"),
+	"telegram": bundles("Telegram.app", "Telegram Desktop.app"),
+	"whatsapp": bundles("WhatsApp.app"),
+	"signal":   bundles("Signal.app"),
+	"zoom":     bundles("zoom.us.app"),
+	"slack":    bundles("Slack.app"),
+	"teams":    bundles("Microsoft Teams.app", "Microsoft Teams (work or school).app"),
 
 	// games
-	"steam":           app("Steam.app"),
-	"epic-games":      app("Epic Games Launcher.app"),
-	"battle-net":      app("Battle.net.app"),
-	"gog-galaxy":      app("GOG Galaxy.app"),
-	"ea-app":          app("EA app.app"),
-	"ubisoft-connect": app("Ubisoft Connect.app"),
-	"riot-client":     app("Riot Client.app"),
+	"steam":           bundles("Steam.app"),
+	"epic-games":      bundles("Epic Games Launcher.app"),
+	"battle-net":      bundles("Battle.net.app"),
+	"gog-galaxy":      bundles("GOG Galaxy.app"),
+	"ea-app":          bundles("EA app.app"),
+	"ubisoft-connect": bundles("Ubisoft Connect.app"),
+	"riot-client":     bundles("Riot Client.app"),
 
 	// media
-	"spotify": app("Spotify.app"),
-	"vlc":     app("VLC.app"),
-	"plex":    app("Plex.app"),
-	"kodi":    app("Kodi.app"),
-	"obs":     app("OBS.app"),
+	"spotify": bundles("Spotify.app"),
+	"vlc":     bundles("VLC.app"),
+	"plex":    bundles("Plex.app"),
+	"kodi":    bundles("Kodi.app"),
+	"obs":     bundles("OBS.app"),
 
 	// creative
-	"photoshop":       app("Adobe Photoshop */Adobe Photoshop *.app"),
-	"gimp":            app("GIMP.app", "GIMP-*.app"),
-	"inkscape":        app("Inkscape.app"),
-	"krita":           app("krita.app"),
-	"blender":         app("Blender.app"),
-	"davinci-resolve": app("DaVinci Resolve/DaVinci Resolve.app"),
-	"audacity":        app("Audacity.app"),
-	"figma":           app("Figma.app"),
+	"photoshop":       bundles("Adobe Photoshop */Adobe Photoshop *.app"),
+	"gimp":            bundles("GIMP.app", "GIMP-*.app"),
+	"inkscape":        bundles("Inkscape.app"),
+	"krita":           bundles("krita.app"),
+	"blender":         bundles("Blender.app"),
+	"davinci-resolve": bundles("DaVinci Resolve/DaVinci Resolve.app"),
+	"audacity":        bundles("Audacity.app"),
+	"figma":           bundles("Figma.app"),
 
 	// work
-	"word":        app("Microsoft Word.app"),
-	"excel":       app("Microsoft Excel.app"),
-	"powerpoint":  app("Microsoft PowerPoint.app"),
-	"outlook":     app("Microsoft Outlook.app"),
-	"libreoffice": app("LibreOffice.app"),
-	"thunderbird": app("Thunderbird.app"),
-	"notion":      app("Notion.app"),
-	"obsidian":    app("Obsidian.app"),
-	"1password":   app("1Password.app", "1Password 7.app"),
-	"bitwarden":   app("Bitwarden.app"),
-	"vscode":      app("Visual Studio Code.app"),
+	"word":        bundles("Microsoft Word.app"),
+	"excel":       bundles("Microsoft Excel.app"),
+	"powerpoint":  bundles("Microsoft PowerPoint.app"),
+	"outlook":     bundles("Microsoft Outlook.app"),
+	"libreoffice": bundles("LibreOffice.app"),
+	"thunderbird": bundles("Thunderbird.app"),
+	"notion":      bundles("Notion.app"),
+	"obsidian":    bundles("Obsidian.app"),
+	"1password":   bundles("1Password.app", "1Password 7.app"),
+	"bitwarden":   bundles("Bitwarden.app"),
+	"vscode":      bundles("Visual Studio Code.app"),
 }
 
 // findProgram returns how to open the first of cs that's installed, or nil.
