@@ -29,14 +29,19 @@ import (
 
 // Device is one D200 as the daemon sees it.
 type Device struct {
-	Path  string       `json:"path"`
-	Hello *proto.Hello `json:"hello,omitempty"` // set while connected
+	Path string `json:"path"`
+	// Hello is set while connected, and while its software is too old
+	Hello *proto.Hello `json:"hello,omitempty"`
 	Error string       `json:"error,omitempty"` // why it isn't connected
 	// OSUpdate is a newer OS release than the device's, if there's one
 	OSUpdate *Release `json:"os_update,omitempty"`
 	// NeedsHost is set if the device's software is too new for deckhost
 	NeedsHost bool `json:"needs_host,omitempty"`
-	busy      bool // a session is running
+	// Install is what sending it an OS update is doing, if it's running;
+	// InstallError why the last one failed
+	Install      string `json:"install,omitempty"`
+	InstallError string `json:"install_error,omitempty"`
+	busy         bool   // a session is running
 }
 
 // Status is what the daemon reports to the tray: every D200 plugged in.
@@ -46,6 +51,8 @@ type Status struct {
 	// HostUpdate is a newer deckhost release, if there's one or a device
 	// needs one (then its Version may be unknown)
 	HostUpdate *Release `json:"host_update,omitempty"`
+	// CheckUpdates is whether deckhost looks for new releases
+	CheckUpdates bool `json:"check_updates"`
 }
 
 // Protocols deckhost can't talk.
@@ -58,6 +65,18 @@ var (
 func (s Status) Connected() []Device {
 	var c []Device
 	for _, d := range s.Devices {
+		if d.Hello != nil && d.Error == "" {
+			c = append(c, d)
+		}
+	}
+	return c
+}
+
+// Updatable are the devices whose update page deckhost can reach: those
+// connected, and those whose software is too old to connect.
+func (s Status) Updatable() []Device {
+	var c []Device
+	for _, d := range s.Devices {
 		if d.Hello != nil {
 			c = append(c, d)
 		}
@@ -65,31 +84,49 @@ func (s Status) Connected() []Device {
 	return c
 }
 
-// UpdateURL is the update page of the connected device whose serial ends in
-// serial, or of the only one connected if serial is empty.
-func (s Status) UpdateURL(serial string) (string, error) {
+// Pick is the updatable device whose serial ends in serial, or the only one
+// if serial is empty.
+func (s Status) Pick(serial string) (Device, error) {
 	var found []Device
-	for _, d := range s.Connected() {
+	for _, d := range s.Updatable() {
 		if strings.HasSuffix(strings.ToLower(d.Hello.Serial), strings.ToLower(serial)) {
 			found = append(found, d)
 		}
 	}
 	switch {
 	case len(found) == 0 && serial == "":
-		return "", errors.New("no D200 connected")
+		return Device{}, errors.New("no D200 connected")
 	case len(found) == 0:
-		return "", fmt.Errorf("no D200 %s connected", serial)
+		return Device{}, fmt.Errorf("no D200 %s connected", serial)
 	case len(found) > 1:
-		return "", errors.New("several D200s connected: name one by its serial")
+		return Device{}, errors.New("several D200s connected: name one by its serial")
 	}
-	if ip := found[0].Hello.IPv4; ip != "" {
-		return "http://" + ip + "/update", nil
-	}
-	id, err := netid.For(found[0].Hello.Serial) // a deckd too old to say
+	return found[0], nil
+}
+
+// UpdateURL is the update page of the device Pick picks.
+func (s Status) UpdateURL(serial string) (string, error) {
+	d, err := s.Pick(serial)
 	if err != nil {
-		return "", fmt.Errorf("D200 %q: %w", found[0].Hello.Serial, err)
+		return "", err
 	}
-	return id.UpdateURL(), nil
+	base, err := d.webURL()
+	if err != nil {
+		return "", err
+	}
+	return base + "/update", nil
+}
+
+// webURL is where the device's web pages are on the USB network.
+func (d Device) webURL() (string, error) {
+	if ip := d.Hello.IPv4; ip != "" {
+		return "http://" + ip, nil
+	}
+	id, err := netid.For(d.Hello.Serial) // a deckd too old to say
+	if err != nil {
+		return "", fmt.Errorf("D200 %q: %w", d.Hello.Serial, err)
+	}
+	return strings.TrimSuffix(id.UpdateURL(), "/update"), nil
 }
 
 // daemon runs one session per plugged-in D200.
@@ -229,13 +266,15 @@ func (d *daemon) getStatus() Status {
 	defer d.mu.Unlock()
 	if d.os != nil {
 		s.HostUpdate = d.os.hostUpdate()
+		s.CheckUpdates = d.os.enabled()
 	}
 	for _, dev := range d.devices {
 		c := *dev
 		if c.Hello != nil && d.os != nil {
 			c.OSUpdate = d.os.update(*c.Hello)
 		}
-		if c.NeedsHost && s.HostUpdate == nil {
+		// the official releases: not for a deckhost told not to look
+		if c.NeedsHost && s.HostUpdate == nil && s.CheckUpdates {
 			s.HostUpdate = &Release{URL: deck.RepoURL + "/releases/latest"}
 		}
 		s.Devices = append(s.Devices, c)
@@ -252,6 +291,7 @@ func runDaemon() {
 		log.Fatal(err)
 	}
 	log.Printf("deckhost %s", version)
+	d.setCheckUpdates(checkUpdates())
 	for _, a := range d.apps {
 		go a.run(nil)
 	}
@@ -304,7 +344,9 @@ func (d *daemon) run(path string) {
 	defer d.mu.Unlock()
 	dev := d.devices[path]
 	dev.busy = false
-	dev.Hello = nil
+	if !errors.Is(err, errDeviceOld) {
+		dev.Hello = nil // kept for a device too old: it can still be updated
+	}
 	dev.NeedsHost = errors.Is(err, errHostOld)
 	if msg := err.Error(); msg != dev.Error {
 		log.Printf("%s: %s", path, msg)
@@ -325,7 +367,29 @@ func (d *daemon) connected(path string, hello proto.Hello) {
 	}
 }
 
-// hellos are the connected devices' hellos.
+// tooOld keeps the hello of a device whose software is too old to talk to,
+// so it can be updated.
+func (d *daemon) tooOld(path string, hello proto.Hello) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if dev, ok := d.devices[path]; ok {
+		dev.Hello = &hello
+	}
+}
+
+// setCheckUpdates turns looking for new releases on or off. The decks are
+// told whether "Update device" is in the menu, for the website's hint.
+func (d *daemon) setCheckUpdates(on bool) {
+	if d.os != nil {
+		d.os.setEnabled(on)
+	}
+	d.setState(map[string]bool{stateUpdateDevice: on})
+}
+
+// stateUpdateDevice is on while deckhost's menu can offer "Update device".
+const stateUpdateDevice = "update.device"
+
+// hellos are the devices' hellos, connected or too old.
 func (d *daemon) hellos() []proto.Hello {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -387,6 +451,7 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 	}
 	switch {
 	case hello.Protocol < proto.MinVersion:
+		d.tooOld(path, hello)
 		return errDeviceOld
 	case hello.Protocol > proto.Version:
 		return errHostOld

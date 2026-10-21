@@ -22,12 +22,13 @@ type Release struct {
 	URL     string `json:"url"`            // its release page
 	File    string `json:"file,omitempty"` // an OS release's file for the device's update page
 
-	files []string // its uploaded files
+	files []string          // its uploaded files
+	urls  map[string]string // where to download each
 }
 
-// hostReadyFile is the file a deckhost release uploads last, once its
-// installers are there.
-const hostReadyFile = "SHA256SUMS"
+// readyFile is the file a release uploads last, once its other files are
+// there; it holds their SHA-256 sums.
+const readyFile = "SHA256SUMS"
 
 // How often deckhost looks for new device OS and deckhost releases, and
 // again after failing to.
@@ -65,15 +66,17 @@ func latestRelease(repo string) (rel Release, ok bool, err error) {
 		Assets []struct {
 			Name  string `json:"name"`
 			State string `json:"state"`
+			URL   string `json:"browser_download_url"`
 		} `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r); err != nil {
 		return rel, false, err
 	}
-	rel = Release{Version: r.Tag, URL: r.URL}
+	rel = Release{Version: r.Tag, URL: r.URL, urls: map[string]string{}}
 	for _, a := range r.Assets {
 		if a.State == "uploaded" {
 			rel.files = append(rel.files, a.Name)
+			rel.urls[a.Name] = a.URL
 		}
 	}
 	return rel, r.Tag != "" && len(rel.files) > 0, nil
@@ -81,31 +84,59 @@ func latestRelease(repo string) (rel Release, ok bool, err error) {
 
 // osUpdates looks for new device OS and deckhost releases at start and every
 // day, and tells the user of each once if it's newer than a connected
-// device's OS, or than deckhost.
+// device's OS, or than deckhost. Turned off, it doesn't look, and knows of
+// no releases.
 type osUpdates struct {
 	latest func(repo string) (Release, bool, error)
 	notify func(title, body, url string)
+	wake   chan struct{} // look now
 
 	mu   sync.Mutex
+	off  bool
 	rel  *Release // the newest OS release, if known
 	host *Release // the newest deckhost release, if known
 	told map[string]bool
 }
 
 func newOSUpdates(notify func(title, body, url string)) *osUpdates {
-	return &osUpdates{latest: latestRelease, notify: notify, told: map[string]bool{}}
+	return &osUpdates{latest: latestRelease, notify: notify, told: map[string]bool{}, wake: make(chan struct{}, 1)}
 }
 
 // run checks until the process exits; devices are those connected.
 func (u *osUpdates) run(devices func() []proto.Hello) {
 	for {
 		wait := osCheckEvery
-		if err := u.refresh(); err != nil {
-			log.Printf("releases: %v", err)
-			wait = osRetry
+		if u.enabled() {
+			if err := u.refresh(); err != nil {
+				log.Printf("releases: %v", err)
+				wait = osRetry
+			}
+			u.check(devices())
 		}
-		u.check(devices())
-		time.Sleep(wait)
+		select {
+		case <-time.After(wait):
+		case <-u.wake:
+		}
+	}
+}
+
+func (u *osUpdates) enabled() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return !u.off
+}
+
+// setEnabled turns looking for releases on, looking at once, or off.
+func (u *osUpdates) setEnabled(on bool) {
+	u.mu.Lock()
+	u.off = !on
+	if !on {
+		u.rel, u.host = nil, nil
+	}
+	u.mu.Unlock()
+	select {
+	case u.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -121,6 +152,9 @@ func (u *osUpdates) refresh() error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.rel, u.host = nil, nil
+	if u.off {
+		return nil // turned off while looking
+	}
 	if ok {
 		u.rel = &rel
 	}
@@ -140,9 +174,7 @@ func (u *osUpdates) check(devices []proto.Hello) {
 	for _, h := range devices {
 		if up := u.update(h); up != nil {
 			if u.first(up.Version) {
-				u.notify("Device OS "+up.Version+" is out",
-					fmt.Sprintf("Your device has %s. Download %s from the release page, then open Update in the deckhost menu.", h.OS.Version, up.File),
-					up.URL)
+				u.notify("Device OS "+up.Version+" is out", "Choose Update device in the deckhost menu.", up.URL)
 			}
 			return
 		}
@@ -163,7 +195,7 @@ func (u *osUpdates) first(what string) bool {
 func (u *osUpdates) hostUpdate() *Release {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if u.host == nil || !newerOS(u.host.Version, version) || !slices.Contains(u.host.files, hostReadyFile) {
+	if u.host == nil || !newerOS(u.host.Version, version) || !slices.Contains(u.host.files, readyFile) {
 		return nil
 	}
 	up := *u.host
@@ -171,7 +203,7 @@ func (u *osUpdates) hostUpdate() *Release {
 }
 
 // update is the newest OS release if it's newer than device h's OS and its
-// file for h is uploaded.
+// files are uploaded: h's and the sums.
 func (u *osUpdates) update(h proto.Hello) *Release {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -184,7 +216,7 @@ func (u *osUpdates) update(h proto.Hello) *Release {
 		flavour = "release"
 	}
 	up.File = fmt.Sprintf(deck.OSUpdateFile, up.Version, flavour)
-	if !slices.Contains(up.files, up.File) {
+	if !slices.Contains(up.files, up.File) || !slices.Contains(up.files, readyFile) {
 		return nil // not uploaded yet
 	}
 	return &up

@@ -41,7 +41,7 @@ func TestOSUpdates(t *testing.T) {
 	type note struct{ title, body, url string }
 	var notes []note
 	u := newOSUpdates(func(title, body, url string) { notes = append(notes, note{title, body, url}) })
-	files := []string{"d200-v0.2.0-release-update.tar", "d200-v0.2.0-debug-update.tar"}
+	files := []string{"d200-v0.2.0-release-update.tar", "d200-v0.2.0-debug-update.tar", readyFile}
 	rel, ok, fail := Release{Version: "v0.2.0", URL: "https://example.com/r", files: files}, true, error(nil)
 	u.latest = func(string) (Release, bool, error) { return rel, ok, fail }
 	dev := func(v, flavour string) proto.Hello {
@@ -61,7 +61,7 @@ func TestOSUpdates(t *testing.T) {
 	if len(notes) != 1 || notes[0].url != rel.URL || notes[0].title != "Device OS v0.2.0 is out" {
 		t.Fatalf("%+v", notes)
 	}
-	if want := "Your device has v0.1.0. Download d200-v0.2.0-debug-update.tar from the release page, then open Update in the deckhost menu."; notes[0].body != want {
+	if want := "Choose Update device in the deckhost menu."; notes[0].body != want {
 		t.Errorf("body %q", notes[0].body)
 	}
 	if up := u.update(dev("v0.1.0", "")); up == nil || up.File != "d200-v0.2.0-release-update.tar" {
@@ -70,13 +70,18 @@ func TestOSUpdates(t *testing.T) {
 
 	// a newer one, told of once its file is uploaded; a failed check keeps
 	// what's known
-	rel = Release{Version: "v0.3.0", URL: "https://example.com/r3", files: []string{"d200-v0.3.0-debug-update.tar"}}
+	rel = Release{Version: "v0.3.0", URL: "https://example.com/r3", files: []string{"d200-v0.3.0-debug-update.tar", readyFile}}
 	u.refresh()
 	u.check([]proto.Hello{dev("v0.2.0", "release")})
 	if len(notes) != 1 || u.update(dev("v0.2.0", "release")) != nil {
 		t.Fatalf("told before the file is there: %+v", notes)
 	}
-	rel.files = append(rel.files, "d200-v0.3.0-release-update.tar")
+	rel.files = []string{"d200-v0.3.0-debug-update.tar", "d200-v0.3.0-release-update.tar"}
+	u.refresh()
+	if u.update(dev("v0.2.0", "release")) != nil {
+		t.Fatalf("an update before %s is there", readyFile)
+	}
+	rel.files = append(rel.files, readyFile)
 	u.refresh()
 	fail = errors.New("offline")
 	if u.refresh() == nil {
@@ -85,6 +90,22 @@ func TestOSUpdates(t *testing.T) {
 	u.check([]proto.Hello{dev("v0.2.0", "release")})
 	if len(notes) != 2 || notes[1].url != rel.URL {
 		t.Errorf("%+v", notes)
+	}
+
+	// turned off: no releases known, none looked for
+	fail = nil
+	u.setEnabled(false)
+	if u.update(dev("v0.1.0", "release")) != nil || u.enabled() {
+		t.Error("an update while off")
+	}
+	u.refresh()
+	if u.update(dev("v0.1.0", "release")) != nil {
+		t.Error("an update after looking while off")
+	}
+	u.setEnabled(true)
+	u.refresh()
+	if u.update(dev("v0.1.0", "release")) == nil {
+		t.Error("no update once on again")
 	}
 
 	// no release any more
@@ -97,7 +118,7 @@ func TestOSUpdates(t *testing.T) {
 
 func TestLatestOS(t *testing.T) {
 	status := http.StatusOK
-	assets := `{"name": "a.tar", "state": "uploaded"}, {"name": "SHA256SUMS", "state": "starter"}`
+	assets := `{"name": "a.tar", "state": "uploaded", "browser_download_url": "https://example.com/a.tar"}, {"name": "SHA256SUMS", "state": "starter"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("User-Agent") == "" || r.URL.Path != "/o/r" {
 			t.Errorf("User-Agent %q, path %q", r.Header.Get("User-Agent"), r.URL.Path)
@@ -110,7 +131,7 @@ func TestLatestOS(t *testing.T) {
 	latestURL = srv.URL + "/%s"
 
 	if rel, ok, err := latestRelease("o/r"); err != nil || !ok || rel.Version != "v0.2.0" || rel.URL != "https://example.com/r" ||
-		!slices.Equal(rel.files, []string{"a.tar"}) {
+		!slices.Equal(rel.files, []string{"a.tar"}) || rel.urls["a.tar"] != "https://example.com/a.tar" {
 		t.Errorf("%+v %v %v", rel, ok, err)
 	}
 	assets = `{"name": "a.tar", "state": "starter"}` // published, files still uploading
@@ -147,9 +168,9 @@ func TestHostUpdate(t *testing.T) {
 	}
 	u.check(nil)
 	if u.hostUpdate() != nil || len(notes) != 0 {
-		t.Errorf("an update before %s is uploaded: %q", hostReadyFile, notes)
+		t.Errorf("an update before %s is uploaded: %q", readyFile, notes)
 	}
-	files = append(files, hostReadyFile)
+	files = append(files, readyFile)
 	u.refresh()
 	u.check(nil)
 	u.check(nil) // once per release

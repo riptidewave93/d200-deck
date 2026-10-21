@@ -55,30 +55,13 @@ func trayReady() {
 	}
 	systray.AddSeparator()
 	configure := systray.AddMenuItem("Configure", "Open the configuration website")
-	// One D200 gets a plain Update item; several get a submenu, one per device.
-	update := systray.AddMenuItem("Update", "Open the device's update page")
-	updateMenu := systray.AddMenuItem("Update", "Open a device's update page")
-	updateMenu.Hide()
-	picked := make(chan int)
-	var updateItems []*systray.MenuItem
-	for i := range maxTrayDevices {
-		it := updateMenu.AddSubMenuItem("", "")
-		it.Hide()
-		updateItems = append(updateItems, it)
-		go func() {
-			for range it.ClickedCh {
-				picked <- i
-			}
-		}()
-	}
-	var serials []string
-	osUpdate := systray.AddMenuItem("", "Open the release page to download it")
-	osUpdate.Hide()
-	var osURL string
+	file := newDeviceMenu("Install an update file…", "Open the device's update page")
+	install := newDeviceMenu("Update device", "Download the new device OS and send it to the device")
 	hostUpdate := systray.AddMenuItem("", "Open the release page to download it")
 	hostUpdate.Hide()
 	var hostURL string
 	systray.AddSeparator()
+	checks := systray.AddMenuItemCheckbox("Check for updates", "Look for new device OS and deckhost releases", true)
 	restart := systray.AddMenuItem("Restart", "Restart deckhost")
 	exit := systray.AddMenuItem("Exit", "Stop deckhost and close this icon")
 
@@ -94,40 +77,9 @@ func trayReady() {
 				l.Hide()
 			}
 		}
-		serials = updateSerials(s)
-		systray.SetIcon(icons[len(serials) > 0])
-		if len(serials) > 0 {
-			update.Enable()
-		} else {
-			update.Disable()
-		}
-		if len(serials) > 1 {
-			update.Hide()
-			updateMenu.Show()
-		} else {
-			update.Show()
-			updateMenu.Hide()
-		}
-		for i, it := range updateItems {
-			if i < len(serials) {
-				it.SetTitle(shortSerial(serials[i]))
-				it.Show()
-			} else {
-				it.Hide()
-			}
-		}
-		osURL = ""
-		for _, d := range s.Connected() {
-			if d.OSUpdate != nil {
-				osUpdate.SetTitle("Download OS " + d.OSUpdate.Version)
-				osURL = d.OSUpdate.URL
-			}
-		}
-		if osURL != "" {
-			osUpdate.Show()
-		} else {
-			osUpdate.Hide()
-		}
+		systray.SetIcon(icons[len(s.Connected()) > 0])
+		file.set(fileEntries(s), true)
+		install.set(installEntries(s), false)
 		hostURL = ""
 		if u := s.HostUpdate; u != nil {
 			hostURL = u.URL
@@ -135,6 +87,16 @@ func trayReady() {
 			hostUpdate.Show()
 		} else {
 			hostUpdate.Hide()
+		}
+		if !running {
+			checks.Disable()
+			return
+		}
+		checks.Enable()
+		if s.CheckUpdates {
+			checks.Check()
+		} else {
+			checks.Uncheck()
 		}
 	}
 	refresh()
@@ -147,20 +109,18 @@ func trayReady() {
 				refresh()
 			case <-configure.ClickedCh:
 				ask("configure", func() error { return openURL(deck.ConfigureURL) })
-			case <-update.ClickedCh:
-				ask("update", notRunning)
-			case i := <-picked:
-				if i < len(serials) {
-					ask("update "+serials[i], notRunning)
-				}
-			case <-osUpdate.ClickedCh:
-				if err := openURL(osURL); osURL != "" && err != nil {
-					log.Printf("release page: %v", err)
-				}
+			case i := <-file.picked:
+				ask(strings.TrimSpace("update "+file.serial(i)), notRunning)
+			case i := <-install.picked:
+				ask(strings.TrimSpace("install "+install.serial(i)), notRunning)
+				refresh()
 			case <-hostUpdate.ClickedCh:
 				if err := openURL(hostURL); hostURL != "" && err != nil {
 					log.Printf("release page: %v", err)
 				}
+			case <-checks.ClickedCh:
+				ask(map[bool]string{true: "checks off", false: "checks on"}[checks.Checked()], notRunning)
+				refresh()
 			case <-restart.ClickedCh:
 				ask("restart", restartService)
 				time.Sleep(time.Second)
@@ -174,15 +134,121 @@ func trayReady() {
 	}()
 }
 
-// updateSerials are the serials of the connected devices the menu offers updates for.
-func updateSerials(s Status) []string {
-	var serials []string
-	for _, d := range s.Connected() {
-		if len(serials) < maxTrayDevices {
-			serials = append(serials, d.Hello.Serial)
+// deviceMenu is a menu item for one device, which becomes a submenu of one
+// item per device when there are several.
+type deviceMenu struct {
+	title     string // when there's no device
+	one, many *systray.MenuItem
+	items     []*systray.MenuItem
+	picked    chan int    // the entry clicked
+	entries   []menuEntry // what's shown, used on the menu's goroutine only
+}
+
+// menuEntry is one device's item in a deviceMenu.
+type menuEntry struct {
+	serial    string
+	one, many string // its title as the only item, and in the submenu
+	busy      bool   // greyed out
+}
+
+func newDeviceMenu(title, tooltip string) *deviceMenu {
+	m := &deviceMenu{title: title, one: systray.AddMenuItem(title, tooltip), many: systray.AddMenuItem(title, tooltip),
+		picked: make(chan int)}
+	m.many.Hide()
+	for i := range maxTrayDevices {
+		it := m.many.AddSubMenuItem("", "")
+		it.Hide()
+		m.items = append(m.items, it)
+		go func() {
+			for range it.ClickedCh {
+				m.picked <- i
+			}
+		}()
+	}
+	go func() {
+		for range m.one.ClickedCh {
+			m.picked <- 0
+		}
+	}()
+	return m
+}
+
+// serial is the device of entry i.
+func (m *deviceMenu) serial(i int) string {
+	if i < len(m.entries) {
+		return m.entries[i].serial
+	}
+	return ""
+}
+
+// set shows entries; with none, the item is greyed out if keepEmpty, else
+// hidden.
+func (m *deviceMenu) set(entries []menuEntry, keepEmpty bool) {
+	m.entries = entries
+	switch {
+	case len(entries) > 1:
+		m.one.Hide()
+		m.many.Show()
+	case len(entries) == 1:
+		m.many.Hide()
+		m.one.SetTitle(entries[0].one)
+		enable(m.one, !entries[0].busy)
+		m.one.Show()
+	case keepEmpty:
+		m.many.Hide()
+		m.one.SetTitle(m.title)
+		m.one.Disable()
+		m.one.Show()
+	default:
+		m.one.Hide()
+		m.many.Hide()
+	}
+	for i, it := range m.items {
+		if len(entries) > 1 && i < len(entries) {
+			it.SetTitle(entries[i].many)
+			enable(it, !entries[i].busy)
+			it.Show()
+		} else {
+			it.Hide()
 		}
 	}
-	return serials
+}
+
+func enable(it *systray.MenuItem, on bool) {
+	if on {
+		it.Enable()
+	} else {
+		it.Disable()
+	}
+}
+
+// fileEntries are the devices "Install an update file…" opens the update
+// page of.
+func fileEntries(s Status) []menuEntry {
+	var es []menuEntry
+	for _, d := range s.Updatable() {
+		if len(es) < maxTrayDevices {
+			es = append(es, menuEntry{serial: d.Hello.Serial, one: "Install an update file…", many: shortSerial(d.Hello.Serial)})
+		}
+	}
+	return es
+}
+
+// installEntries are the devices "Update device" can send a new OS to.
+func installEntries(s Status) []menuEntry {
+	var es []menuEntry
+	for _, d := range s.Updatable() {
+		if d.OSUpdate == nil || len(es) == maxTrayDevices {
+			continue
+		}
+		name := shortSerial(d.Hello.Serial)
+		e := menuEntry{serial: d.Hello.Serial, one: "Update device to " + d.OSUpdate.Version, many: name + " to " + d.OSUpdate.Version}
+		if d.Install != "" {
+			e = menuEntry{serial: d.Hello.Serial, one: d.Install, many: name + ": " + d.Install, busy: true}
+		}
+		es = append(es, e)
+	}
+	return es
 }
 
 // notRunning is the fallback for actions only the daemon can do.
@@ -211,6 +277,8 @@ func describe(s Status, running bool) (header string, lines []string) {
 	for _, d := range s.Devices {
 		var l string
 		switch {
+		case d.Hello != nil && d.Error != "": // too old to talk to
+			l = shortSerial(d.Hello.Serial) + ": " + d.Error
 		case d.Hello != nil && len(s.Devices) == 1:
 			l = fmt.Sprintf("OS %s (%s)", d.Hello.OS.Version, d.Hello.OS.Flavour)
 		case d.Hello != nil:

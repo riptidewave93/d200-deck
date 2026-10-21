@@ -28,6 +28,9 @@ const usageText = `usage: deckhost <command>
   configure    open the configuration website
   update [S]   open a D200's update page (S: the end of its serial,
                needed when several are connected)
+  install [S]  send a D200 the newest OS release, to install it
+  checks on|off
+               look for new releases, or don't
   restart      restart the daemon
   exit         stop the daemon
 
@@ -57,6 +60,20 @@ func main() {
 		runDaemon()
 	case "tray":
 		runTray()
+	case "install":
+		if len(os.Args) > 3 {
+			usage()
+		}
+		if err := installCommand(strings.Join(os.Args[2:], "")); err != nil {
+			log.Fatal(err)
+		}
+	case "checks":
+		if len(os.Args) != 3 || os.Args[2] != "on" && os.Args[2] != "off" {
+			usage()
+		}
+		if _, err := control("checks " + os.Args[2]); err != nil {
+			log.Fatal(err)
+		}
 	case "status", "configure", "update", "restart", "exit":
 		if len(os.Args) > 3 || (len(os.Args) == 3 && cmd != "update") {
 			usage()

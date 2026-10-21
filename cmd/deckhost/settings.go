@@ -34,3 +34,38 @@ func writeJSON(path string, v any) error {
 	}
 	return os.WriteFile(path, b, 0o600)
 }
+
+// hostSettings are deckhost's own settings, in settings.json.
+type hostSettings struct {
+	// CheckUpdates is whether deckhost looks for new releases; unset is on
+	CheckUpdates *bool `json:"check_updates,omitempty"`
+}
+
+func settingsPath() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "settings.json"), nil
+}
+
+// checkUpdates reads whether deckhost looks for new releases.
+func checkUpdates() bool {
+	var s hostSettings
+	if path, err := settingsPath(); err == nil {
+		readJSON(path, &s)
+	}
+	return s.CheckUpdates == nil || *s.CheckUpdates
+}
+
+// saveCheckUpdates saves whether deckhost looks for new releases.
+func saveCheckUpdates(on bool) error {
+	path, err := settingsPath()
+	if err != nil {
+		return err
+	}
+	var s hostSettings
+	readJSON(path, &s)
+	s.CheckUpdates = &on
+	return writeJSON(path, s)
+}

@@ -96,3 +96,39 @@ func TestControlGarbage(t *testing.T) {
 		t.Errorf("answered a partial command: %q", b)
 	}
 }
+
+func TestControlChecks(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("HOME", home)
+	if !checkUpdates() {
+		t.Error("checks off without settings")
+	}
+	d := newDaemon()
+	d.os.latest = func(string) (Release, bool, error) { return Release{}, false, nil }
+	d.setCheckUpdates(checkUpdates())
+	l, err := listenControl(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	for _, on := range []bool{false, true} {
+		arg := map[bool]string{true: "on", false: "off"}[on]
+		if _, err := control("checks " + arg); err != nil {
+			t.Fatal(err)
+		}
+		d.mu.Lock()
+		state := d.state[stateUpdateDevice]
+		d.mu.Unlock()
+		if checkUpdates() != on || d.getStatus().CheckUpdates != on || state != on {
+			t.Errorf("checks %s: saved %v, status %v, state %v", arg, checkUpdates(), d.getStatus().CheckUpdates, state)
+		}
+	}
+	if _, err := control("checks maybe"); err == nil {
+		t.Error("checks maybe")
+	}
+	if _, err := control("install"); err == nil || err.Error() != "no D200 connected" {
+		t.Errorf("install with nothing connected: %v", err)
+	}
+}
