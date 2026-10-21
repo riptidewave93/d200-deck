@@ -346,3 +346,57 @@ func TestConfigFile(t *testing.T) {
 	}
 	read(newFile, "after the save")
 }
+
+func TestLoadConfig(t *testing.T) {
+	dir := t.TempDir()
+	if c, _ := loadConfig(filepath.Join(dir, "missing.json")); c.Home != "main" {
+		t.Error("missing config didn't fall back to the default")
+	}
+	bad := filepath.Join(dir, "bad.json")
+	os.WriteFile(bad, []byte("{"), 0o644)
+	if c, _ := loadConfig(bad); c.Home != "main" {
+		t.Error("broken config didn't fall back to the default")
+	}
+	custom := &deck.Config{Version: deck.ConfigVersion, Home: "only", Pages: map[string]deck.Page{
+		"only": {Keys: map[int]deck.Button{0: {Icon: "mute", Label: "Mute"}}},
+	}}
+	good := filepath.Join(dir, "good.json")
+	b, _ := json.Marshal(custom)
+	os.WriteFile(good, b, 0o644)
+	if c, _ := loadConfig(good); c.Home != "only" {
+		t.Error("good config not loaded")
+	}
+	custom.Pages["only"].Keys[0] = deck.Button{Icon: "no-such-icon"}
+	b, _ = json.Marshal(custom)
+	os.WriteFile(good, b, 0o644)
+	if c, _ := loadConfig(good); c.Home != "only" {
+		t.Error("config missing an icon not loaded: its keys should show without it")
+	}
+}
+
+func TestGuardConfig(t *testing.T) {
+	dir := t.TempDir()
+	old := startsFile
+	startsFile = filepath.Join(dir, "starts")
+	t.Cleanup(func() { startsFile = old })
+	cfg := filepath.Join(dir, "deckd", "config.json")
+	guardConfig(cfg) // makes the directory
+	os.Remove(startsFile)
+	if err := os.WriteFile(cfg, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for range maxQuickStarts {
+		guardConfig(cfg)
+		if _, err := os.Stat(cfg); err != nil {
+			t.Fatal("config moved too soon")
+		}
+	}
+	guardConfig(cfg)
+	if _, err := os.Stat(cfg + ".bad"); err != nil {
+		t.Error("config not moved aside after repeated crashes")
+	}
+	if b, _ := os.ReadFile(startsFile); string(b) != "1" {
+		t.Errorf("count %q after moving the config", b)
+	}
+}
