@@ -38,3 +38,13 @@ func TestFindDesktop(t *testing.T) {
 		t.Errorf("%q", dirs)
 	}
 }
+
+func TestLinuxCandidates(t *testing.T) {
+	for id, cs := range programCandidates {
+		for _, c := range cs {
+			if c.kind != "desktop" && c.kind != "run" {
+				t.Errorf("%s: candidate %+v", id, c)
+			}
+		}
+	}
+}

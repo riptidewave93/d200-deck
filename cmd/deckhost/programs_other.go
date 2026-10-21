@@ -2,6 +2,6 @@
 
 package main
 
-func (p program) candidates() []candidate { return nil }
+var programCandidates = map[string][]candidate{}
 
 func findProgram([]candidate) func() error { return nil }

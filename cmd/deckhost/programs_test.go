@@ -12,22 +12,14 @@ func TestProgramsTable(t *testing.T) {
 	id := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	seen := map[string]bool{}
 	for _, p := range programs {
-		if !id.MatchString(p.id) || seen[p.id] {
-			t.Errorf("id %q", p.id)
+		if !id.MatchString(p) || seen[p] {
+			t.Errorf("id %q", p)
 		}
-		seen[p.id] = true
-		if len(p.windows) == 0 && len(p.linux) == 0 {
-			t.Errorf("%s: no way to find it", p.id)
-		}
-		for _, c := range p.windows {
-			if c.kind != "exe" && c.kind != "file" && c.kind != "uri" || c.kind == "uri" && !strings.HasSuffix(c.value, ":") {
-				t.Errorf("%s: Windows candidate %+v", p.id, c)
-			}
-		}
-		for _, c := range p.linux {
-			if c.kind != "desktop" && c.kind != "run" {
-				t.Errorf("%s: Linux candidate %+v", p.id, c)
-			}
+		seen[p] = true
+	}
+	for p := range programCandidates {
+		if !seen[p] {
+			t.Errorf("%s: candidates for an app not in programs", p)
 		}
 	}
 }
@@ -38,9 +30,9 @@ func TestProgramsLink(t *testing.T) {
 	installed := map[string]bool{"chrome": true}
 	var opened []string
 	l.find = func(cs []candidate) func() error {
-		for _, p := range programs {
-			if len(cs) > 0 && len(p.candidates()) > 0 && &p.candidates()[0] == &cs[0] && installed[p.id] {
-				id := p.id
+		for _, id := range programs {
+			pc := programCandidates[id]
+			if len(cs) > 0 && len(pc) > 0 && &pc[0] == &cs[0] && installed[id] {
 				return func() error { opened = append(opened, id); return nil }
 			}
 		}
