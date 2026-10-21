@@ -44,6 +44,9 @@ func detached(path string, args []string) *exec.Cmd {
 	return cmd
 }
 
+// runtimeEnv names the environment variable runtimeDir is under.
+const runtimeEnv = "LOCALAPPDATA"
+
 // runtimeDir holds the control socket, the single-instance lock and the log.
 func runtimeDir() (string, error) {
 	base, err := os.UserCacheDir() // %LOCALAPPDATA%
@@ -96,26 +99,6 @@ func restartService() error {
 
 // secureSocket does nothing: %LOCALAPPDATA% is the user's alone.
 func secureSocket(path string) error { return nil }
-
-// maxLog is how big the log gets before it's started afresh.
-const maxLog = 1 << 20
-
-// logToFile sends the daemon's log to deckhost.log next to its socket.
-func logToFile() {
-	dir, err := runtimeDir()
-	if err != nil {
-		return
-	}
-	path := filepath.Join(dir, "deckhost.log")
-	flag := os.O_CREATE | os.O_WRONLY | os.O_APPEND
-	if fi, err := os.Stat(path); err == nil && fi.Size() > maxLog {
-		flag |= os.O_TRUNC
-	}
-	if f, err := os.OpenFile(path, flag, 0o600); err == nil {
-		log.SetOutput(f)
-		log.SetFlags(log.LstdFlags)
-	}
-}
 
 // trayIcon is the tray icon as an .ico, which Windows wants.
 func trayIcon(png []byte) []byte { return icoFromPNG(png) }
