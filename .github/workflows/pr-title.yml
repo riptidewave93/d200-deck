@@ -1,8 +1,8 @@
 name: PR title
 
 # Pull requests are squash-merged with their title as the commit message,
-# which Release Please reads: it must be a conventional commit, such as
-# "feat(deckd): ..." or "fix(gfx): ...".
+# which Release Drafter reads for the notes and the version: it must be a
+# conventional commit, such as "feat(deckd): ..." or "fix(gfx): ...".
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]

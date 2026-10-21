@@ -63,10 +63,19 @@ Changes go in as pull requests, squash-merged, so the PR title becomes the commi
 are [conventional commits](https://www.conventionalcommits.org/): `feat(deckd): …` for a feature,
 `fix(gfx): …` for a fix, `ci: …`, `docs: …` and so on; a check enforces it.
 
-Release Please keeps a release PR open with the next version and its changelog, from those titles.
-Merging it tags the release, and the installers are built and attached to it. Versions follow
-semver: a major release is one older parts can't work with (a new minimum protocol, a config format
-change, a raised `min_updater`), a minor one adds features, a patch fixes bugs.
+Each merge to `main` updates a draft release with the next version and its notes, one line per PR
+title. The titles set the version: `feat` raises the minor version and anything else the patch;
+below 1.0, a breaking change (`feat!: …`) raises the minor version too. Versions follow semver: a
+major release is one older parts can't work with (a new minimum protocol, a config format change, a
+raised `min_updater`), a minor one adds features, a patch fixes bugs.
+
+To release, run the **Release** workflow on `main` (Actions > Release > Run workflow). It tags the
+draft's version, or the one you give, builds the installers, attaches them and publishes the
+release. A dry run builds and checks the version without releasing anything.
+
+A bot opens pull requests for updates, every Monday and after each release: Go modules as
+`fix(deps)`, build tools and actions as `chore(deps)`, and the new d200-deck release in
+d200-buildroot and d200-configure.
 
 ## License
 

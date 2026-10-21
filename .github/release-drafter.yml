@@ -1,0 +1,29 @@
+# Release notes and the next version, from the titles of merged pull requests
+# (conventional commits). Below 1.0, a breaking change (`!`) raises the minor
+# version.
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+categories:
+  - title: 'Features'
+    semver-increment: 'minor'
+    exclusive: true
+    when:
+      conventional:
+        type: 'feat'
+  - title: 'Fixes'
+    exclusive: true
+    when:
+      conventional:
+        type: 'fix'
+  - title: 'Other'
+  - type: 'version-resolver'
+    semver-increment: 'minor'
+    when:
+      conventional:
+        breaking: true
+  - type: 'version-resolver'
+    semver-increment: 'patch'
+change-template: '- $TITLE (#$NUMBER)'
+change-title-escapes: '\<*_&'
+template: |
+  $CHANGES
