@@ -147,7 +147,9 @@ func (d *deckd) press(i int, down bool) {
 		a = a.ForMac()
 	}
 	d.held[i] = &held{page: d.page(), action: a}
-	d.drawKey(i, render.Pressed)
+	if d.showsPressed(a) {
+		d.drawKey(i, render.Pressed)
+	}
 
 	switch {
 	case a.Type == deck.ActionPage:
@@ -169,6 +171,13 @@ func (d *deckd) press(i int, down bool) {
 	default:
 		d.run.press(i, a)
 	}
+}
+
+// showsPressed reports whether a pressed key with action a shows it's
+// working: a PC action without deckhost goes straight to red instead.
+func (d *deckd) showsPressed(a deck.Action) bool {
+	_, ok := d.pc.hostAlive()
+	return ok || !a.Type.OnPC()
 }
 
 // Command runs one of deckd's own commands, such as "fonts", reporting

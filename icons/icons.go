@@ -28,6 +28,7 @@ var extra = map[string]deck.Icon{
 	"github":      {D: githubMark, ViewBox: "0.5 0.5 24 24"},
 	"discord":     {D: discordSymbol, ViewBox: "-10.18 -25.5 147 147"}, // 86% wide, centred
 	"obs":         {D: obsLogo, ViewBox: "-1.5 -1.5 27 27"},
+	"deckhost":    {D: deckhostLogo, ViewBox: "0 0 64 64"},
 }
 
 // aliases are other names for Material Symbols.

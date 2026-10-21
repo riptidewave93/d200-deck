@@ -42,7 +42,7 @@ var BuiltinFonts = []string{
 // Project URLs.
 const (
 	RepoURL = "https://github.com/riptidewave93/d200-deck"
-	// ConfigureURL is the configuration website (not built yet).
+	// ConfigureURL is the configuration website.
 	ConfigureURL = "https://riptidewave93.github.io/d200-configure/"
 	// HostRepo is deckhost's GitHub repository, whose releases are tagged
 	// vMAJOR.MINOR.PATCH.

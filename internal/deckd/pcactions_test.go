@@ -15,9 +15,20 @@ import (
 
 func TestPCActionWithoutHost(t *testing.T) {
 	d := newTestDeckd()
-	d.press(13, true) // Source Repo: open-url
+	a := d.cfg.Pages[d.cfg.Home].Keys[13].Action // Configure Buttons: open-url
+	if d.showsPressed(a) {
+		t.Error("working blue shown without deckhost")
+	}
+	d.press(13, true)
 	if got := keyColour(d, 13); got != render.Colours[render.Error] {
 		t.Errorf("no red flash without deckhost: %#x", got)
+	}
+	if !d.showsPressed(d.cfg.Pages[d.cfg.Home].Keys[6].Action) {
+		t.Error("device key not shown pressed")
+	}
+	d.pc.heartbeat(proto.ActionHost{ID: "host1"})
+	if !d.showsPressed(a) {
+		t.Error("working blue not shown with deckhost")
 	}
 }
 
@@ -33,7 +44,7 @@ func TestPCActionEvent(t *testing.T) {
 	d.pc.heartbeat(proto.ActionHost{ID: "host1"})
 	d.press(13, true)
 	ev := readEvent(t, r)
-	if ev.Key != 13 || ev.Host != "host1" || ev.Release || ev.Action.URL != deck.RepoURL {
+	if ev.Key != 13 || ev.Host != "host1" || ev.Release || ev.Action.URL != deck.ConfigureURL {
 		t.Errorf("event %+v", ev)
 	}
 	d.press(13, false)
