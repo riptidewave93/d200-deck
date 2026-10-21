@@ -27,7 +27,7 @@ fi
 # Stops the daemon and the tray, however they were started.
 stop() {
 	if [ -n "$systemd" ]; then
-		systemctl --user disable --now deckhost.service 2>/dev/null || true
+		systemctl --user stop deckhost.service 2>/dev/null || true
 	fi
 	stopped=
 	for p in /proc/[0-9]*; do
@@ -40,7 +40,27 @@ stop() {
 	fi
 }
 
+# put installs file $1 as $2 with mode $3 and @BIN@ replaced, unless that's
+# already there, and sets changed if it wasn't. It renames a hidden temporary
+# file into place: GNOME Shell reloads its app menu on any change to the
+# applications folder, and can crash on a partly written entry.
+put() {
+	mkdir -p "$(dirname "$2")"
+	tmp=$(mktemp "$(dirname "$2")/.deckhost.XXXXXX")
+	sed "s|@BIN@|$bin|" "$1" >"$tmp"
+	if cmp -s "$tmp" "$2"; then
+		rm -f "$tmp"
+	else
+		chmod "$3" "$tmp"
+		mv -f "$tmp" "$2"
+		changed=1
+	fi
+}
+
 if [ "${1:-}" = --uninstall ]; then
+	if [ -n "$systemd" ]; then
+		systemctl --user disable deckhost.service 2>/dev/null || true
+	fi
 	stop
 	rm -f "$bin" "$unit" "$autostart" "$app" "$icon"
 	if [ -n "$systemd" ]; then
@@ -51,16 +71,23 @@ if [ "${1:-}" = --uninstall ]; then
 fi
 
 stop
-install -Dm755 "$src/deckhost" "$bin"
-mkdir -p "$(dirname "$autostart")" "$(dirname "$app")"
-sed "s|@BIN@|$bin|" "$src/deckhost-tray.desktop" > "$autostart"
-sed "s|@BIN@|$bin|" "$src/deckhost.desktop" > "$app"
-install -Dm644 "$src/deckhost.svg" "$icon"
+if ! cmp -s "$src/deckhost" "$bin"; then
+	install -Dm755 "$src/deckhost" "$bin"
+fi
+put "$src/deckhost-tray.desktop" "$autostart" 644
+put "$src/deckhost.desktop" "$app" 644
+put "$src/deckhost.svg" "$icon" 644
+changed=
+if [ -n "$systemd" ]; then
+	put "$src/deckhost.service" "$unit" 644
+fi
 running=
 if [ -n "$systemd" ]; then
-	mkdir -p "$(dirname "$unit")"
-	sed "s|@BIN@|$bin|" "$src/deckhost.service" > "$unit"
-	if { systemctl --user daemon-reload && systemctl --user enable --now deckhost.service; } 2>/dev/null; then
+	if [ -n "$changed" ]; then
+		systemctl --user daemon-reload 2>/dev/null || true
+	fi
+	if { systemctl --user is-enabled -q deckhost.service || systemctl --user enable deckhost.service; } 2>/dev/null &&
+		systemctl --user start deckhost.service 2>/dev/null; then
 		running=1
 	else
 		echo "Couldn't reach systemd: once logged in, run: systemctl --user enable --now deckhost.service"

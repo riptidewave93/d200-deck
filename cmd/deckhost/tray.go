@@ -92,8 +92,16 @@ func trayReady() {
 	restart := systray.AddMenuItem("Restart", "Restart deckhost")
 	exit := systray.AddMenuItem("Exit", "Stop deckhost and close this icon")
 
+	var shown string
 	refresh := func() {
 		s, running := daemonStatus()
+		// every change makes the tray host fetch the icon and menu again
+		j, _ := json.Marshal(s)
+		k := fmt.Sprint(running, string(j))
+		if k == shown {
+			return
+		}
+		shown = k
 		header, text := describe(s, running)
 		status.SetTitle(header)
 		for i, l := range lines {
