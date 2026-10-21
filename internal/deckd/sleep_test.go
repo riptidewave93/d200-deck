@@ -31,25 +31,25 @@ func TestWatchUSB(t *testing.T) {
 		write(s)
 		return nil
 	}
-	asleep := make(chan bool, 8)
+	states := make(chan string, 8)
 	done := make(chan error)
-	go func() { done <- watchUSB(path, wait, asleep) }()
-	for _, s := range []string{"suspended", "suspended", "configured", "default", "suspended"} {
+	go func() { done <- watchUSB(path, wait, states) }()
+	for _, s := range []string{"suspended", "suspended", "configured", "default", "default", "suspended"} {
 		changes <- s
 	}
 	close(changes)
 	if err := <-done; err != stop {
 		t.Fatalf("watchUSB returned %v", err)
 	}
-	close(asleep)
-	var got []bool
-	for v := range asleep {
+	close(states)
+	var got []string
+	for v := range states {
 		got = append(got, v)
 	}
-	if want := []bool{false, true, false, true}; !slices.Equal(got, want) {
+	if want := []string{"configured", "suspended", "configured", "default", "suspended"}; !slices.Equal(got, want) {
 		t.Errorf("sent %v, want %v", got, want)
 	}
-	if err := watchUSB(filepath.Join(t.TempDir(), "none"), wait, asleep); err == nil {
+	if err := watchUSB(filepath.Join(t.TempDir(), "none"), wait, states); err == nil {
 		t.Error("watchUSB of a missing file succeeded")
 	}
 }
@@ -88,7 +88,8 @@ func TestSleepScreen(t *testing.T) {
 	d.drawPage()
 	page := slices.Clone(d.canvas.Pix)
 
-	d.setAsleep(true)
+	// reset by the PC: asleep, but presses can't wake it
+	d.setUSB("default")
 	if brightness() != "1" {
 		t.Errorf("asleep: brightness %q, want 1", brightness())
 	}
@@ -105,8 +106,10 @@ func TestSleepScreen(t *testing.T) {
 		}
 	}
 
-	// presses run nothing (key 0 opens a page) and ask the PC to wake once
-	for range 2 {
+	// presses run nothing (key 0 opens a page); suspended, they ask the PC
+	// to wake once
+	for _, state := range []string{"default", "suspended", "suspended"} {
+		d.setUSB(state)
 		d.press(0, true)
 		d.press(0, false)
 	}
@@ -114,7 +117,7 @@ func TestSleepScreen(t *testing.T) {
 		t.Errorf("asleep presses: pages %v, %d wake requests", d.pages, wakes)
 	}
 
-	d.setAsleep(false)
+	d.setUSB("configured")
 	if brightness() != "6" {
 		t.Errorf("awake: brightness %q, want 6", brightness())
 	}

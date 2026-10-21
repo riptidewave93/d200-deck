@@ -20,38 +20,34 @@ import (
 	"github.com/riptidewave93/d200-deck/render"
 )
 
-// While the PC's USB is suspended (the PC is asleep, or off with its USB
-// ports powered), deckd dims the screen to brightnessMin and shows the sleep
+// While the PC hasn't configured the USB device (the PC is asleep, off, or
+// still starting), deckd dims the screen to brightnessMin and shows the sleep
 // screen, or turns the screen off (the sleep_screen setting), and runs no
-// actions; a press asks the PC to wake.
+// actions; while the bus is suspended, a press asks the PC to wake.
 
 var (
 	udcStateGlob = "/sys/class/udc/*/state"
 	wakePC       = hidg.Wake
 )
 
-// watchUSB sends whether the USB device controller's state file at path says
-// suspended: first as it is, then each time that changes. wait blocks until
-// the file may have changed.
-func watchUSB(path string, wait func(*os.File) error, asleep chan<- bool) error {
+// watchUSB sends the USB device controller's state from the file at path:
+// first as it is, then each time it changes. wait blocks until the file may
+// have changed.
+func watchUSB(path string, wait func(*os.File) error, states chan<- string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	buf := make([]byte, 64)
-	was := -1
+	was := ""
 	for {
 		n, err := f.ReadAt(buf, 0)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return err
 		}
-		now := 0
-		if strings.TrimSpace(string(buf[:n])) == "suspended" {
-			now = 1
-		}
-		if now != was {
-			asleep <- now == 1
+		if now := strings.TrimSpace(string(buf[:n])); now != was {
+			states <- now
 			was = now
 		}
 		if err := wait(f); err != nil {
@@ -74,13 +70,21 @@ func waitSysfs(f *os.File) error {
 
 // watchSleep follows the USB state for the main loop, if the controller has
 // one.
-func watchSleep(asleep chan<- bool) {
+func watchSleep(states chan<- string) {
 	paths, _ := filepath.Glob(udcStateGlob)
 	if len(paths) == 0 {
 		log.Print("no USB device controller state: no sleep screen")
 		return
 	}
-	log.Printf("USB state: %v", watchUSB(paths[0], waitSysfs, asleep))
+	log.Printf("USB state: %v", watchUSB(paths[0], waitSysfs, states))
+}
+
+// setUSB follows the USB state: the PC is awake only once it has configured
+// the device.
+func (d *deckd) setUSB(state string) {
+	log.Printf("USB state: %s", state)
+	d.suspended = state == "suspended"
+	d.setAsleep(state != "configured")
 }
 
 // setAsleep enters or leaves the sleep screen.
@@ -181,9 +185,9 @@ func saveSetting(file, v string) error {
 	return err
 }
 
-// pressAsleep asks the PC to wake, once per sleep.
+// pressAsleep asks the PC to wake, once per sleep, if the bus is suspended.
 func (d *deckd) pressAsleep() {
-	if d.askedWake || d.test {
+	if d.askedWake || d.test || !d.suspended {
 		return
 	}
 	d.askedWake = true
