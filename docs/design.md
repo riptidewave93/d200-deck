@@ -9,13 +9,35 @@ One Go module, two programs that share code:
 | `deckhost` | the PC (Linux, Windows) | runs the actions HID can't do |
 
 ```
-deck/          config model and validation (shared, also built into the website)
-proto/         device <-> PC messages (shared)
-render/        draws keys as the device does (shared)
-cmd/deckd/     device program: runs the keys (internal/deckd) and the update page
-               (internal/deckupdate) as child processes and restarts them
-cmd/deckhost/  PC program
-internal/      device-only and PC-only packages
+Device
+  cmd/deckd/             the device program: runs the keys and the update page, restarts them
+  internal/deckd/        the keys: pages, key presses, actions, the sleep screen
+  internal/deckupdate/   the update page over USB Ethernet
+  internal/ota/          installs update bundles
+  internal/debuginfo/    the debug info for bug reports
+  internal/alive/        heartbeats from deckd's parts to their parent
+  internal/screen/       shows the canvas on the rotated panel
+  internal/drm/          the display, through Linux KMS
+  internal/gfx/          the software renderer: canvas, icons and text
+  internal/input/        reads the front keys
+  internal/hidg/         sends HID reports through the USB gadget
+  internal/serial/       the CPU serial, also the USB serial
+
+PC
+  cmd/deckhost/          the PC program: the daemon, its app integrations and the tray
+  internal/hidraw/       finds and opens the device's config channel (Linux, Windows)
+  internal/discord/      Discord's local RPC (discordtest: a fake for tests)
+  internal/obs/          OBS's WebSocket (obstest: a fake for tests)
+
+Shared
+  deck/                  the config model and validation (also in the website)
+  proto/                 the config channel protocol (prototest: an in-memory channel for tests)
+  render/                draws keys as the device does (also in the website)
+  icons/                 the icon catalog (also in the website; gensymbols: its generator)
+  fonts/                 makes fonts small enough for a config (also in the website)
+  netid/                 the USB network addresses and mDNS name, from the serial
+  internal/svgpath/      reads SVG path data, for icons
+  internal/osrelease/    reads the OS version
 ```
 
 ## Where an action runs

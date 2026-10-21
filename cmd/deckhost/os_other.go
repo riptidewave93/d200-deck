@@ -8,7 +8,13 @@ import (
 	"os/exec"
 )
 
-// Placeholders until deckhost is ported to this system.
+// Placeholders until deckhost is ported to this system. A port provides, in
+// files for its GOOS (then left out of the *_other.go files' build tags):
+//   - os_*.go: the functions below
+//   - notify_*.go: notify, the desktop notifications
+//   - media_*.go: openMedia, the media players' controls
+//   - programs_*.go: programCandidates and findProgram, for "Open app" keys
+//   - internal/hidraw: opening the device's HID nodes
 
 var errUnsupported = errors.New("not supported on this system yet")
 
@@ -29,5 +35,3 @@ func secureSocket(path string) error { return nil }
 func logToFile() {}
 
 func trayIcon(png []byte) []byte { return png }
-
-func notify(title, body, url string) {}

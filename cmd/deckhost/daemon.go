@@ -438,27 +438,7 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 		case <-c.Done():
 		}
 	}
-	// each app's keys go in order, so e.g. a quick push-to-talk tap ends
-	// muted
-	queues := map[string]chan proto.ActionEvent{}
-	queue := func(name string) chan proto.ActionEvent {
-		q, ok := queues[name]
-		if !ok {
-			q = make(chan proto.ActionEvent, 16)
-			queues[name] = q
-			go func() {
-				for {
-					select {
-					case a := <-q:
-						act(a)
-					case <-c.Done():
-						return
-					}
-				}
-			}()
-		}
-		return q
-	}
+	queue := appQueues(act, c.Done())
 	for {
 		if sendState {
 			msgs, on := d.stateMessages(sent)
@@ -525,6 +505,31 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 				return err
 			}
 		}
+	}
+}
+
+// appQueues returns an app's queue of key actions for act, started on first
+// use. Each app's keys go in order, so e.g. a quick push-to-talk tap ends
+// muted.
+func appQueues(act func(proto.ActionEvent), done <-chan struct{}) func(app string) chan proto.ActionEvent {
+	queues := map[string]chan proto.ActionEvent{}
+	return func(name string) chan proto.ActionEvent {
+		q, ok := queues[name]
+		if !ok {
+			q = make(chan proto.ActionEvent, 16)
+			queues[name] = q
+			go func() {
+				for {
+					select {
+					case a := <-q:
+						act(a)
+					case <-done:
+						return
+					}
+				}
+			}()
+		}
+		return q
 	}
 }
 

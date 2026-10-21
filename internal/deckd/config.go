@@ -9,10 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/riptidewave93/d200-deck/deck"
 	"github.com/riptidewave93/d200-deck/proto"
@@ -364,3 +368,59 @@ func writeFile(path string, b []byte) error {
 	}
 	return nil
 }
+
+// startsFile counts deckd's recent starts. /run is emptied at boot.
+var startsFile = "/run/deckd.starts"
+
+const (
+	maxQuickStarts = 3 // starts in a row that didn't last stableAfter
+	stableAfter    = 30 * time.Second
+)
+
+// guardConfig makes the config's directory and counts this start. If deckd
+// keeps dying soon after starting, the config may be what kills it: it's
+// moved to path.bad, so deckd starts with the default config and can still
+// be reached to fix it.
+func guardConfig(path string) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		log.Print(err) // the default config it is
+	}
+	b, _ := os.ReadFile(startsFile)
+	n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+	if n >= maxQuickStarts {
+		if err := os.Rename(path, path+".bad"); err == nil {
+			log.Printf("deckd keeps crashing: moved %s to %s.bad", path, path)
+		}
+		n = 0
+	}
+	if err := os.WriteFile(startsFile, []byte(strconv.Itoa(n+1)), 0o644); err != nil {
+		log.Print(err)
+	}
+	time.AfterFunc(stableAfter, func() { os.Remove(startsFile) })
+}
+
+// loadConfig reads the config file, falling back to the default config when
+// it is missing or broken. It returns the config and, for the default, its
+// JSON.
+func loadConfig(path string) (*deck.Config, []byte) {
+	b, err := os.ReadFile(path)
+	var c *deck.Config
+	if err == nil {
+		c, err = parseConfig(b)
+	}
+	switch {
+	case err == nil:
+		return c, nil
+	case errors.Is(err, fs.ErrNotExist):
+		log.Printf("no %s, using the default config", path)
+	default:
+		log.Printf("bad config, using the default: %v", err)
+	}
+	c = deck.DefaultConfig()
+	b, _ = json.MarshalIndent(c, "", "  ")
+	return c, append(b, '\n')
+}
+
+// parseConfig reads a config deckd can show. Keys whose icons it lacks show
+// none; commit refuses those.
+func parseConfig(b []byte) (*deck.Config, error) { return deck.Parse(b) }

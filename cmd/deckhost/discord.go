@@ -6,21 +6,11 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/riptidewave93/d200-deck/internal/discord"
 )
-
-// configDir holds deckhost's own settings, such as the user's Discord app.
-func configDir() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "deckhost"), nil
-}
 
 // errNotSetUp means the user hasn't given deckhost a Discord app.
 var errNotSetUp = errors.New("not set up (see docs/discord.md)")
@@ -108,24 +98,4 @@ func discordTest() error {
 	fmt.Printf("muted %v again\n", v.Mute)
 	time.Sleep(500 * time.Millisecond) // let the last event arrive
 	return nil
-}
-
-func readJSON(path string, v any) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, v)
-}
-
-// writeJSON writes v to path, readable only by the user.
-func writeJSON(path string, v any) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(path, b, 0o600)
 }

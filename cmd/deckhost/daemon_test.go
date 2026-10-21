@@ -1,19 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"image/png"
-	"io"
 	"maps"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,84 +16,6 @@ import (
 	"github.com/riptidewave93/d200-deck/proto"
 	"github.com/riptidewave93/d200-deck/proto/prototest"
 )
-
-// fakeBrowser records the URLs openURL is asked to open.
-func fakeBrowser(t *testing.T) func() []string {
-	var mu sync.Mutex
-	var urls []string
-	old := openURL
-	openURL = func(u string) error {
-		mu.Lock()
-		defer mu.Unlock()
-		urls = append(urls, u)
-		return nil
-	}
-	t.Cleanup(func() { openURL = old })
-	return func() []string {
-		mu.Lock()
-		defer mu.Unlock()
-		return append([]string(nil), urls...)
-	}
-}
-
-func TestRunHTTP(t *testing.T) {
-	var got []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		got = append(got, r.Method+" "+r.URL.Path+" "+r.Header.Get("X-Test")+" "+string(body))
-		if r.URL.Path == "/fail" {
-			w.WriteHeader(http.StatusInternalServerError)
-		}
-	}))
-	defer srv.Close()
-
-	if err := run(deck.Action{Type: deck.ActionHTTP, URL: srv.URL + "/get"}); err != nil {
-		t.Error(err)
-	}
-	if err := run(deck.Action{Type: deck.ActionHTTP, URL: srv.URL + "/post", Body: "hi", Headers: map[string]string{"X-Test": "1"}}); err != nil {
-		t.Error(err)
-	}
-	if err := run(deck.Action{Type: deck.ActionHTTP, Method: "PUT", URL: srv.URL + "/put"}); err != nil {
-		t.Error(err)
-	}
-	if err := run(deck.Action{Type: deck.ActionHTTP, URL: srv.URL + "/fail"}); err == nil {
-		t.Error("no error for a 500")
-	}
-	want := []string{"GET /get  ", "POST /post 1 hi", "PUT /put  ", "GET /fail  "}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Errorf("requests %q", got)
-	}
-	if run(deck.Action{Type: deck.ActionHTTP, Method: "BAD METHOD", URL: srv.URL}) == nil {
-		t.Error("no error for a bad method")
-	}
-	if run(deck.Action{Type: deck.ActionHTTP, URL: "http://127.0.0.1:1/"}) == nil {
-		t.Error("no error for a refused connection")
-	}
-}
-
-func TestRunOther(t *testing.T) {
-	urls := fakeBrowser(t)
-	if err := run(deck.Action{Type: deck.ActionOpenURL, URL: "https://example.com"}); err != nil {
-		t.Error(err)
-	}
-	if u := urls(); len(u) != 1 || u[0] != "https://example.com" {
-		t.Errorf("opened %v", u)
-	}
-	if err := run(deck.Action{Type: deck.ActionLaunch, Command: []string{"true"}}); err != nil {
-		t.Error(err)
-	}
-	if run(deck.Action{Type: deck.ActionLaunch, Command: []string{"/no/such/program"}}) == nil {
-		t.Error("launched a missing program")
-	}
-	for _, cmd := range [][]string{nil, {""}} {
-		if run(deck.Action{Type: deck.ActionLaunch, Command: cmd}) == nil {
-			t.Errorf("launched %q", cmd)
-		}
-	}
-	if run(deck.Action{Type: deck.ActionKey}) == nil {
-		t.Error("ran a device action")
-	}
-}
 
 func TestShorten(t *testing.T) {
 	for _, c := range []struct {
@@ -118,91 +34,6 @@ func TestShorten(t *testing.T) {
 	}
 	if long := shorten(strings.Repeat("x", 5000), maxResultError); len(long) != maxResultError {
 		t.Errorf("%d bytes", len(long))
-	}
-}
-
-func TestControl(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	urls := fakeBrowser(t)
-	d := newDaemon()
-	d.devices["/dev/hidraw9"] = &Device{Path: "/dev/hidraw9", Error: "not yet"}
-	d.devices["/dev/hidraw1"] = &Device{Path: "/dev/hidraw1", Hello: &proto.Hello{Serial: "00112233445566aa"}}
-	l, err := listenControl(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-
-	reply, err := control("status")
-	var s Status
-	if err != nil || json.Unmarshal([]byte(reply), &s) != nil || len(s.Devices) != 2 || s.Devices[1].Error != "not yet" {
-		t.Errorf("status %q, %v", reply, err)
-	}
-	for _, cmd := range []string{"configure", "update", "update 5566aa"} {
-		if reply, err := control(cmd); err != nil || reply != "ok" {
-			t.Errorf("%s: %q, %v", cmd, reply, err)
-		}
-	}
-	const page = "http://198.19.23.5/update"
-	if u := urls(); len(u) != 3 || u[0] != deck.ConfigureURL || u[1] != page || u[2] != page {
-		t.Errorf("opened %v", u)
-	}
-	if _, err := control("update ffff"); err == nil || err.Error() != "no D200 ffff connected" {
-		t.Errorf("update of a missing deck: %v", err)
-	}
-	for _, cmd := range []string{"dance", "status now"} {
-		if _, err := control(cmd); err == nil || err.Error() != "unknown command" {
-			t.Errorf("%s: %v", cmd, err)
-		}
-	}
-	if _, err := listenControl(d); err == nil {
-		t.Error("a second daemon started")
-	}
-	info, _ := os.Stat(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "deckhost.sock"))
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("socket mode %v", info.Mode().Perm())
-	}
-}
-
-func TestControlStaleSocket(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_RUNTIME_DIR", dir)
-	os.WriteFile(filepath.Join(dir, "deckhost.sock"), nil, 0o600) // left by a crash
-	l, err := listenControl(newDaemon())
-	if err != nil {
-		t.Fatal(err)
-	}
-	l.Close()
-	if _, err := control("status"); err == nil {
-		t.Error("talked to a stopped daemon")
-	}
-}
-
-func TestControlNoRuntimeDir(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", "")
-	if _, err := listenControl(newDaemon()); err == nil {
-		t.Error("listened without XDG_RUNTIME_DIR")
-	}
-	if _, err := control("status"); err == nil {
-		t.Error("connected without XDG_RUNTIME_DIR")
-	}
-}
-
-func TestControlGarbage(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	l, err := listenControl(newDaemon())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	path, _ := socketPath()
-	c, _ := net.Dial("unix", path)
-	c.Write([]byte("no newline"))
-	c.(*net.UnixConn).CloseWrite()
-	b, _ := io.ReadAll(c)
-	c.Close()
-	if len(b) != 0 {
-		t.Errorf("answered a partial command: %q", b)
 	}
 }
 
@@ -367,54 +198,6 @@ func TestBadHello(t *testing.T) {
 	}
 }
 
-func TestDescribe(t *testing.T) {
-	hello := func(serial, version string) *proto.Hello {
-		h := &proto.Hello{Serial: serial}
-		h.OS.Version, h.OS.Flavour = version, "debug"
-		return h
-	}
-	cases := []struct {
-		s       Status
-		running bool
-		header  string
-		lines   []string
-	}{
-		{Status{}, false, "deckhost isn't running", nil},
-		{Status{}, true, "D200 not connected", nil},
-		{Status{Devices: []Device{{Path: "/dev/hidraw1", Hello: hello("00112233445566aa", "v1")}}}, true,
-			"D200 connected", []string{"OS v1 (debug)"}},
-		{Status{Devices: []Device{
-			{Path: "/dev/hidraw1", Hello: hello("00112233445566aa", "v1")},
-			{Path: "/dev/hidraw2", Hello: hello("0123456789abcdef", "v2")},
-			{Path: "/dev/hidraw3", Error: "device speaks protocol 1"},
-			{Path: "/dev/hidraw4"},
-		}}, true, "2 D200s connected", []string{
-			"D200 …5566aa: OS v1 (debug)", "D200 …abcdef: OS v2 (debug)", "hidraw3: device speaks protocol 1",
-		}},
-		{Status{Apps: []AppStatus{{"Discord", "not running"}}}, true, "D200 not connected", []string{"Discord: not running"}},
-	}
-	for _, tc := range cases {
-		header, lines := describe(tc.s, tc.running)
-		if header != tc.header || strings.Join(lines, "|") != strings.Join(tc.lines, "|") {
-			t.Errorf("describe: %q %q, want %q %q", header, lines, tc.header, tc.lines)
-		}
-	}
-	long := Status{Devices: []Device{{Path: "/dev/hidraw1", Error: strings.Repeat("x", 200)}}}
-	if _, lines := describe(long, true); len(lines[0]) > 80 {
-		t.Errorf("line not shortened: %d chars", len(lines[0]))
-	}
-	var many Status
-	for range maxTrayDevices + 3 {
-		many.Devices = append(many.Devices, Device{Path: "/dev/x", Error: "e"})
-	}
-	if _, lines := describe(many, true); len(lines) != maxTrayDevices {
-		t.Errorf("%d lines", len(lines))
-	}
-	if shortSerial("abc") != "D200 …abc" {
-		t.Error("short serial changed")
-	}
-}
-
 func TestUpdateURL(t *testing.T) {
 	dev := func(serial string) Device { return Device{Hello: &proto.Hello{Serial: serial}} }
 	one := Status{Devices: []Device{dev("00112233445566aa"), {Error: "e"}}}
@@ -443,54 +226,6 @@ func TestUpdateURL(t *testing.T) {
 		if url != tc.url || msg != tc.err {
 			t.Errorf("UpdateURL(%q) = %q, %v; want %q, %q", tc.serial, url, err, tc.url, tc.err)
 		}
-	}
-}
-
-func TestUpdateSerials(t *testing.T) {
-	var s Status
-	for i := range maxTrayDevices + 2 {
-		s.Devices = append(s.Devices, Device{Hello: &proto.Hello{Serial: fmt.Sprintf("%016x", i)}}, Device{Error: "e"})
-	}
-	got := updateSerials(s)
-	if len(got) != maxTrayDevices || got[0] != "0000000000000000" || got[1] != "0000000000000001" {
-		t.Errorf("updateSerials = %q", got)
-	}
-	if updateSerials(Status{}) != nil {
-		t.Error("serials with nothing connected")
-	}
-	if notRunning() == nil {
-		t.Error("notRunning returned nil")
-	}
-}
-
-func TestIcon(t *testing.T) {
-	img, err := png.Decode(bytes.NewReader(drawIcon(iconBlue, trayIconSize, false)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if b := img.Bounds(); b.Dx() != 64 || b.Dy() != 64 {
-		t.Errorf("icon is %v", b)
-	}
-	if _, _, _, a := img.At(0, 0).RGBA(); a != 0 {
-		t.Error("corner isn't transparent")
-	}
-	if r, g, b, a := img.At(16, 24).RGBA(); a>>8 != 0xff || r>>8 != 0xff || g>>8 != 0xff || b>>8 != 0xff {
-		t.Errorf("key pixel %v", img.At(16, 24))
-	}
-	if r, _, b, _ := img.At(4, 32).RGBA(); r>>8 != 0x2f || b>>8 != 0xde {
-		t.Errorf("body pixel %v", img.At(4, 32))
-	}
-}
-
-func TestDaemonStatusWithoutDaemon(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	if _, running := daemonStatus(); running {
-		t.Error("daemon reported running")
-	}
-	fallback := false
-	ask("configure", func() error { fallback = true; return nil })
-	if !fallback {
-		t.Error("no fallback without a daemon")
 	}
 }
 
@@ -524,14 +259,6 @@ func TestHeartbeatMisses(t *testing.T) {
 		s := d.getStatus()
 		return len(s.Devices) == 1 && s.Devices[0].Error != ""
 	})
-}
-
-func TestIcoFromPNG(t *testing.T) {
-	p := drawIcon(iconBlue, trayIconSize, false)
-	ico := icoFromPNG(p)
-	if len(ico) != 22+len(p) || ico[2] != 1 || ico[4] != 1 || ico[6] != 64 || ico[7] != 64 || ico[18] != 22 || !bytes.Equal(ico[22:], p) {
-		t.Errorf("ico header % x", ico[:22])
-	}
 }
 
 func TestStateResent(t *testing.T) {
@@ -600,21 +327,6 @@ func TestStateMessages(t *testing.T) {
 	}
 	if len(msgs) < 2 || len(got) != 203 || got["obs.scene:Scene number 001"] || !got["obs.scene:Scene number 002"] {
 		t.Errorf("%d messages, %d names", len(msgs), len(got))
-	}
-}
-
-func TestWebURL(t *testing.T) {
-	for u, ok := range map[string]bool{
-		"https://example.com/x": true, "http://localhost:8080": true,
-		"file:///etc/passwd": false, `\\host\share\x.exe`: false, `C:\Windows\System32\cmd.exe`: false,
-		"javascript:alert(1)": false, "https:example.com": false, "": false,
-	} {
-		if webURL(u) != ok {
-			t.Errorf("%q: %v", u, !ok)
-		}
-	}
-	if err := run(deck.Action{Type: deck.ActionOpenURL, URL: "file:///etc/passwd"}); err == nil {
-		t.Error("opened a file URL")
 	}
 }
 
