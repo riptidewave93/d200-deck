@@ -2,7 +2,7 @@ name: Test
 
 # On pull requests and pushes to main: format, vet, unit tests, and the
 # website's packages built and tested with TinyGo; on a Mac, deckhost's vet,
-# tests and build, the build kept for testing by hand.
+# tests and build, the binary and the zipped app kept for testing by hand.
 on:
   pull_request:
   push:
@@ -45,9 +45,29 @@ jobs:
         run: make test-macos
 
       - name: Build
-        run: make deckhost-macos
+        run: make dist-macos
+
+      # from inside the app, whose path has a space: start the daemon as the
+      # tray does, have it restart itself, and stop it
+      - name: Run the app's deckhost
+        run: |
+          exe="$PWD/build/stage/macos/D200 Deck.app/Contents/MacOS/deckhost"
+          up() { for _ in $(seq 50); do "$exe" status >/dev/null 2>&1 && return; sleep 0.2; done; return 1; }
+          "$exe" restart
+          up
+          test -S "$TMPDIR/deckhost.sock"
+          "$exe" restart
+          sleep 1
+          up
+          "$exe" status | grep -F '"exe":"'"$exe"'"'
+          "$exe" exit
 
       - uses: actions/upload-artifact@v4
         with:
           name: deckhost-macos
           path: build/deckhost-macos
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deckhost-macos-app
+          path: build/dist/*-macos-arm64.zip

@@ -53,6 +53,8 @@ type Status struct {
 	HostUpdate *Release `json:"host_update,omitempty"`
 	// CheckUpdates is whether deckhost looks for new releases
 	CheckUpdates bool `json:"check_updates"`
+	// Exe is the daemon's program file, as it was started
+	Exe string `json:"exe,omitempty"`
 }
 
 // Protocols deckhost can't talk.
@@ -262,6 +264,7 @@ func (d *daemon) getStatus() Status {
 		}
 	}
 	sort.Slice(s.Apps, func(i, j int) bool { return s.Apps[i].Title < s.Apps[j].Title })
+	s.Exe, _ = os.Executable()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.os != nil {

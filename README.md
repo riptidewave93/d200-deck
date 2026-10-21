@@ -10,7 +10,7 @@ your PC.
   their own speed, and a setup can hold up to 4 MiB of pictures and fonts.
 - Keyboard shortcuts, typed text, macros, and media, volume and power keys that work on any PC,
   with nothing installed
-- With `deckhost` on the PC (Linux or Windows): keys that open websites, start programs and call
+- With `deckhost` on the PC (Linux, Windows, or macOS as a preview): keys that open websites, start programs and call
   webhooks, and control [Discord](docs/discord.md), [OBS](docs/obs.md) and
   [media players](docs/media.md), showing live state such as mute or the song playing
 - A default layout to start from: media and volume keys, the song playing, and pages of browser
@@ -21,7 +21,8 @@ your PC.
   and reset the device to its defaults
 - OS updates from a page in your browser, confirmed on the device
 
-macOS isn't supported yet: `deckhost` runs on Linux and Windows.
+`deckhost` on macOS is a preview, for Apple Silicon Macs: it hasn't had much use yet, and media
+app keys aren't available there.
 
 ## Using it
 

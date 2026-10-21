@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -104,5 +106,18 @@ func TestDaemonStatusWithoutDaemon(t *testing.T) {
 	ask("configure", func() error { fallback = true; return nil })
 	if !fallback {
 		t.Error("no fallback without a daemon")
+	}
+}
+
+func TestProgramGone(t *testing.T) {
+	exe, _ := os.Executable()
+	gone := filepath.Join(t.TempDir(), "D200 Deck.app", "deckhost")
+	for _, tc := range []struct {
+		exe  string
+		gone bool
+	}{{"", false}, {exe, false}, {gone, true}} {
+		if programGone(Status{Exe: tc.exe}) != tc.gone {
+			t.Errorf("%q: gone %v", tc.exe, !tc.gone)
+		}
 	}
 }

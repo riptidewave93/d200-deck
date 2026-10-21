@@ -1,19 +1,88 @@
 package main
 
 import (
+	"bytes"
+	"encoding/xml"
 	"errors"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 )
 
 // Finder starts an app without arguments: in the app bundle, that's the
-// tray.
+// tray, which then starts at login too.
 func init() {
 	if len(os.Args) == 1 && strings.Contains(os.Args[0], ".app/Contents/MacOS/") {
 		os.Args = append(os.Args, "tray")
+		if err := startAtLogin(); err != nil {
+			log.Printf("starting at login: %v", err)
+		}
 	}
+}
+
+// launchAgent is the label of the launchd job that starts the tray at login,
+// and the app's bundle ID, which names the job in Login Items.
+const launchAgent = "io.github.riptidewave93.deckhost"
+
+// startAtLogin adds a launchd job that starts this app's tray at login, or
+// points it here if the app has moved. It leaves an unchanged job alone, so
+// it stays off if the user turned it off in Login Items.
+func startAtLogin() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if strings.Contains(exe, "/AppTranslocation/") {
+		// opened where it was downloaded: macOS runs it from a temporary
+		// copy, gone by the next login
+		return errors.New("move D200 Deck to Applications first")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, "Library", "LaunchAgents", launchAgent+".plist")
+	want := launchAgentPlist(exe)
+	if have, err := os.ReadFile(path); err == nil && bytes.Equal(have, want) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, want, 0o644)
+}
+
+// launchAgentPlist is the launchd job that runs exe's tray at login.
+func launchAgentPlist(exe string) []byte {
+	var b bytes.Buffer
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>` + launchAgent + `</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>`)
+	xml.EscapeText(&b, []byte(exe))
+	b.WriteString(`</string>
+		<string>tray</string>
+	</array>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>` + launchAgent + `</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>
+`)
+	return b.Bytes()
 }
 
 // openURL opens u in the default browser.

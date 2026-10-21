@@ -31,7 +31,7 @@ const usageText = `usage: deckhost <command>
   install [S]  send a D200 the newest OS release, to install it
   checks on|off
                look for new releases, or don't
-  restart      restart the daemon
+  restart      restart the daemon, or start it
   exit         stop the daemon
 
   hello        ask the first D200 directly who it is
@@ -79,6 +79,9 @@ func main() {
 			usage()
 		}
 		reply, err := control(strings.Join(os.Args[1:], " "))
+		if _, running := daemonStatus(); err != nil && cmd == "restart" && !running {
+			reply, err = "started", restartService() // as the tray does
+		}
 		if err != nil {
 			log.Fatal(err)
 		}

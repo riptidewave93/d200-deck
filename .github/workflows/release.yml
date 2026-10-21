@@ -3,9 +3,10 @@ name: Release
 # The Release button: run it from main to release main as it is. It tags the
 # draft's version (or the one given), checks, tests and builds deckhost's
 # installers (Linux .deb, .rpm and tarballs for amd64 and arm64; Windows
-# setup.exe), attaches them with their SHA-256 sums to the draft and publishes
-# it, then lets Renovate bump the other repos. A dry run builds and checks the
-# version stamp only, and keeps the installers as artifacts.
+# setup.exe; the zipped macOS app, built on a Mac), attaches them with their
+# SHA-256 sums to the draft and publishes it, then lets Renovate bump the
+# other repos. A dry run builds and checks the version stamp only, and keeps
+# the installers as artifacts.
 on:
   workflow_dispatch:
     inputs:
@@ -26,15 +27,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  draft:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DRY_RUN: ${{ inputs.dry_run }}
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Only from main
         if: github.ref != 'refs/heads/main'
@@ -43,8 +43,6 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # the version comes from git describe
 
       - name: Update the draft
         id: draft
@@ -54,7 +52,8 @@ jobs:
           commitish: ${{ github.sha }}
           dry-run: ${{ inputs.dry_run }}
 
-      - name: Tag it
+      - name: Check the version
+        id: version
         env:
           TAG: v${{ steps.draft.outputs.resolved_version }}
         run: |
@@ -66,10 +65,65 @@ jobs:
             echo "$TAG already exists" >&2
             exit 1
           fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  # deckhost needs cgo on macOS, so its app is built on a Mac
+  macos:
+    needs: draft
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ needs.draft.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the version comes from git describe
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Tag it here
+        run: git tag "$TAG"  # names the build; the release job pushes the tag
+
+      - name: Test
+        run: make test-macos
+
+      - name: Build the app
+        run: make dist-macos
+
+      - name: Check it carries the release's version
+        run: |
+          test "$(build/deckhost-macos version)" = "$TAG"
+          test -e "build/dist/deckhost-${TAG#v}-macos-arm64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: build/dist/deckhost-*-macos-arm64.zip
+
+  release:
+    needs: [draft, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      TAG: ${{ needs.draft.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the version comes from git describe
+
+      - name: Tag it
+        run: |
           git -c user.name='github-actions[bot]' \
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             tag -a "$TAG" -m "$TAG"
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Check and test
         run: make check test
@@ -77,10 +131,16 @@ jobs:
       - name: Build the installers
         run: make dist
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-app
+          path: build/dist
+
       - name: Check they carry the release's version
         run: |
           test "$(build/linux-amd64/deckhost version)" = "$TAG"
           test -e "build/dist/deckhost-${TAG#v}-windows-amd64-setup.exe"
+          test -e "build/dist/deckhost-${TAG#v}-macos-arm64.zip"
 
       - name: Checksums
         run: cd build/dist && sha256sum -- * > SHA256SUMS

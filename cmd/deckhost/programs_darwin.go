@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -95,9 +98,19 @@ func findProgram(cs []candidate) func() error {
 			matches, _ := filepath.Glob(filepath.Join(dir, c.value))
 			if len(matches) > 0 {
 				path := matches[len(matches)-1]
-				return func() error { return start("open", "-a", path) }
+				return func() error { return openApp(path) }
 			}
 		}
+	}
+	return nil
+}
+
+// openApp opens the app bundle at path. open returns once macOS has started
+// the app, so a failure to start shows in its exit status.
+func openApp(path string) error {
+	out, err := exec.Command("open", "-a", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("open -a %s: %v %s", path, err, bytes.TrimSpace(out))
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -16,6 +17,8 @@ import (
 )
 
 func runTray() {
+	log.SetPrefix("tray: ")
+	logToFile()
 	ensureDaemon()
 	// one tray: starting it again, e.g. from the app launcher, does nothing
 	if path, err := socketPath(); err == nil {
@@ -29,14 +32,35 @@ func runTray() {
 	systray.Run(trayReady, nil)
 }
 
-// ensureDaemon starts the daemon if nothing has: on Windows, or on Linux
-// without systemd or a session that starts its unit.
+// ensureDaemon starts the daemon if nothing has (on Windows and macOS, or on
+// Linux without systemd or a session that starts its unit), or if the one
+// running has lost its program file, so it couldn't restart: the app was
+// moved, say.
 func ensureDaemon() {
-	if _, running := daemonStatus(); !running {
-		if err := restartService(); err != nil {
-			log.Printf("starting the daemon: %v", err)
+	s, running := daemonStatus()
+	if running && programGone(s) {
+		log.Printf("the daemon's %s is gone: starting this one", s.Exe)
+		control("exit")
+		for i := 0; i < 30 && running; i++ {
+			time.Sleep(100 * time.Millisecond)
+			_, running = daemonStatus()
 		}
 	}
+	if !running {
+		if err := restartService(); err != nil {
+			exe, _ := os.Executable()
+			log.Printf("starting the daemon (%s): %v", exe, err)
+		}
+	}
+}
+
+// programGone reports whether the daemon's program file is gone.
+func programGone(s Status) bool {
+	if s.Exe == "" {
+		return false // an older daemon doesn't say
+	}
+	_, err := os.Stat(s.Exe)
+	return err != nil
 }
 
 func trayReady() {
@@ -127,6 +151,7 @@ func trayReady() {
 			case <-restart.ClickedCh:
 				ask("restart", restartService)
 				time.Sleep(time.Second)
+				ensureDaemon() // one that couldn't restart itself
 				refresh()
 			case <-exit.ClickedCh:
 				control("exit")

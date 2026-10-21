@@ -1,6 +1,7 @@
 # deckhost
 
-The PC side of the D200, for Linux and Windows. It runs as your user, not root.
+The PC side of the D200, for Linux, Windows and macOS (a preview, Apple Silicon only). It runs as
+your user, not root.
 
 | Part | Does |
 |---|---|
