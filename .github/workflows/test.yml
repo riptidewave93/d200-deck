@@ -47,14 +47,15 @@ jobs:
       - name: Build
         run: make dist-macos
 
-      # from inside the app, whose path has a space: start the daemon, have it
-      # restart itself, and stop it
+      # from inside the app, whose path has a space: start the daemon as the
+      # tray does, have it restart itself, and stop it
       - name: Run the app's deckhost
         run: |
           exe="$PWD/build/stage/macos/D200 Deck.app/Contents/MacOS/deckhost"
           up() { for _ in $(seq 50); do "$exe" status >/dev/null 2>&1 && return; sleep 0.2; done; return 1; }
-          "$exe" daemon &
+          "$exe" restart
           up
+          test -S "$TMPDIR/deckhost.sock"
           "$exe" restart
           sleep 1
           up
