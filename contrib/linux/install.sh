@@ -4,7 +4,7 @@
 # the binary, the daemon's systemd user unit (where systemd runs), the tray
 # icon's autostart entry (the tray starts the daemon if systemd doesn't), an
 # app launcher entry with its icon, then the udev rule that lets you open the
-# D200 (as root, once).
+# D200 and lets it wake the PC (as root, when the rule changes).
 #
 #   ./install.sh               install or update
 #   ./install.sh --uninstall   remove (the udev rule stays; see below)
@@ -91,7 +91,10 @@ esac
 
 for d in /etc /usr/lib /lib; do
 	if [ -e "$d/udev/rules.d/70-d200-deck.rules" ]; then
-		exit 0
+		if cmp -s "$src/70-d200-deck.rules" "$d/udev/rules.d/70-d200-deck.rules"; then
+			exit 0
+		fi
+		break
 	fi
 done
 echo
@@ -106,8 +109,8 @@ for t in sudo doas; do
 		break
 	fi
 done
-cmd="${root}install -Dm644 '$src/70-d200-deck.rules' $rule && ${root}udevadm control --reload-rules && ${root}udevadm trigger --subsystem-match=hidraw --action=change"
-echo "deckhost needs a udev rule (once, as root) to open the D200:"
+cmd="${root}install -Dm644 '$src/70-d200-deck.rules' $rule && ${root}udevadm control --reload-rules && ${root}udevadm trigger --subsystem-match=hidraw --action=change && ${root}udevadm trigger --subsystem-match=usb --attr-match=idVendor=1d6b --attr-match=idProduct=0104 --action=change"
+echo "deckhost needs a new or updated udev rule (as root) so you can open the D200 and it can wake the PC:"
 echo "  $cmd"
 if [ -n "$root" ] && [ -t 0 ]; then
 	printf "Install it now? [Y/n] "

@@ -1,6 +1,8 @@
 #!/bin/sh
-# Package hook: let the logged-in user open the D200 now, and start the
-# daemon in every user's graphical session from the next login.
+# Package hook: let the logged-in user open the D200 and let it wake the PC,
+# both now, and start the daemon in every user's graphical session from the
+# next login.
 udevadm control --reload-rules 2>/dev/null || true
 udevadm trigger --subsystem-match=hidraw --action=change 2>/dev/null || true
+udevadm trigger --subsystem-match=usb --attr-match=idVendor=1d6b --attr-match=idProduct=0104 --action=change 2>/dev/null || true
 systemctl --global enable deckhost.service 2>/dev/null || true

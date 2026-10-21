@@ -1,3 +1,6 @@
 # Lets the logged-in user open the D200's HID nodes (deckhost, the config
 # website). Must sort before 73-seat-late.rules, which applies uaccess.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0104", ATTRS{manufacturer}=="Ulanzi", ATTRS{product}=="D200", TAG+="uaccess"
+
+# Lets the D200 wake the PC from sleep.
+SUBSYSTEM=="usb", ACTION=="add|change", ATTR{idVendor}=="1d6b", ATTR{idProduct}=="0104", ATTR{manufacturer}=="Ulanzi", ATTR{product}=="D200", ATTR{power/wakeup}="enabled"
