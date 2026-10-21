@@ -81,8 +81,10 @@ type deckd struct {
 	reply func(seq uint16, status byte, b []byte)
 	// keys queues key events for the config channel; nil sends none
 	keys chan proto.KeyEvent
-	// asleep is set while the PC's USB is suspended (see sleep.go)
+	// asleep is set while the PC hasn't configured the USB device, suspended
+	// while the bus is suspended (see sleep.go)
 	asleep    bool
+	suspended bool
 	askedWake bool
 	light     *backlight // nil without one
 	sleep     sleepScreen
@@ -468,9 +470,9 @@ func Main(args []string) {
 	}
 	events := make(chan input.Event)
 	go func() { log.Fatal(input.Read(*keys, events)) }()
-	asleep := make(chan bool)
+	usbState := make(chan string)
 	if !d.test {
-		go watchSleep(asleep)
+		go watchSleep(usbState)
 	}
 	beat := time.NewTicker(alive.Period)
 	alive.Beat()
@@ -483,8 +485,8 @@ func Main(args []string) {
 			d.press(ev.Key, ev.Pressed)
 		case f := <-d.ui:
 			f()
-		case v := <-asleep:
-			d.setAsleep(v)
+		case s := <-usbState:
+			d.setUSB(s)
 		case s := <-stop:
 			d.run.stop(time.Second)
 			d.light.flush()
