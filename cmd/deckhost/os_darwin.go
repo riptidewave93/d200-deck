@@ -23,7 +23,8 @@ func init() {
 	}
 }
 
-// launchAgent is the label of the launchd job that starts the tray at login.
+// launchAgent is the label of the launchd job that starts the tray at login,
+// and the app's bundle ID, which names the job in Login Items.
 const launchAgent = "io.github.riptidewave93.deckhost"
 
 // startAtLogin adds a launchd job that starts this app's tray at login, or
@@ -69,6 +70,10 @@ func launchAgentPlist(exe string) []byte {
 	xml.EscapeText(&b, []byte(exe))
 	b.WriteString(`</string>
 		<string>tray</string>
+	</array>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>` + launchAgent + `</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

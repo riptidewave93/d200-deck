@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"syscall"
 )
@@ -29,7 +30,10 @@ func restartSelf(lock *os.File) error {
 	if err != nil {
 		return err
 	}
-	return syscall.Exec(exe, os.Args, os.Environ())
+	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+		return fmt.Errorf("%s: %w", exe, err)
+	}
+	return nil
 }
 
 // secureSocket makes the control socket the user's alone.

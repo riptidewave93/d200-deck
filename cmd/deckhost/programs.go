@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"sync"
 	"time"
@@ -122,5 +123,9 @@ func (l *programsLink) do(op string, args json.RawMessage, release bool) error {
 			return fmt.Errorf("%s isn't installed on this PC", a.ID)
 		}
 	}
-	return open()
+	if err := open(); err != nil {
+		return err
+	}
+	log.Printf("Open app: opened %s", a.ID)
+	return nil
 }
