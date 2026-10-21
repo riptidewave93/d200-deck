@@ -1,30 +1,75 @@
 name: Release
 
-# Checks, tests and builds deckhost's installers (Linux .deb, .rpm and
-# tarballs for amd64 and arm64; Windows setup.exe). Called by Release Please
-# for a new release, it attaches them with their SHA-256 sums to that
-# release; run by hand, it keeps them as artifacts.
+# The Release button: run it from main to release main as it is. It tags the
+# draft's version (or the one given), checks, tests and builds deckhost's
+# installers (Linux .deb, .rpm and tarballs for amd64 and arm64; Windows
+# setup.exe), attaches them with their SHA-256 sums to the draft and publishes
+# it, then lets Renovate bump the other repos. A dry run builds and checks the
+# version stamp only, and keeps the installers as artifacts.
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: The release to attach the installers to
-        type: string
-        required: true
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version, e.g. 0.2.0 (empty for the draft's)
+        type: string
+        default: ''
+      dry_run:
+        description: Dry run (no tag, upload or release)
+        type: boolean
+        default: false
 
-permissions:
-  contents: write
+permissions: {}
+
+# shared with Release Drafter, so the draft doesn't change mid-release
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ inputs.dry_run }}
     steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Run the release from main." >&2
+          exit 1
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0  # the version comes from git describe
+
+      - name: Update the draft
+        id: draft
+        uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          version: ${{ inputs.version }}
+          commitish: ${{ github.sha }}
+          dry-run: ${{ inputs.dry_run }}
+
+      - name: Tag it
+        env:
+          TAG: v${{ steps.draft.outputs.resolved_version }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Not a release version: '$TAG'" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists" >&2
+            exit 1
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            tag -a "$TAG" -m "$TAG"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Check and test
         run: make check test
@@ -33,9 +78,6 @@ jobs:
         run: make dist
 
       - name: Check they carry the release's version
-        if: inputs.tag
-        env:
-          TAG: ${{ inputs.tag }}
         run: |
           test "$(build/linux-amd64/deckhost version)" = "$TAG"
           test -e "build/dist/deckhost-${TAG#v}-windows-amd64-setup.exe"
@@ -43,20 +85,39 @@ jobs:
       - name: Checksums
         run: cd build/dist && sha256sum -- * > SHA256SUMS
 
-      - name: Attach them to the release
-        if: inputs.tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag }}
+      - uses: actions/upload-artifact@v4
+        if: inputs.dry_run
+        with:
+          name: deckhost-${{ github.sha }}
+          path: build/dist/*
+
+      - name: Push the tag
+        id: push
+        if: ${{ !inputs.dry_run }}
+        run: git push origin "refs/tags/$TAG"
+
+      - name: Attach the installers to the draft
+        if: ${{ !inputs.dry_run }}
         # SHA256SUMS goes last: deckhost waits for it before telling users.
         run: |
           shopt -s extglob
           cd build/dist
-          gh release upload "$TAG" !(SHA256SUMS)
-          gh release upload "$TAG" SHA256SUMS
+          gh release upload "$TAG" --clobber !(SHA256SUMS)
+          gh release upload "$TAG" --clobber SHA256SUMS
 
-      - uses: actions/upload-artifact@v4
-        if: ${{ !inputs.tag }}
-        with:
-          name: deckhost-${{ github.sha }}
-          path: build/dist/*
+      - name: Publish it
+        id: publish
+        if: ${{ !inputs.dry_run }}
+        run: gh release edit "$TAG" --draft=false --latest
+
+      - name: Remove the tag of a failed release
+        if: failure() && steps.push.outcome == 'success' && steps.publish.outcome != 'success'
+        run: git push --delete origin "refs/tags/$TAG"
+
+  renovate:
+    needs: release
+    # skipped until the Renovate app is set up
+    if: ${{ !inputs.dry_run && vars.BOT_CLIENT_ID != '' }}
+    uses: ./.github/workflows/renovate.yml
+    secrets: inherit
+    permissions: {}

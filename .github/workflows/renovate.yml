@@ -1,0 +1,40 @@
+name: Renovate
+
+# Self-hosted Renovate for the D200 repos, as the project's GitHub App: every
+# Monday, by hand, and after each release (the Release workflow calls it).
+# Each repo's renovate.json says what it updates.
+on:
+  schedule:
+    - cron: '17 2 * * 1'
+  workflow_dispatch:
+  workflow_call:
+
+permissions: {}
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    # skipped until the app is set up
+    if: vars.BOT_CLIENT_ID != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Get a token for the app
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: d200-deck,d200-buildroot,d200-configure
+
+      - uses: renovatebot/github-action@f0f41e5f2e706165f6814b1d0f0d0e319de7d1d9 # v46.3.8
+        with:
+          token: ${{ steps.token.outputs.token }}
+          renovate-version: 44.155.9
+        env:
+          RENOVATE_REPOSITORIES: riptidewave93/d200-deck,riptidewave93/d200-buildroot,riptidewave93/d200-configure
+          RENOVATE_ONBOARDING: 'false'
+          RENOVATE_REQUIRE_CONFIG: required

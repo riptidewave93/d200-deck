@@ -1,0 +1,22 @@
+name: Release Drafter
+
+# On each push to main, updates the draft of the next release: its notes and
+# version, from the titles of the pull requests merged since the last release.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+# shared with the Release workflow, so the draft doesn't change mid-release
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
