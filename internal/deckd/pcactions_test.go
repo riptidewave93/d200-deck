@@ -15,7 +15,7 @@ import (
 
 func TestPCActionWithoutHost(t *testing.T) {
 	d := newTestDeckd()
-	a := d.cfg.Pages[d.cfg.Home].Keys[13].Action // Source Repo: open-url
+	a := d.cfg.Pages[d.cfg.Home].Keys[13].Action // Configure Buttons: open-url
 	if d.showsPressed(a) {
 		t.Error("working blue shown without deckhost")
 	}
@@ -44,7 +44,7 @@ func TestPCActionEvent(t *testing.T) {
 	d.pc.heartbeat(proto.ActionHost{ID: "host1"})
 	d.press(13, true)
 	ev := readEvent(t, r)
-	if ev.Key != 13 || ev.Host != "host1" || ev.Release || ev.Action.URL != deck.RepoURL {
+	if ev.Key != 13 || ev.Host != "host1" || ev.Release || ev.Action.URL != deck.ConfigureURL {
 		t.Errorf("event %+v", ev)
 	}
 	d.press(13, false)

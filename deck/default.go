@@ -7,7 +7,7 @@ import (
 )
 
 // DefaultConfig is used when there is no config file: media keys, folders
-// of browser, Discord and macro examples, and a link to the source repository.
+// of browser, Discord and macro examples, and a key that opens the configuration website.
 func DefaultConfig() *Config {
 	media := func(icon string, u Usage) Button {
 		return Button{Icon: icon, Action: Action{Type: ActionConsumer, Usage: u}}
@@ -27,7 +27,7 @@ func DefaultConfig() *Config {
 		return Button{Icon: icon, Label: label, Action: step(keys, mac)}
 	}
 	back := Button{Icon: "back", Label: "Back", Action: Action{Type: ActionBack}}
-	repo := Button{Icon: "github", Label: "Source Repo", Action: Action{Type: ActionOpenURL, URL: RepoURL}}
+	configure := Button{Icon: "deckhost", Label: "Configure Buttons", Action: Action{Type: ActionOpenURL, URL: ConfigureURL}}
 	discord := func(icon, label string, a Action) Button {
 		return Button{Icon: icon, Label: label, Color: white, Background: DiscordBlurple, Action: a}
 	}
@@ -59,7 +59,7 @@ func DefaultConfig() *Config {
 				9:  folder("power_settings_new", "Power", "power"),
 				10: folder("keyboard", "Macros", "macros"),
 				11: folder("obs", "OBS", "obs"),
-				13: repo,
+				13: configure,
 			}},
 			// Shortcuts Chrome, Edge and Firefox share on Windows, Linux and Mac
 			"browser": {Keys: map[int]Button{

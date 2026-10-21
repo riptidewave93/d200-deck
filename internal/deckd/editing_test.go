@@ -48,7 +48,7 @@ func TestEditing(t *testing.T) {
 	}
 	tap(1)
 	tap(2)
-	d.press(13, true) // the source repo link: a PC action
+	d.press(13, true) // Configure Buttons: a PC action
 	if h := d.held[13]; h == nil || h.pcID != 0 {
 		t.Error("PC action sent while editing")
 	}
