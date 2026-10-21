@@ -59,6 +59,9 @@ as on any computer.
    it added a background item, which you can turn off under **System Settings > General > Login
    Items**.
 
+The first time you plug in the D200, macOS may open the Keyboard Setup Assistant: cancel it, or
+pick your keyboard layout. It shows once.
+
 To update, replace the app in Applications with the new one. To uninstall, quit it from its menu
 (**Exit**), delete it from Applications, and remove its login item:
 
