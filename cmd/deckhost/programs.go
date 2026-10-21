@@ -67,17 +67,8 @@ func (l *programsLink) title() string { return "Open app" }
 
 func (l *programsLink) ops() []string { return []string{programsOpen} }
 
-func (l *programsLink) statusText() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.found == nil {
-		return ""
-	}
-	if len(l.found) == 1 {
-		return "1 app found"
-	}
-	return fmt.Sprintf("%d apps found", len(l.found))
-}
+// statusText is empty: Open app has no line in the tray menu.
+func (l *programsLink) statusText() string { return "" }
 
 func (l *programsLink) run(stop <-chan struct{}) {
 	t := time.NewTicker(l.every)

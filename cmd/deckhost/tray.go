@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -41,7 +42,9 @@ func ensureDaemon() {
 func trayReady() {
 	icons := map[bool][]byte{true: trayIcon(drawIcon(iconBlue, trayIconSize, false)), false: trayIcon(drawIcon(0x8a8a8a, trayIconSize, false))}
 	systray.SetIcon(icons[false])
-	systray.SetTitle("D200")
+	if runtime.GOOS != "darwin" { // macOS shows the title as text next to the icon
+		systray.SetTitle("D200")
+	}
 	systray.SetTooltip("D200 Deck")
 
 	status := systray.AddMenuItem("D200: checking…", "")

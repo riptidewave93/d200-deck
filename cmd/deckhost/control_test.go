@@ -13,7 +13,7 @@ import (
 )
 
 func TestControl(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv(runtimeEnv, t.TempDir())
 	urls := fakeBrowser(t)
 	d := newDaemon()
 	d.devices["/dev/hidraw9"] = &Device{Path: "/dev/hidraw9", Error: "not yet"}
@@ -49,7 +49,7 @@ func TestControl(t *testing.T) {
 	if _, err := listenControl(d); err == nil {
 		t.Error("a second daemon started")
 	}
-	info, _ := os.Stat(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "deckhost.sock"))
+	info, _ := os.Stat(filepath.Join(os.Getenv(runtimeEnv), "deckhost.sock"))
 	if info.Mode().Perm() != 0o600 {
 		t.Errorf("socket mode %v", info.Mode().Perm())
 	}
@@ -57,7 +57,7 @@ func TestControl(t *testing.T) {
 
 func TestControlStaleSocket(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_RUNTIME_DIR", dir)
+	t.Setenv(runtimeEnv, dir)
 	os.WriteFile(filepath.Join(dir, "deckhost.sock"), nil, 0o600) // left by a crash
 	l, err := listenControl(newDaemon())
 	if err != nil {
@@ -70,17 +70,17 @@ func TestControlStaleSocket(t *testing.T) {
 }
 
 func TestControlNoRuntimeDir(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", "")
+	t.Setenv(runtimeEnv, "")
 	if _, err := listenControl(newDaemon()); err == nil {
-		t.Error("listened without XDG_RUNTIME_DIR")
+		t.Error("listened without a runtime directory")
 	}
 	if _, err := control("status"); err == nil {
-		t.Error("connected without XDG_RUNTIME_DIR")
+		t.Error("connected without a runtime directory")
 	}
 }
 
 func TestControlGarbage(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv(runtimeEnv, t.TempDir())
 	l, err := listenControl(newDaemon())
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestControlGarbage(t *testing.T) {
 }
 
 func TestControlChecks(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv(runtimeEnv, t.TempDir())
 	home := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", home)
 	t.Setenv("HOME", home)

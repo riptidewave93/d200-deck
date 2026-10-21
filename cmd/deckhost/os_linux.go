@@ -32,37 +32,16 @@ func detached(path string, args []string) *exec.Cmd {
 	return cmd
 }
 
+// runtimeEnv names the environment variable runtimeDir is under.
+const runtimeEnv = "XDG_RUNTIME_DIR"
+
 // runtimeDir holds the control socket and the single-instance lock.
 func runtimeDir() (string, error) {
-	dir := os.Getenv("XDG_RUNTIME_DIR")
+	dir := os.Getenv(runtimeEnv)
 	if dir == "" {
-		return "", errors.New("XDG_RUNTIME_DIR is not set")
+		return "", errors.New(runtimeEnv + " is not set")
 	}
 	return dir, nil
-}
-
-// lockInstance takes the lock at path, held until deckhost exits (or
-// restarts: exec closes it).
-func lockInstance(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		return nil, errors.New("deckhost is already running")
-	}
-	return f, nil
-}
-
-// restartSelf replaces this process with a fresh deckhost. exec releases
-// lock.
-func restartSelf(lock *os.File) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	return syscall.Exec(exe, os.Args, os.Environ())
 }
 
 // restartService restarts the daemon through systemd or, where there's no
@@ -86,12 +65,6 @@ func restartService() error {
 	return cmd.Start()
 }
 
-// secureSocket makes the control socket the user's alone.
-func secureSocket(path string) error { return os.Chmod(path, 0o600) }
-
 // logToFile sends the daemon's log to a file if nothing else keeps it:
 // journald does here.
 func logToFile() {}
-
-// trayIcon is the tray icon in the format the system wants: PNG here.
-func trayIcon(png []byte) []byte { return png }

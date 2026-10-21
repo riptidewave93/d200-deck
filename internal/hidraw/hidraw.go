@@ -1,5 +1,5 @@
 // Package hidraw finds and opens the D200's config channel: Linux hidraw
-// nodes, or Windows HID devices.
+// nodes, Windows HID devices, or macOS IOKit HID devices.
 package hidraw
 
 // caps are what a report descriptor says about its device, as far as

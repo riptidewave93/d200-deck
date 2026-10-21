@@ -160,7 +160,12 @@ func TestBigFrame(t *testing.T) {
 }
 
 func TestDial(t *testing.T) {
-	dir := t.TempDir()
+	// short: macOS allows 104-byte socket paths, and its TMPDIR is long
+	dir, err := os.MkdirTemp("/tmp", "dial")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	for _, env := range []string{"TMPDIR", "TMP", "TEMP"} {
 		t.Setenv(env, "")
 	}

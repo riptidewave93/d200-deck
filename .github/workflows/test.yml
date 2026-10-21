@@ -1,7 +1,8 @@
 name: Test
 
 # On pull requests and pushes to main: format, vet, unit tests, and the
-# website's packages built and tested with TinyGo.
+# website's packages built and tested with TinyGo; on a Mac, deckhost's vet,
+# tests and build, the build kept for testing by hand.
 on:
   pull_request:
   push:
@@ -29,3 +30,24 @@ jobs:
 
       - name: Test with TinyGo
         run: make tinygo
+
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: make test-macos
+
+      - name: Build
+        run: make deckhost-macos
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deckhost-macos
+          path: build/deckhost-macos

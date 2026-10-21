@@ -39,7 +39,7 @@ WASM := GOOS=js GOARCH=wasm
 WASM_PKGS := ./render ./deck ./icons ./fonts
 PC_PKGS := ./cmd/deckhost ./internal/discord ./internal/obs ./internal/hidraw ./proto/... ./deck ./netid
 
-.PHONY: all build deckd deckhost deckhost.exe install dist dist-linux dist-windows test tinygo check cover clean
+.PHONY: all build deckd deckhost deckhost.exe deckhost-macos install dist dist-linux dist-windows test test-macos tinygo check cover clean
 
 all : check test tinygo build
 
@@ -103,6 +103,14 @@ test :
 	mkdir -p $(OUT)
 	$(RUN) sh -c 'go test -race -coverprofile=$(OUT)/cover.out ./... && go tool cover -func=$(OUT)/cover.out | tail -1 && \
 		GOARCH=386 go test $(WASM_PKGS)'
+
+# On a Mac with Go (Apple Silicon): deckhost needs cgo there, for the tray and IOKit, so these use
+# the host's Go and Xcode's command line tools, not a container
+deckhost-macos :
+	CGO_ENABLED=1 go build -trimpath -ldflags '$(LDFLAGS)' -o $(OUT)/$@ ./cmd/deckhost
+
+test-macos :
+	go vet $(PC_PKGS) && go test -race $(PC_PKGS)
 
 # The website's packages' tests built with TinyGo, as the website builds them (its JSON without
 # encoding/json/v2), run in wasmtime. TestLoad* use temp dirs WASI can't remove. The target is
