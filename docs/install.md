@@ -45,6 +45,30 @@ admin.
 The log is `%LOCALAPPDATA%\deckhost\deckhost.log`; settings (such as the Discord app) are in
 `%APPDATA%\deckhost` and stay when you uninstall.
 
+## macOS (preview)
+
+For Macs with Apple Silicon (M1 or later), macOS 12 or later. This is a preview: it hasn't had
+much use yet. Media app keys aren't available on macOS; the D200's own media and volume keys work
+as on any computer.
+
+1. Unzip `deckhost-<version>-macos-arm64.zip` and move **D200 Deck** to your Applications folder.
+2. Open it. The app isn't signed by Apple yet, so macOS blocks it the first time: choose **Done**,
+   then open **System Settings > Privacy & Security**, scroll down to "D200 Deck was blocked" and
+   choose **Open Anyway**. Each new version asks once more.
+3. Its icon appears in the menu bar (not the Dock). From then on it starts at login; macOS says
+   it added a background item, which you can turn off under **System Settings > General > Login
+   Items**.
+
+To update, replace the app in Applications with the new one. To uninstall, quit it from its menu
+(**Exit**), delete it from Applications, and remove its login item:
+
+```bash
+rm ~/Library/LaunchAgents/io.github.riptidewave93.deckhost.plist
+```
+
+The log is `$TMPDIR/deckhost.log`; settings (such as the Discord app) are in
+`~/Library/Application Support/deckhost`.
+
 ## Discord
 
 Discord keys need a one-time setup on each PC: see [discord.md](discord.md#setup).

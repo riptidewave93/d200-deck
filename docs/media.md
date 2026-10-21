@@ -8,6 +8,7 @@ the plain media keys.
 |---|---|
 | Linux | MPRIS, which most players support |
 | Windows 10 1809 or later | the system media controls (the ones in the volume flyout) |
+| macOS | not available yet; the keys work as the plain media keys |
 
 ## Keys
 

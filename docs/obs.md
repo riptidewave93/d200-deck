@@ -2,7 +2,7 @@
 
 D200 keys control [OBS Studio](https://obsproject.com) 28 or later: switch scenes, start and stop
 streaming, recording, the replay buffer and the virtual camera, and mute audio sources. Keys show
-the state, such as which scene is live. This works on Linux and Windows, through `deckhost`.
+the state, such as which scene is live. This works on Linux, Windows and macOS, through `deckhost`.
 
 ## Setup
 

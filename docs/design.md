@@ -6,7 +6,7 @@ One Go module, two programs that share code:
 |---|---|---|
 | `deckd keys` | the D200 | draws pages, reads keys, runs HID actions, forwards PC actions |
 | `deckd update` | the D200 | the update page on port 80 (`internal/ota`, to d200-buildroot's [updater spec](https://github.com/riptidewave93/d200-buildroot/blob/main/docs/ota.md)) and debug info (`internal/debuginfo`, `/debug`); a separate process, so a crash in the keys can't stop an update |
-| `deckhost` | the PC (Linux, Windows) | runs the actions HID can't do |
+| `deckhost` | the PC (Linux, Windows, macOS) | runs the actions HID can't do |
 
 ```
 Device

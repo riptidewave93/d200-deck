@@ -2,7 +2,7 @@
 
 D200 keys control the Discord desktop app: mute, deafen, push to talk, join and leave voice
 channels, voice mode, noise suppression and volume, and open Discord or a channel. Keys show the
-state, such as whether you're muted. This works on Linux and Windows, through `deckhost`.
+state, such as whether you're muted. This works on Linux, Windows and macOS, through `deckhost`.
 
 Until it's set up, mute and deafen keys still work: they send Discord's keyboard shortcuts
 instead (see [Without deckhost](#without-deckhost)).
