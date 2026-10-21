@@ -17,8 +17,9 @@ Then log out and in, or start it now from **D200 Deck** in the app launcher.
 
 **Any other distro**, including atomic ones (Silverblue, Bluefin, Bazzite, SteamOS): unpack
 `deckhost-<version>-linux-<arch>.tar.gz` and run `./install.sh` in it. It installs deckhost for
-your user, adds **D200 Deck** to the app launcher and starts it. Once, it also needs a udev rule so
-you can open the D200: it prints the root command and offers to run it with `sudo` or `doas`.
+your user, adds **D200 Deck** to the app launcher and starts it. It also needs a udev rule so you
+can open the D200 and it can wake the PC: when the rule is missing or out of date, it prints the
+root command and offers to run it with `sudo` or `doas`.
 `./install.sh --uninstall` removes deckhost.
 
 From a checkout of this repo, `make install` builds deckhost and installs it the same way.
