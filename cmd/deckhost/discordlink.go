@@ -276,21 +276,10 @@ func (l *discordLink) selectVoice(conn *discord.Conn, op, id, channel string) er
 		// force: the user asked, by pressing the key, to move channel
 		args = map[string]any{"channel_id": id, "force": true}
 	}
-	data, err := conn.Do("SELECT_VOICE_CHANNEL", args, "")
-	if err != nil {
-		return err
-	}
-	var ch struct {
-		ID string `json:"id"`
-	}
-	json.Unmarshal(data, &ch) // null after leaving
-	l.mu.Lock()
-	if l.conn == conn {
-		l.channel = ch.ID
-		l.publishLocked()
-	}
-	l.mu.Unlock()
-	return nil
+	// Discord's VOICE_CHANNEL_SELECT event, not the reply, sets l.channel:
+	// one writer, in order
+	_, err := conn.Do("SELECT_VOICE_CHANNEL", args, "")
+	return err
 }
 
 // isSnowflake reports whether s looks like a Discord ID.
