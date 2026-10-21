@@ -220,6 +220,22 @@ looks; the device forgets them with the host.
 
 See [App integrations](design.md#app-integrations).
 
+### Open app
+
+`deckhost` opens apps installed on the PC with
+`{"type": "app", "app": "programs", "op": "open", "args": {"id": "chrome"}}`, an app it lists in
+its host info. It opens only the ids below, each found the way its OS installs it (on Windows the
+registered program, its usual install folder or its URI scheme; on Linux its desktop file,
+including Flatpak and Snap). For an app that isn't installed the key flashes red.
+
+It sets `programs.available:<id>` on for each app it found, looking again every minute, so an
+editor can grey out the others. These states give keys no look.
+
+| | ids |
+|---|---|
+| Windows and Linux | `files`, `settings`, `terminal`, `task-manager`, `calculator`, `text-editor`, `screenshot`, `chrome`, `firefox`, `edge`, `brave`, `opera`, `vivaldi`, `discord`, `telegram`, `signal`, `zoom`, `slack`, `steam`, `spotify`, `vlc`, `plex`, `kodi`, `obs`, `gimp`, `inkscape`, `krita`, `blender`, `davinci-resolve`, `audacity`, `libreoffice`, `thunderbird`, `obsidian`, `1password`, `bitwarden`, `vscode` |
+| Windows only | `control-panel`, `whatsapp`, `teams`, `epic-games`, `battle-net`, `gog-galaxy`, `ea-app`, `ubisoft-connect`, `riot-client`, `photoshop`, `figma`, `word`, `excel`, `powerpoint`, `outlook`, `notion` |
+
 ## Web API
 
 At `http://<device IPv4>/` or `http://d200-<serial>.local/`. The device only answers requests addressed

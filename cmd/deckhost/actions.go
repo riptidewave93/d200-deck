@@ -38,7 +38,11 @@ func webURL(s string) bool {
 }
 
 // start runs a program detached from deckhost, so it outlives the daemon.
-func start(argv ...string) error {
+func start(argv ...string) error { return startIn("", argv...) }
+
+// startIn is start with the program run in directory dir ("" for
+// deckhost's own).
+func startIn(dir string, argv ...string) error {
 	if len(argv) == 0 || argv[0] == "" {
 		return errors.New("no command to run")
 	}
@@ -47,6 +51,7 @@ func start(argv ...string) error {
 		return err
 	}
 	cmd := detached(path, argv[1:])
+	cmd.Dir = dir
 	if err := cmd.Start(); err != nil {
 		return err
 	}

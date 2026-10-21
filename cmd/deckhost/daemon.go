@@ -129,6 +129,7 @@ func newDaemon() *daemon {
 		deck.AppDiscord: newDiscordLink(discordLogin, d.setState),
 		deck.AppOBS:     newOBSLink(obsDial, d.setState),
 		deck.AppMedia:   newMediaLink(openMedia, d.setState, d.setLook),
+		appPrograms:     newProgramsLink(d.setState),
 	}
 	return d
 }
