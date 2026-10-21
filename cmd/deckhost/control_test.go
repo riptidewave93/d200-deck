@@ -98,7 +98,7 @@ func TestControlGarbage(t *testing.T) {
 }
 
 func TestControlChecks(t *testing.T) {
-	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv(runtimeEnv, t.TempDir())
 	home := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", home)
 	t.Setenv("HOME", home)
