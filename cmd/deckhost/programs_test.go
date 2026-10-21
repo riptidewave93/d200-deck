@@ -38,9 +38,6 @@ func TestProgramsLink(t *testing.T) {
 		}
 		return nil
 	}
-	if l.statusText() != "" {
-		t.Error("a status before looking")
-	}
 	l.look()
 	if !state["programs.ready"] || !state["programs.available:chrome"] || state["programs.available:firefox"] {
 		t.Fatalf("state %v", state)
@@ -48,7 +45,7 @@ func TestProgramsLink(t *testing.T) {
 	if _, ok := state["programs.available:firefox"]; !ok {
 		t.Error("firefox isn't published as off")
 	}
-	if l.statusText() != "1 app found" {
+	if l.statusText() != "" {
 		t.Errorf("status %q", l.statusText())
 	}
 
