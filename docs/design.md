@@ -25,7 +25,7 @@ Device
 
 PC
   cmd/deckhost/          the PC program: the daemon, its app integrations and the tray
-  internal/hidraw/       finds and opens the device's config channel (Linux, Windows)
+  internal/hidraw/       finds and opens the device's config channel (Linux, Windows, macOS)
   internal/discord/      Discord's local RPC (discordtest: a fake for tests)
   internal/obs/          OBS's WebSocket (obstest: a fake for tests)
 

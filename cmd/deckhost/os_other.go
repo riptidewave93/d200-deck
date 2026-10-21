@@ -1,4 +1,4 @@
-//go:build !linux && !windows
+//go:build !linux && !windows && !darwin
 
 package main
 
@@ -17,6 +17,8 @@ import (
 //   - internal/hidraw: opening the device's HID nodes
 
 var errUnsupported = errors.New("not supported on this system yet")
+
+const runtimeEnv = ""
 
 var openURL = func(u string) error { return errUnsupported }
 
