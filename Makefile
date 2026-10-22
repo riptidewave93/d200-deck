@@ -10,7 +10,7 @@ OUT := build
 # Package version: v1.2.3 -> 1.2.3 on a tagged commit, else 0.0.0~git<date>.<commit>
 TAG := $(shell git describe --tags --exact-match 2>/dev/null)
 PKG_VERSION ?= $(if $(TAG),$(TAG:v%=%),0.0.0~git$(shell git show -s --format=%cd --date=format:%Y%m%d HEAD).$(shell git rev-parse --short HEAD))
-NFPM_VERSION := v2.41.1
+NFPM_VERSION := v2.48.0
 WINRES_VERSION := v0.3.3
 # The website builds its WebAssembly with TinyGo
 TINYGO_IMAGE ?= docker.io/tinygo/tinygo:0.43.0
