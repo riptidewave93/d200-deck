@@ -81,7 +81,7 @@ Payloads are JSON unless noted.
 | `0x0e` | time | `{"unix_ms": 1760900000000}`: the time now | none; the device has no battery-backed clock, so send it on connecting and every hour |
 | `0x0f` | host-look | `{"host", "name", "rev", "label", "image_size", "image_sha256"}`: see [Looks](#looks) | none |
 | `0x10` | host-look-data | binary: offset (uint32), then up to 1015 bytes of the look's image | none |
-| `0x11` | reset | none. The device asks on its screen first, as for [a config](#the-config); once confirmed it erases its config and all settings, and restarts | none, just before it restarts |
+| `0x11` | reset | none. The device asks on its screen first, as for [a config](#the-config); once confirmed it erases its config and all settings but `panel`, and restarts | none, just before it restarts |
 
 Check `protocol` in hello: this page is version 4. The version changes only when old and new
 can't talk: new commands come without one (a device that doesn't know one answers status 1), and new
@@ -176,9 +176,11 @@ An app without a `status` isn't set up yet. With no helper, it's `{"connected": 
 | `screen_offset_min`, `screen_offset_max` | | Read only: the range of `screen_offset` |
 | `screen_pattern` | `false` | `true` shows a frame inside each key window, to line them up; keys do nothing meanwhile. It ends when set `false`, a minute after the last change to it or `screen_offset`, or when the PC sleeps. Not saved. |
 | `editing` | `false` | `true` while an editor selects keys by pressing them: presses only send their key events, and run no actions or page changes. It ends when set `false`, 10 s after it was last set `true` (so set it again every few seconds), or when the PC sleeps. Not saved. |
+| `panel` | `"auto"` | The screen's panel config, picked at boot: `"auto"` detects it, `"h1"` or `"h3"` forces one. With the wrong one the picture is wavy or stretched, but usable. A change restarts the device to apply it, just after the reply. |
+| `panel_active` | | Read only: the panel config in use, `"h1"` or `"h3"` |
 
 A device without a dimmable screen leaves out the brightness fields and `sleep_screen`; one without a
-screen, the `screen_` fields.
+screen, the `screen_` fields; firmware that can't pick the panel, the `panel` fields.
 
 A new `usb_net4` is asked about on the device first, like a config (above). Changing a USB setting
 re-plugs the device: you get the reply, then usb-rebinding, then the device goes away for about a

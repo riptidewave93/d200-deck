@@ -166,6 +166,12 @@ type Settings struct {
 	// set false, EditingTimeout after it was last set true, or when the PC
 	// sleeps.
 	Editing *bool `json:"editing,omitempty"`
+	// Panel is the panel config the device picks at boot: PanelAuto, PanelH1
+	// or PanelH3. A change restarts the device to apply it. Only firmware
+	// that can pick has it.
+	Panel *string `json:"panel,omitempty"`
+	// PanelActive is the panel config in use, PanelH1 or PanelH3; read only.
+	PanelActive *string `json:"panel_active,omitempty"`
 }
 
 // Offset is a move on the screen, in pixels.
@@ -190,6 +196,13 @@ const (
 const (
 	SleepScreenZzz = "zzz"
 	SleepScreenOff = "off"
+)
+
+// Panel configs: detected from the hardware (the default), or forced.
+const (
+	PanelAuto = "auto"
+	PanelH1   = "h1"
+	PanelH3   = "h3"
 )
 
 // Result says how a PC action went; Error is empty on success.
