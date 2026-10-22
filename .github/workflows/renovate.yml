@@ -19,7 +19,7 @@ jobs:
   renovate:
     # skipped until the app is set up
     if: vars.BOT_CLIENT_ID != ''
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - name: Get a token for the app
