@@ -120,6 +120,19 @@ func (d *deckd) settings(seq uint16, payload []byte) (status byte, reply []byte)
 		if s.HostOS != nil && !validHostOS(*s.HostOS) {
 			return proto.StatusFailed, []byte(`host_os must be "mac", "other" or ""`)
 		}
+		if s.Panel != nil && !validPanel(*s.Panel) {
+			return proto.StatusFailed, []byte(`panel must be "auto", "h1" or "h3"`)
+		}
+		if s.Panel != nil {
+			changed, err := d.panel.set(*s.Panel)
+			if err != nil {
+				log.Printf("panel: %v", err)
+				return failed(err)
+			}
+			if changed {
+				d.restart()
+			}
+		}
 		if s.HostOS != nil && *s.HostOS != d.host.get() {
 			if _, err := d.host.set(*s.HostOS); err != nil {
 				log.Printf("host os: %v", err)
@@ -190,6 +203,9 @@ func (d *deckd) currentSettings() (byte, []byte) {
 			low, sleep := brightnessMin, d.sleep.get()
 			s.Brightness, s.BrightnessMin, s.SleepScreen = &p, &low, &sleep
 		}
+	}
+	if over, active, ok := d.panel.get(); ok {
+		s.Panel, s.PanelActive = &over, &active
 	}
 	if d.scan != nil {
 		p, on := d.offset.get(), d.pattern.on.Load()

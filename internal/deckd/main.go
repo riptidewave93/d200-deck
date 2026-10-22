@@ -95,6 +95,7 @@ type deckd struct {
 	// editing is set while an editor selects keys by pressing them: keys
 	// run nothing
 	editing lease
+	panel   panelSetting
 }
 
 func (d *deckd) page() string { return d.pages[len(d.pages)-1] }

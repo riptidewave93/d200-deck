@@ -32,13 +32,7 @@ func (d *deckd) reset(seq uint16) (byte, []byte) {
 			return failed(err)
 		}
 		log.Print("reset: restarting to erase /data")
-		d.ui <- func() { d.setOverlay(restartingScreen()) }
-		go func() {
-			time.Sleep(resetDelay)
-			if err := reboot(); err != nil {
-				log.Printf("reset: %v", err)
-			}
-		}()
+		d.restart()
 		return proto.StatusOK, nil
 	})
 }
