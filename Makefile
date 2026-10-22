@@ -14,7 +14,7 @@ NFPM_VERSION := v2.48.0
 WINRES_VERSION := v0.3.3
 # The website builds its WebAssembly with TinyGo
 TINYGO_IMAGE ?= docker.io/tinygo/tinygo:0.43.0
-WASMTIME_VERSION := v29.0.1
+WASMTIME_VERSION := v50.0.0
 
 REPO_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 ifneq ($(DOCKER),)
