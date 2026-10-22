@@ -1,6 +1,6 @@
 # Builds and tests run in a Go container, so any host with Docker or Podman (and CI) builds the
 # same way. Without either, or with DOCKER=, they use the host's Go: make test DOCKER=
-GO_IMAGE ?= docker.io/library/golang:1.27.0-bookworm
+GO_IMAGE ?= docker.io/library/golang:1.27.3-bookworm
 ifeq ($(origin DOCKER),undefined)
 DOCKER := $(shell command -v docker >/dev/null 2>&1 && echo docker || { command -v podman >/dev/null 2>&1 && echo podman; })
 endif
