@@ -382,3 +382,32 @@ func TestSetHostOS(t *testing.T) {
 		}
 	}
 }
+
+func TestAppQueuesReleaseHeldKeys(t *testing.T) {
+	acts := make(chan proto.ActionEvent, 16)
+	done := make(chan struct{})
+	queue := appQueues(func(a proto.ActionEvent) { acts <- a }, done)
+	next := func() proto.ActionEvent {
+		t.Helper()
+		select {
+		case a := <-acts:
+			return a
+		case <-time.After(3 * time.Second):
+			t.Fatal("no action")
+			return proto.ActionEvent{}
+		}
+	}
+	for _, a := range []proto.ActionEvent{{Key: 3}, {Key: 4}, {Key: 4, Release: true}} {
+		queue(deck.AppMic) <- a
+		next()
+	}
+	close(done) // the device went away with key 3 held
+	if a := next(); a.Key != 3 || !a.Release {
+		t.Errorf("got %+v, want key 3's release", a)
+	}
+	select {
+	case a := <-acts:
+		t.Errorf("extra action %+v", a)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
