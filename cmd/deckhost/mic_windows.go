@@ -74,6 +74,9 @@ func endpoints(f func(vol unsafe.Pointer) error) error {
 		var dev unsafe.Pointer
 		if err := comCall(enum, mGetDefaultAudioEndpoint, eCapture, role, uintptr(unsafe.Pointer(&dev))); err != nil {
 			if errors.Is(err, hresult(eNotFound)) {
+				if role == eCommunications {
+					continue
+				}
 				return errNoMic
 			}
 			return err
