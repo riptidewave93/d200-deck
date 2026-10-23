@@ -120,6 +120,7 @@ var AppArgs = map[string][]string{
 	AppDiscord: {"id", "guild", "step"},
 	AppOBS:     {"id"},
 	AppMedia:   {"id", "show", "cycle"},
+	AppMic:     {},
 }
 
 // CheckArgs refuses args an app in AppArgs doesn't take. Other apps' args

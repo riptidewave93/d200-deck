@@ -299,9 +299,9 @@ func TestHeartbeat(t *testing.T) {
 	if err := json.Unmarshal(newDaemon().heartbeat(), &h); err != nil {
 		t.Fatal(err)
 	}
-	if h.ID == "" || h.Name != "deckhost" || h.OS == "" || len(h.Apps) != 4 ||
+	if h.ID == "" || h.Name != "deckhost" || h.OS == "" || len(h.Apps) != 5 ||
 		h.Apps[0].Name != "discord" || len(h.Apps[0].Ops) != len(deck.DiscordOps) ||
-		h.Apps[1].Name != "media" || h.Apps[2].Name != "obs" || h.Apps[3].Name != "programs" {
+		h.Apps[1].Name != "media" || h.Apps[2].Name != "mic" || h.Apps[3].Name != "obs" || h.Apps[4].Name != "programs" {
 		t.Errorf("%+v", h)
 	}
 }

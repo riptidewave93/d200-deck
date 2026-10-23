@@ -14,6 +14,7 @@ d200-deck is licensed under the GNU GPL v3 or later ([LICENSE](LICENSE)). It inc
 | [fyne.io/systray](https://github.com/fyne-io/systray) (deckhost tray icon) | Go module | Apache-2.0 (in the module) |
 | [godbus/dbus](https://github.com/godbus/dbus) (deckhost's tray and media keys on Linux) | Go module | BSD-2-Clause (in the module) |
 | [coder/websocket](https://github.com/coder/websocket) (deckhost's OBS keys) | Go module | ISC (in the module) |
+| [jfreymuth/pulse](https://github.com/jfreymuth/pulse) (deckhost's mic keys on Linux) | Go module | MIT (in the module) |
 | Go standard library | | BSD-3-Clause |
 
 The GitHub logo is a trademark of GitHub, Inc., used here only to link to this project's repository.
