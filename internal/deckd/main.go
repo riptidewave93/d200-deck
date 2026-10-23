@@ -38,6 +38,7 @@ type held struct {
 	page   string
 	action deck.Action
 	pcID   uint32 // the PC action sent, if any
+	pcHost string // and the action host it went to
 }
 
 type deckd struct {
@@ -109,7 +110,7 @@ func (d *deckd) press(i int, down bool) {
 		d.held[i] = nil
 		d.run.release(i, h.action)
 		if h.action.Type.OnPC() {
-			d.releasePC(i, h.action, h.pcID)
+			d.releasePC(i, h)
 		}
 		if h.page == d.page() {
 			d.drawKey(i, render.Idle)
@@ -168,7 +169,7 @@ func (d *deckd) press(i int, down bool) {
 	case a.Type == deck.ActionHome:
 		d.setPages([]string{d.cfg.Home})
 	case a.Type.OnPC():
-		d.held[i].pcID = d.sendPC(i, a)
+		d.held[i].pcID, d.held[i].pcHost = d.sendPC(i, a)
 	default:
 		d.run.press(i, a)
 	}

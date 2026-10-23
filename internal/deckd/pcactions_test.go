@@ -3,7 +3,9 @@ package deckd
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,6 +94,96 @@ func TestPCActionSendFails(t *testing.T) {
 	runUI(t, d)
 	if got := keyColour(d, 13); got != render.Colours[render.Error] {
 		t.Errorf("no red flash: %#x", got)
+	}
+}
+
+// A press sent always gets its release, even while the host seems gone.
+func TestPCReleaseHostQuiet(t *testing.T) {
+	p, r := fifo(t)
+	raw, err := hidg.OpenRaw(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := newTestDeckd()
+	d.ch.set(raw)
+	defer d.ch.set(nil)
+	d.pc.heartbeat(proto.ActionHost{ID: "h"})
+	d.press(13, true)
+	ev := readEvent(t, r)
+	d.pc.mu.Lock()
+	d.pc.beat = time.Now().Add(-proto.ActionHostTimeout)
+	d.pc.mu.Unlock()
+	d.press(13, false)
+	if rel := readEvent(t, r); rel.ID != ev.ID || !rel.Release || rel.Host != "h" {
+		t.Errorf("release event %+v", rel)
+	}
+}
+
+// A release that fails goes with the next heartbeat.
+func TestPCReleaseRetried(t *testing.T) {
+	logs := make(chan string, 8)
+	log.SetOutput(chanWriter(logs))
+	defer log.SetOutput(os.Stderr)
+	p, r := fifo(t)
+	raw, err := hidg.OpenRaw(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := newTestDeckd()
+	d.ch.set(raw)
+	d.pc.heartbeat(proto.ActionHost{ID: "h"})
+	d.press(13, true)
+	ev := readEvent(t, r)
+	d.ch.set(nil)
+	d.press(13, false)
+	for l := ""; !strings.Contains(l, "key 13 release"); {
+		select {
+		case l = <-logs:
+		case <-time.After(2 * time.Second):
+			t.Fatal("release didn't fail")
+		}
+	}
+
+	p, r = fifo(t)
+	if raw, err = hidg.OpenRaw(p); err != nil {
+		t.Fatal(err)
+	}
+	d.ch.set(raw)
+	defer d.ch.set(nil)
+	d.handle(proto.Request{Cmd: proto.CmdActionHost, Payload: []byte(`{"id":"h"}`)})
+	if rel := readEvent(t, r); rel.ID != ev.ID || !rel.Release || rel.Key != 13 {
+		t.Errorf("release event %+v", rel)
+	}
+	for start := time.Now(); len(d.pc.unsentReleases()) > 0; time.Sleep(time.Millisecond) {
+		if time.Since(start) > 2*time.Second {
+			t.Fatal("release still unsent after it went")
+		}
+	}
+}
+
+type chanWriter chan string
+
+func (c chanWriter) Write(b []byte) (int, error) {
+	select {
+	case c <- string(b):
+	default:
+	}
+	return len(b), nil
+}
+
+// A new press of the key replaces an unsent release.
+func TestPCReleaseReplaced(t *testing.T) {
+	p := pcActions{fail: func(int) {}}
+	p.addRelease(proto.ActionEvent{ID: 1, Key: 3, Release: true})
+	p.addRelease(proto.ActionEvent{ID: 2, Key: 4, Release: true})
+	p.start(3)
+	if got := p.unsentReleases(); len(got) != 1 || got[0].Key != 4 {
+		t.Errorf("unsent releases %+v", got)
+	}
+	p.released(proto.ActionEvent{ID: 9, Key: 4}) // not the one kept
+	p.released(proto.ActionEvent{ID: 2, Key: 4})
+	if got := p.unsentReleases(); len(got) != 0 {
+		t.Errorf("unsent releases %+v", got)
 	}
 }
 
