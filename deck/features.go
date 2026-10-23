@@ -46,7 +46,7 @@ func Features() FeatureSet {
 		Usages:    slices.Sorted(maps.Keys(UsageNames)),
 		Systems:   slices.Sorted(maps.Keys(SystemNames)),
 		Fonts:     BuiltinFonts,
-		Apps:      map[string][]string{AppDiscord: DiscordOps, AppOBS: OBSOps, AppMedia: MediaOps},
+		Apps:      map[string][]string{AppDiscord: DiscordOps, AppOBS: OBSOps, AppMedia: MediaOps, AppMic: MicOps},
 		Args:      AppArgs,
 		Settings:  settingNames,
 		Commands:  []string{"reset"},

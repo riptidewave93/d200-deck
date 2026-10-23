@@ -93,10 +93,15 @@ func comCall(obj unsafe.Pointer, m int, args ...uintptr) error {
 	fn := *(*uintptr)(unsafe.Add(vtbl, m*int(unsafe.Sizeof(uintptr(0)))))
 	hr, _, _ := syscall.SyscallN(fn, append([]uintptr{uintptr(obj)}, args...)...)
 	if int32(hr) < 0 {
-		return fmt.Errorf("HRESULT %#08x", uint32(hr))
+		return hresult(hr)
 	}
 	return nil
 }
+
+// hresult is a failed COM call's HRESULT.
+type hresult uint32
+
+func (h hresult) Error() string { return fmt.Sprintf("HRESULT %#08x", uint32(h)) }
 
 func comRelease(obj unsafe.Pointer) {
 	if obj != nil {

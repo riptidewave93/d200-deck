@@ -65,6 +65,9 @@ var appOps = map[string]builtin{
 	"media.repeat":     {look: Look{Icon: "repeat"}, on: &Look{Icon: "repeat_on"}},
 	// blank until the host shows the song (proto.HostLook)
 	"media.now-playing": {fallback: consumer(UsagePlayPause)},
+
+	"mic.mute":         {Look{Icon: "mic"}, &Look{Icon: "mic_off", Background: red}, nil},
+	"mic.push-to-talk": {look: Look{Icon: "record_voice_over"}},
 }
 
 // keybind is a combo such as "ctrl+m", and mac the one a Mac gets.
@@ -163,6 +166,19 @@ func (a Action) songArgs() (songArgs, error) {
 
 // MediaOps are the media operations; the host checks them.
 var MediaOps = []string{MediaPlayPause, MediaNext, MediaPrevious, MediaStop, MediaShuffle, MediaRepeat, MediaNowPlaying}
+
+// AppMic is the PC's microphone: its default input device, muted for every
+// app at once.
+const AppMic = "mic"
+
+// Mic operations (Action.Op).
+const (
+	MicMute       = "mute"         // toggle mute; on while muted
+	MicPushToTalk = "push-to-talk" // unmuted while the key is held
+)
+
+// MicOps are the mic operations; the host checks them.
+var MicOps = []string{MicMute, MicPushToTalk}
 
 // iconColors are the colours of brand icons in keys that set none, as their
 // brand rules require.

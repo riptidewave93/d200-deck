@@ -168,6 +168,7 @@ func newDaemon() *daemon {
 		deck.AppDiscord: newDiscordLink(discordLogin, d.setState),
 		deck.AppOBS:     newOBSLink(obsDial, d.setState),
 		deck.AppMedia:   newMediaLink(openMedia, d.setState, d.setLook),
+		deck.AppMic:     newMicLink(openMic, d.setState),
 		appPrograms:     newProgramsLink(d.setState),
 	}
 	return d
@@ -578,7 +579,8 @@ func (d *daemon) serve(c *proto.Conn, path string) error {
 
 // appQueues returns an app's queue of key actions for act, started on first
 // use. Each app's keys go in order, so e.g. a quick push-to-talk tap ends
-// muted.
+// muted. When done closes, keys still held are released, so a release lost
+// with the device doesn't leave e.g. push-to-talk on.
 func appQueues(act func(proto.ActionEvent), done <-chan struct{}) func(app string) chan proto.ActionEvent {
 	queues := map[string]chan proto.ActionEvent{}
 	return func(name string) chan proto.ActionEvent {
@@ -587,11 +589,21 @@ func appQueues(act func(proto.ActionEvent), done <-chan struct{}) func(app strin
 			q = make(chan proto.ActionEvent, 16)
 			queues[name] = q
 			go func() {
+				held := map[int]proto.ActionEvent{}
 				for {
 					select {
 					case a := <-q:
+						if a.Release {
+							delete(held, a.Key)
+						} else {
+							held[a.Key] = a
+						}
 						act(a)
 					case <-done:
+						for _, a := range held {
+							a.Release = true
+							act(a)
+						}
 						return
 					}
 				}

@@ -11,8 +11,8 @@ your PC.
 - Keyboard shortcuts, typed text, macros, and media, volume and power keys that work on any PC,
   with nothing installed
 - With `deckhost` on the PC (Linux, Windows, or macOS as a preview): keys that open websites, start programs and call
-  webhooks, and control [Discord](docs/discord.md), [OBS](docs/obs.md) and
-  [media players](docs/media.md), showing live state such as mute or the song playing
+  webhooks, and control [Discord](docs/discord.md), [OBS](docs/obs.md),
+  [media players](docs/media.md) and the [microphone](docs/mic.md), showing live state such as mute or the song playing
 - A default layout to start from: media and volume keys, the song playing, and pages of browser
   shortcuts, Discord, OBS, macros and power keys
 - A sleep screen while the PC sleeps, dimmed or off, and an adjustable brightness

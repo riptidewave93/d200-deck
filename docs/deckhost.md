@@ -5,7 +5,7 @@ your user, not root.
 
 | Part | Does |
 |---|---|
-| `deckhost daemon` | Runs the keys USB HID can't: `open-url`, `launch`, `http`, and apps ([Discord](discord.md), [OBS](obs.md), [media](media.md), [Open app](api.md#open-app)) |
+| `deckhost daemon` | Runs the keys USB HID can't: `open-url`, `launch`, `http`, and apps ([Discord](discord.md), [OBS](obs.md), [media](media.md), [mic](mic.md), [Open app](api.md#open-app)) |
 | `deckhost tray` | Tray icon: blue while a D200 is connected, grey when not. Starts at login, and starts the daemon if it isn't running |
 
 ## Install
