@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -26,6 +27,9 @@ type pcActions struct {
 	upload  *lookUpload
 	nextID  uint32
 	pending map[uint32]pending
+	// releases are the key releases still to send to the action host, by
+	// key. One that fails goes with the next heartbeat.
+	releases map[int]proto.ActionEvent
 	// fail shows that the action of key failed
 	fail func(key int)
 	// changed is called when the state may have changed
@@ -122,6 +126,7 @@ func (p *pcActions) start(key int) uint32 {
 	if p.pending == nil {
 		p.pending = map[uint32]pending{}
 	}
+	delete(p.releases, key) // the new press's release replaces it
 	p.nextID++
 	id := p.nextID
 	p.pending[id] = pending{key, time.AfterFunc(pcActionTimeout, func() {
@@ -154,14 +159,14 @@ func (p *pcActions) result(r proto.Result) {
 }
 
 // sendPC asks the action host to run a, and returns the action's ID (0 if
-// there's no host). It flashes key i red if no host is connected or the
-// action fails.
-func (d *deckd) sendPC(i int, a deck.Action) uint32 {
+// there's no host) and the host. It flashes key i red if no host is
+// connected or the action fails.
+func (d *deckd) sendPC(i int, a deck.Action) (uint32, string) {
 	host, ok := d.pc.hostAlive()
 	if !ok {
 		log.Printf("key %d: %s needs deckhost on the PC", i, a.Type)
 		d.flashError(i)
-		return 0
+		return 0, ""
 	}
 	id := d.pc.start(i)
 	ev, _ := json.Marshal(proto.ActionEvent{ID: id, Host: host, Key: i, Action: a.ForPC()})
@@ -173,19 +178,54 @@ func (d *deckd) sendPC(i int, a deck.Action) uint32 {
 			}
 		}
 	}()
-	return id
+	return id, host
 }
 
-// releasePC tells the action host key i, whose action id was a, was let go.
-func (d *deckd) releasePC(i int, a deck.Action, id uint32) {
-	host, ok := d.pc.hostAlive()
-	if id == 0 || !ok {
+// releasePC tells the action host that key i, held with h, was let go. A
+// press sent always gets its release, even while the host seems gone, so
+// e.g. push-to-talk doesn't stay on.
+func (d *deckd) releasePC(i int, h *held) {
+	if h.pcID == 0 {
 		return
 	}
-	ev, _ := json.Marshal(proto.ActionEvent{ID: id, Host: host, Key: i, Release: true, Action: a.ForPC()})
-	go func() {
-		if err := d.ch.send(proto.EventSeq, proto.EventAction, ev); err != nil {
-			log.Printf("key %d release: %v", i, err)
+	ev := proto.ActionEvent{ID: h.pcID, Host: h.pcHost, Key: i, Release: true, Action: h.action.ForPC()}
+	d.pc.addRelease(ev)
+	go d.sendReleases([]proto.ActionEvent{ev})
+}
+
+// sendReleases sends key releases, keeping those that fail for the next
+// heartbeat.
+func (d *deckd) sendReleases(evs []proto.ActionEvent) {
+	for _, ev := range evs {
+		b, _ := json.Marshal(ev)
+		if err := d.ch.send(proto.EventSeq, proto.EventAction, b); err != nil {
+			log.Printf("key %d release: %v", ev.Key, err)
+			continue
 		}
-	}()
+		d.pc.released(ev)
+	}
+}
+
+func (p *pcActions) addRelease(ev proto.ActionEvent) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.releases == nil {
+		p.releases = map[int]proto.ActionEvent{}
+	}
+	p.releases[ev.Key] = ev
+}
+
+// unsentReleases are the key releases still to send.
+func (p *pcActions) unsentReleases() []proto.ActionEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Collect(maps.Values(p.releases))
+}
+
+func (p *pcActions) released(ev proto.ActionEvent) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.releases[ev.Key].ID == ev.ID {
+		delete(p.releases, ev.Key)
+	}
 }

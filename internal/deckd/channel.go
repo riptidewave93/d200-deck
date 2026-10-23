@@ -128,6 +128,9 @@ func (d *deckd) handle(req proto.Request) (status byte, reply []byte) {
 			return proto.StatusBadRequest, nil
 		}
 		d.pc.heartbeat(h)
+		if evs := d.pc.unsentReleases(); len(evs) > 0 {
+			go d.sendReleases(evs)
+		}
 		return okJSON(proto.ActionHostReply{Looks: d.pc.lookRevs()})
 	case proto.CmdHostLook:
 		var l proto.HostLook
