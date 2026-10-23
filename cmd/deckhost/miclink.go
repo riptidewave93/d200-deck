@@ -23,8 +23,8 @@ type micBackend interface {
 // errNoMic means the PC has no microphone.
 var errNoMic = errors.New("no microphone")
 
-// micLink follows the mic's mute and runs mic actions. Other apps and
-// device changes don't tell, so it asks every second.
+// micLink follows the mic's mute and runs mic actions. Polling is simpler
+// than each OS's notifications.
 type micLink struct {
 	open    func() (micBackend, error)
 	publish func(map[string]bool)
@@ -139,6 +139,11 @@ func (l *micLink) do(op string, _ json.RawMessage, release bool) error {
 	if err := b.setMuted(on); err != nil {
 		return fmt.Errorf("mic: %w", err)
 	}
-	l.update(b, on, nil)
+	l.mu.Lock()
+	current := l.backend == b
+	l.mu.Unlock()
+	if current {
+		l.update(b, on, nil)
+	}
 	return nil
 }
