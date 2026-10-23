@@ -121,3 +121,16 @@ func TestMicUnsupported(t *testing.T) {
 		t.Fatal("run kept going without a backend")
 	}
 }
+
+func TestMicMuteReadsCurrentState(t *testing.T) {
+	fake := &fakeMic{}
+	l := newMicLink(nil, func(map[string]bool) {})
+	l.update(fake, false, nil) // last polled: on
+	fake.set(true, nil)        // muted elsewhere since
+	if err := l.do(deck.MicMute, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls[0] {
+		t.Error("muted again instead of unmuting")
+	}
+}

@@ -33,7 +33,6 @@ type micLink struct {
 
 	mu      sync.Mutex
 	backend micBackend
-	muted   bool
 	status  string
 }
 
@@ -100,7 +99,7 @@ func (l *micLink) follow(b micBackend, stop <-chan struct{}) error {
 // update takes the mic's new state, or err if there's none, and publishes it.
 func (l *micLink) update(b micBackend, muted bool, err error) {
 	l.mu.Lock()
-	l.backend, l.muted = b, muted
+	l.backend = b
 	switch {
 	case errors.Is(err, errNoMic):
 		l.status = "no microphone"
@@ -124,14 +123,18 @@ func (l *micLink) do(op string, _ json.RawMessage, release bool) error {
 		return nil
 	}
 	l.mu.Lock()
-	b, muted, status := l.backend, l.muted, l.status
+	b, status := l.backend, l.status
 	l.mu.Unlock()
 	if b == nil {
 		return errors.New("mic: " + status)
 	}
-	on := !muted
-	if op == deck.MicPushToTalk {
-		on = release
+	on := release
+	if op == deck.MicMute {
+		m, err := b.muted() // the polled state may be a second old
+		if err != nil {
+			return fmt.Errorf("mic: %w", err)
+		}
+		on = !m
 	}
 	if err := b.setMuted(on); err != nil {
 		return fmt.Errorf("mic: %w", err)
