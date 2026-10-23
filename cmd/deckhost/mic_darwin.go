@@ -12,6 +12,14 @@ static AudioObjectID defaultInput(void) {
 	return dev;
 }
 
+// noRunLoop has CoreAudio send its notifications from a thread of its own.
+// It tracks the default device with them, and the daemon has no run loop.
+static void noRunLoop(void) {
+	AudioObjectPropertyAddress a = {kAudioHardwarePropertyRunLoop, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+	CFRunLoopRef rl = NULL;
+	AudioObjectSetPropertyData(kAudioObjectSystemObject, &a, 0, NULL, sizeof(rl), &rl);
+}
+
 static int canSet(AudioObjectID dev, AudioObjectPropertySelector sel, UInt32 el) {
 	AudioObjectPropertyAddress a = {sel, kAudioDevicePropertyScopeInput, el};
 	Boolean ok = false;
@@ -47,7 +55,10 @@ type coreAudioMic struct {
 	saved map[C.AudioObjectID][]float32 // volumes before muting, by device
 }
 
+var notifyOnce sync.Once
+
 func openMic() (micBackend, error) {
+	notifyOnce.Do(func() { C.noRunLoop() })
 	return &coreAudioMic{saved: map[C.AudioObjectID][]float32{}}, nil
 }
 
